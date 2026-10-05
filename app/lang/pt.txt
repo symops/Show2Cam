@@ -1,0 +1,136 @@
+o dispositivo não está configurado
+não foi possível iniciar o dispositivo (o driver retornou um erro ao iniciar)
+o driver precisa ser reinstalado
+o dispositivo está desativado
+o dispositivo não está presente
+o driver não está instalado
+O Windows não conseguiu carregar o driver do dispositivo
+erro no DriverEntry do driver
+o driver não foi carregado (danificado ou incompatível)
+o driver relatou um erro do dispositivo
+o dispositivo não está conectado no momento
+o driver está bloqueado por uma política
+O Windows não conseguiu verificar a assinatura do driver (ative o modo de teste)
+veja o código no Gerenciador de Dispositivos
+ativo
+desativado
+ausente
+desconectado
+Driver em execução: versão %ls, no pacote: %ls.
+ATENÇÃO: o driver em execução não é a versão do pacote. Clique em “Reinstalar” ou reinicie o computador.
+Driver em execução: versão %ls.
+O serviço do driver Show2Cam não está registrado.
+Serviço do driver: %ls.
+em execução
+parado
+iniciando/parando
+Modo de assinatura de teste: %ls; Secure Boot: %ls.
+ativado
+desativado
+Dispositivo ROOT\\Show2Cam não encontrado: o driver não está instalado.
+O dispositivo não foi iniciado: código %lu — %ls.
+O dispositivo Show2Cam está iniciado.
+Removendo a versão anterior…
+— Instalando o Show2Cam —
+— Diagnóstico —
+— Removendo o Show2Cam —
+— Ativando o modo de assinatura de teste —
+✔  O modo de assinatura de teste está ativado
+✖  O modo de assinatura de teste está desativado
+✔  Secure Boot está desativado
+✖  Secure Boot está ativado
+•  O driver Show2Cam não está instalado
+✔  O driver Show2Cam está instalado
+✔  O driver Show2Cam está instalado, versão %ls (igual ao instalador)
+✔  O driver Show2Cam está instalado, versão %ls; o instalador tem %ls
+Reinstalar
+Instalar
+Estado do sistema
+Ativar modo de teste
+Remover
+Iniciar o Show2Cam após a instalação
+Atalho na área de trabalho
+Atalhos no menu Iniciar
+Diagnóstico
+Abrir log
+Fechar
+Faltam arquivos do driver ao lado do instalador (Show2Cam.inf/.sys/.cat/.cer, Show2Cam-Publisher.cer). Extraia o arquivo compactado inteiro.
+Primeiro desative o Secure Boot: com ele o Windows não carrega drivers com assinatura de teste.
+Clique em “Ativar modo de teste”, reinicie o computador e execute o instalador novamente.
+O Show2Cam já está instalado. Você pode reinstalá-lo ou removê-lo.
+Tudo pronto para instalar. Clique em “Instalar”.
+Reinicie o computador para concluir a instalação.
+Log detalhado: %ls (botão “Abrir log”). Envie-o ao desenvolvedor.
+O modo de teste será ativado após reiniciar.\n\nReiniciar o computador agora?
+A operação falhou: veja os detalhes acima.
+Remover o driver Show2Cam e seus dispositivos?
+o pacote do driver não tem catálogo assinado (.cat)
+O Windows não conseguiu adicionar o pacote ao repositório de drivers
+nenhum driver adequado encontrado no INF
+o arquivo não tem assinatura digital
+o certificado de assinatura não é confiável (certificado raiz não instalado)
+o certificado não pode ser usado para esta finalidade
+a assinatura está danificada ou o arquivo foi alterado após a assinatura
+o certificado expirou ou ainda não é válido (verifique o relógio)
+Erro: %ls (0x%08lX): %ls. Detalhes: C:\\Windows\\INF\\setupapi.dev.log
+Erro: %ls (0x%08lX) %ls
+certificado não encontrado
+não foi possível ler o certificado
+Os certificados de teste do Show2Cam foram adicionados aos confiáveis (AC raiz e editor).
+Erro: arquivo não encontrado: %ls
+não foi possível ler a classe do dispositivo no INF
+não foi possível criar o dispositivo
+Dispositivo %ls criado.
+Instalando o driver… Se o Windows perguntar sobre o editor, escolha “Instalar este software de driver mesmo assim”.
+não foi possível instalar o driver
+A instalação foi cancelada na janela de aviso do driver.
+O driver está instalado. É necessário reiniciar.
+O driver está instalado.
+Pacote de driver %ls removido do repositório de drivers.
+não foi possível remover o dispositivo
+Dispositivos removidos: %d.
+O Show2Cam não estava instalado.
+não foi possível executar o bcdedit
+Erro: o bcdedit terminou com o código %lu. Se o Secure Boot estiver ativado, desative-o primeiro.
+O modo de assinatura de teste está ativado. Reinicie o computador e execute a instalação novamente.
+Show2Cam — instalação e diagnóstico.lnk
+Erro: não foi possível determinar a pasta Program Files.
+Os programas já estão em %ls.
+Erro: %ls está em uso: feche o Show2Cam e tente novamente.
+Erro ao copiar %ls (código %lu).
+Programas instalados em %ls.
+Atalho criado na área de trabalho.
+Não foi possível criar o atalho na área de trabalho.
+Painel de controle do Show2Cam
+Instalar, reinstalar, remover e diagnosticar o Show2Cam
+Pasta de logs do Show2Cam
+Atalhos criados no menu Iniciar (pasta Show2Cam).
+Não foi possível criar todos os atalhos do menu Iniciar.
+Atalhos removidos.
+Não foi possível excluir %ls (código %lu): feche o Show2Cam.
+Atalhos e programas removidos; a pasta %ls será excluída quando o instalador for fechado.
+Atalhos e programas removidos de %ls.
+Versão %ls
+Instalação do Show2Cam %ls
+Atualizar
+Desativar modo de teste
+— Desativando o modo de assinatura de teste —
+O modo de assinatura de teste ficará desativado após reiniciar o computador.
+O modo de teste será desativado após reiniciar.\n\nReiniciar o computador agora?
+✔  O modo de assinatura de teste está ativado (até reiniciar)
+✖  O modo de assinatura de teste está desativado (até reiniciar)
+Erro: o bcdedit terminou com o código %lu.
+O Show2Cam não oferece suporte ao Windows em processadores ARM.
+Instalador para este sistema não encontrado: %ls\n\nExtraia o arquivo inteiro.
+Não foi possível extrair o instalador para uma pasta temporária.
+Show2Cam — webcams virtuais
+Webcams virtuais: texto, imagens, vídeo, stream
+Configurações das câmeras mantidas para a nova versão.
+Configurações do driver redefinidas (após a instalação: uma câmera, 1280×720, 30 fps).
+Verificação: aguardando o dispositivo e suas câmeras…
+Câmera: "%ls".
+Ao iniciar, o driver criou %lu câmera(s) (código 0x%08lX).
+O driver está em execução, mas o Windows não mostra câmeras do Show2Cam.
+O driver está instalado, mas as câmeras do Show2Cam não funcionam: o motivo está acima.
+Pronto: as câmeras do Show2Cam estão no Windows.
+Sem o modo de teste o driver Show2Cam não será carregado: as câmeras do Show2Cam desaparecem até que o modo seja ativado novamente.\n\nDesativar o modo de teste?

@@ -1,0 +1,136 @@
+il dispositivo non è configurato
+impossibile avviare il dispositivo (il driver ha restituito un errore all'avvio)
+il driver va reinstallato
+il dispositivo è disattivato
+il dispositivo non è presente
+il driver non è installato
+Windows non è riuscito a caricare il driver del dispositivo
+errore in DriverEntry del driver
+il driver non è stato caricato (danneggiato o incompatibile)
+il driver ha segnalato un errore del dispositivo
+il dispositivo al momento non è collegato
+il driver è bloccato da un criterio
+Windows non è riuscito a verificare la firma del driver (attiva la modalità test)
+vedi il codice in Gestione dispositivi
+attivo
+disattivato
+non presente
+scollegato
+Driver in esecuzione: versione %ls, nel pacchetto: %ls.
+ATTENZIONE: il driver in esecuzione non è la versione del pacchetto. Fai clic su «Reinstalla» o riavvia il computer.
+Driver in esecuzione: versione %ls.
+Il servizio del driver Show2Cam non è registrato.
+Servizio del driver: %ls.
+in esecuzione
+arrestato
+in avvio/arresto
+Modalità firma di test: %ls; Secure Boot: %ls.
+attiva
+disattiva
+Dispositivo ROOT\\Show2Cam non trovato: il driver non è installato.
+Il dispositivo non è avviato: codice %lu — %ls.
+Il dispositivo Show2Cam è avviato.
+Rimozione della versione precedente…
+— Installazione di Show2Cam —
+— Diagnostica —
+— Rimozione di Show2Cam —
+— Attivazione della modalità firma di test —
+✔  La modalità firma di test è attiva
+✖  La modalità firma di test è disattiva
+✔  Secure Boot è disattivato
+✖  Secure Boot è attivo
+•  Il driver Show2Cam non è installato
+✔  Il driver Show2Cam è installato
+✔  Il driver Show2Cam è installato, versione %ls (come nel programma di installazione)
+✔  Il driver Show2Cam è installato, versione %ls; il programma di installazione contiene %ls
+Reinstalla
+Installa
+Stato del sistema
+Attiva modalità test
+Rimuovi
+Avvia Show2Cam dopo l'installazione
+Collegamento sul desktop
+Collegamenti nel menu Start
+Diagnostica
+Apri registro
+Chiudi
+Accanto al programma di installazione mancano file del driver (Show2Cam.inf/.sys/.cat/.cer, Show2Cam-Publisher.cer). Estrai l'intero archivio.
+Disattiva prima Secure Boot: con esso Windows non carica driver con firma di test.
+Fai clic su «Attiva modalità test», riavvia il computer ed esegui di nuovo il programma di installazione.
+Show2Cam è già installato. Puoi reinstallarlo o rimuoverlo.
+Tutto pronto per l'installazione. Fai clic su «Installa».
+Riavvia il computer per completare l'installazione.
+Registro dettagliato: %ls (pulsante «Apri registro»). Invialo allo sviluppatore.
+La modalità test si attiva dopo il riavvio.\n\nRiavviare il computer ora?
+Operazione non riuscita: vedi i dettagli sopra.
+Rimuovere il driver Show2Cam e i suoi dispositivi?
+il pacchetto del driver non ha un catalogo firmato (.cat)
+Windows non è riuscito ad aggiungere il pacchetto all'archivio driver
+nessun driver adatto trovato nell'INF
+il file non ha una firma digitale
+il certificato di firma non è attendibile (certificato radice non installato)
+il certificato non può essere usato per questo scopo
+la firma è danneggiata o il file è stato modificato dopo la firma
+il certificato è scaduto o non ancora valido (controlla l'orologio)
+Errore: %ls (0x%08lX): %ls. Dettagli: C:\\Windows\\INF\\setupapi.dev.log
+Errore: %ls (0x%08lX) %ls
+certificato non trovato
+impossibile leggere il certificato
+I certificati di test di Show2Cam sono stati aggiunti agli attendibili (CA radice ed editore).
+Errore: file non trovato: %ls
+impossibile leggere la classe del dispositivo dall'INF
+impossibile creare il dispositivo
+Dispositivo %ls creato.
+Installazione del driver… Se Windows chiede dell'editore, scegli «Installa comunque il software del driver».
+impossibile installare il driver
+Installazione annullata nella finestra di avviso del driver.
+Il driver è installato. È necessario un riavvio.
+Il driver è installato.
+Pacchetto driver %ls rimosso dall'archivio driver.
+impossibile rimuovere il dispositivo
+Dispositivi rimossi: %d.
+Show2Cam non era installato.
+impossibile avviare bcdedit
+Errore: bcdedit è terminato con codice %lu. Se Secure Boot è attivo, disattivalo prima.
+La modalità firma di test è attiva. Riavvia il computer ed esegui di nuovo l'installazione.
+Show2Cam — installazione e diagnostica.lnk
+Errore: impossibile determinare la cartella Program Files.
+I programmi sono già in %ls.
+Errore: %ls è in uso: chiudi Show2Cam e riprova.
+Errore durante la copia di %ls (codice %lu).
+Programmi installati in %ls.
+Collegamento creato sul desktop.
+Impossibile creare il collegamento sul desktop.
+Pannello di controllo di Show2Cam
+Installa, reinstalla, rimuovi e diagnostica Show2Cam
+Cartella dei registri di Show2Cam
+Collegamenti creati nel menu Start (cartella Show2Cam).
+Non è stato possibile creare tutti i collegamenti del menu Start.
+Collegamenti rimossi.
+Impossibile eliminare %ls (codice %lu): chiudi Show2Cam.
+Collegamenti e programmi rimossi; la cartella %ls verrà eliminata alla chiusura del programma di installazione.
+Collegamenti e programmi rimossi da %ls.
+Versione %ls
+Installazione di Show2Cam %ls
+Aggiorna
+Disattiva modalità test
+— Disattivazione della modalità firma di test —
+La modalità firma di test sarà disattiva dopo il riavvio del computer.
+La modalità test si disattiva dopo il riavvio.\n\nRiavviare il computer ora?
+✔  La modalità firma di test è attiva (fino al riavvio)
+✖  La modalità firma di test è disattiva (fino al riavvio)
+Errore: bcdedit è terminato con il codice %lu.
+Show2Cam non supporta Windows su processori ARM.
+Programma di installazione per questo sistema non trovato: %ls\n\nEstrai l'intero archivio.
+Impossibile estrarre il programma di installazione in una cartella temporanea.
+Show2Cam — webcam virtuali
+Webcam virtuali: testo, immagini, video, flusso
+Impostazioni delle videocamere mantenute per la nuova versione.
+Impostazioni del driver ripristinate (dopo l'installazione: una videocamera, 1280×720, 30 fps).
+Verifica: in attesa del dispositivo e delle videocamere…
+Videocamera: «%ls».
+All'avvio il driver ha creato %lu videocamera/e (codice 0x%08lX).
+Il driver funziona, ma Windows non mostra le videocamere Show2Cam.
+Il driver è installato, ma le videocamere Show2Cam non funzionano: il motivo è sopra.
+Fatto: le videocamere Show2Cam sono disponibili in Windows.
+Senza la modalità test il driver Show2Cam non si carica: le videocamere Show2Cam scompaiono finché la modalità non viene riattivata.\n\nDisattivare la modalità test?

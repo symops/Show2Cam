@@ -1,0 +1,143 @@
+the device is not configured
+the device failed to start (the driver returned an error on start)
+the driver needs to be reinstalled
+the device is disabled
+the device is not present
+the driver is not installed
+Windows could not load the driver for the device
+error in the driver's DriverEntry
+the driver did not load (damaged or incompatible)
+the driver reported a device error
+the device is not connected right now
+the driver is blocked by policy
+Windows could not verify the driver signature (enable test mode)
+see the code in Device Manager
+active
+disabled
+not present
+unplugged
+Running driver version %ls, package version %ls.
+WARNING: the running driver is not the version in the package. Click "Reinstall" or restart the computer.
+Running driver version %ls.
+The Show2Cam driver service is not registered.
+Driver service: %ls.
+running
+stopped
+starting/stopping
+Test signing mode: %ls; Secure Boot: %ls.
+on
+off
+Device ROOT\\Show2Cam not found: the driver is not installed.
+The device is not started: code %lu — %ls.
+The Show2Cam device is started.
+Removing the previous version…
+— Installing Show2Cam —
+— Diagnostics —
+— Removing Show2Cam —
+— Enabling test signing mode —
+✔  Test signing mode is on
+✖  Test signing mode is off
+✔  Secure Boot is off
+✖  Secure Boot is on
+•  The Show2Cam driver is not installed
+✔  The Show2Cam driver is installed
+✔  The Show2Cam driver is installed, version %ls (same as the installer)
+✔  The Show2Cam driver is installed, version %ls; the installer has %ls
+Reinstall
+Install
+System status
+Enable test mode
+Remove
+Start Show2Cam after installation
+Desktop shortcut
+Start menu shortcuts
+Diagnostics
+Open log
+Close
+Driver files are missing next to the installer (Show2Cam.inf/.sys/.cat/.cer, Show2Cam-Publisher.cer). Extract the whole archive.
+Turn off Secure Boot first: with it Windows does not load test-signed drivers.
+Click "Enable test mode", restart the computer and run the installer again.
+Show2Cam is already installed. You can reinstall or remove it.
+Ready to install. Click "Install".
+Restart the computer to finish the installation.
+Detailed log: %ls ("Open log" button). Please send it to the developer.
+Test mode takes effect after a restart.\n\nRestart the computer now?
+The operation failed: see the details above.
+Remove the Show2Cam driver and its devices?
+the driver package has no signed catalog (.cat)
+Windows could not add the package to the driver store
+no matching driver found in the INF
+the file has no digital signature
+the signing certificate is not trusted (the root certificate is not installed)
+the certificate cannot be used for this purpose
+the signature is damaged or the file was changed after signing
+the certificate has expired or is not valid yet (check the clock)
+Error: %ls (0x%08lX): %ls. Details: C:\\Windows\\INF\\setupapi.dev.log
+Error: %ls (0x%08lX) %ls
+certificate not found
+cannot read the certificate
+The Show2Cam test certificates were added to the trusted stores (root CA and publisher).
+Error: file not found: %ls
+cannot read the device class from the INF
+cannot create the device
+Device %ls created.
+Installing the driver… If Windows asks about the publisher, choose "Install this driver software anyway".
+cannot install the driver
+Installation was cancelled in the driver warning window.
+The driver is installed. A restart is required.
+The driver is installed.
+Driver package %ls removed from the driver store.
+cannot remove the device
+Devices removed: %d.
+Show2Cam was not installed.
+cannot run bcdedit
+Error: bcdedit exited with code %lu. If Secure Boot is on, turn it off first.
+Test signing mode is on. Restart the computer and run the installation again.
+Show2Cam — setup and diagnostics.lnk
+Error: cannot determine the Program Files folder.
+The programs are already in %ls.
+Error: %ls is in use: close Show2Cam and try again.
+Error copying %ls (code %lu).
+Programs installed to %ls.
+Desktop shortcut created.
+Cannot create the desktop shortcut.
+Show2Cam control panel
+Install, reinstall, remove and diagnose Show2Cam
+Show2Cam log folder
+Start menu shortcuts created (Show2Cam folder).
+Not all Start menu shortcuts could be created.
+Shortcuts removed.
+Cannot delete %ls (code %lu): close Show2Cam.
+Shortcuts and programs removed; the folder %ls is deleted after the installer closes.
+Shortcuts and programs removed from %ls.
+Version %ls
+Show2Cam Setup %ls
+Update
+Disable test mode
+— Disabling test signing mode —
+Test signing mode will be off after the computer restarts.
+Test mode turns off after a restart.\n\nRestart the computer now?
+✔  Test signing mode is on (until restart)
+✖  Test signing mode is off (until restart)
+Error: bcdedit exited with code %lu.
+Show2Cam does not support Windows on ARM processors.
+The installer for this system was not found: %ls\n\nExtract the whole archive.
+Could not extract the installer to a temporary folder.
+Show2Cam — virtual webcams
+Virtual webcams: text, pictures, video, stream
+Camera settings kept for the new version.
+Driver settings reset (after installation: one camera, 1280×720, 30 fps).
+Checking: waiting for the device and its cameras…
+Camera: "%ls".
+At start the driver created %lu camera(s) (code 0x%08lX).
+The driver runs, but Windows shows no Show2Cam camera.
+The driver is installed, but the Show2Cam cameras do not work: see above why.
+Done: the Show2Cam cameras are in Windows.
+Without test mode the Show2Cam driver will not load: the Show2Cam cameras disappear until the mode is enabled again.\n\nDisable test mode?
+[driver] the driver log is empty: the driver has never started
+[driver] ---- driver log (DriverLog) ----
+[setupapi] cannot open %ls (%lu)
+[setupapi] setupapi.dev.log has no Show2Cam entries
+[setupapi] ---- last setupapi.dev.log section about Show2Cam ----
+---- diagnostics ----
+---- end of diagnostics (result %d) ----

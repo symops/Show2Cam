@@ -1,0 +1,136 @@
+perangkat belum dikonfigurasi
+perangkat gagal dimulai (driver mengembalikan kesalahan saat mulai)
+driver perlu diinstal ulang
+perangkat dinonaktifkan
+perangkat tidak ada
+driver belum diinstal
+Windows tidak dapat memuat driver perangkat
+kesalahan di DriverEntry driver
+driver tidak dimuat (rusak atau tidak kompatibel)
+driver melaporkan kesalahan perangkat
+perangkat saat ini tidak tersambung
+driver diblokir oleh kebijakan
+Windows tidak dapat memeriksa tanda tangan driver (aktifkan mode uji)
+lihat kode di Pengelola Perangkat
+aktif
+nonaktif
+tidak ada
+tidak tersambung
+Driver berjalan versi %ls, di paket: %ls.
+PERHATIAN: driver yang berjalan bukan versi dari paket. Klik “Instal ulang” atau mulai ulang komputer.
+Driver berjalan versi %ls.
+Layanan driver Show2Cam tidak terdaftar.
+Layanan driver: %ls.
+berjalan
+berhenti
+sedang mulai/berhenti
+Mode tanda tangan uji: %ls; Secure Boot: %ls.
+aktif
+nonaktif
+Perangkat ROOT\\Show2Cam tidak ditemukan: driver belum diinstal.
+Perangkat tidak berjalan: kode %lu — %ls.
+Perangkat Show2Cam berjalan.
+Menghapus versi sebelumnya…
+— Menginstal Show2Cam —
+— Diagnostik —
+— Menghapus Show2Cam —
+— Mengaktifkan mode tanda tangan uji —
+✔  Mode tanda tangan uji aktif
+✖  Mode tanda tangan uji nonaktif
+✔  Secure Boot nonaktif
+✖  Secure Boot aktif
+•  Driver Show2Cam belum diinstal
+✔  Driver Show2Cam terinstal
+✔  Driver Show2Cam terinstal, versi %ls (sama dengan penginstal)
+✔  Driver Show2Cam terinstal, versi %ls; penginstal berisi %ls
+Instal ulang
+Instal
+Status sistem
+Aktifkan mode uji
+Hapus
+Jalankan Show2Cam setelah instalasi
+Pintasan di desktop
+Pintasan di menu Start
+Diagnostik
+Buka log
+Tutup
+File driver tidak lengkap di samping penginstal (Show2Cam.inf/.sys/.cat/.cer, Show2Cam-Publisher.cer). Ekstrak seluruh arsip.
+Nonaktifkan Secure Boot terlebih dahulu: dengan fitur itu Windows tidak memuat driver bertanda tangan uji.
+Klik “Aktifkan mode uji”, mulai ulang komputer, lalu jalankan penginstal lagi.
+Show2Cam sudah terinstal. Anda dapat menginstal ulang atau menghapusnya.
+Siap diinstal. Klik “Instal”.
+Mulai ulang komputer untuk menyelesaikan instalasi.
+Log terperinci: %ls (tombol “Buka log”). Kirimkan ke pengembang.
+Mode uji aktif setelah komputer dimulai ulang.\n\nMulai ulang komputer sekarang?
+Operasi gagal: lihat detail di atas.
+Hapus driver Show2Cam dan perangkatnya?
+paket driver tidak memiliki katalog bertanda tangan (.cat)
+Windows tidak dapat menambahkan paket ke penyimpanan driver
+tidak ditemukan driver yang cocok di INF
+file tidak memiliki tanda tangan digital
+sertifikat tanda tangan tidak tepercaya (sertifikat akar belum diinstal)
+sertifikat tidak dapat digunakan untuk tujuan ini
+tanda tangan rusak atau file diubah setelah ditandatangani
+sertifikat kedaluwarsa atau belum berlaku (periksa jam)
+Kesalahan: %ls (0x%08lX): %ls. Detail: C:\\Windows\\INF\\setupapi.dev.log
+Kesalahan: %ls (0x%08lX) %ls
+sertifikat tidak ditemukan
+tidak dapat membaca sertifikat
+Sertifikat uji Show2Cam ditambahkan ke penyimpanan tepercaya (CA akar dan penerbit).
+Kesalahan: file tidak ditemukan: %ls
+tidak dapat membaca kelas perangkat dari INF
+tidak dapat membuat perangkat
+Perangkat %ls dibuat.
+Menginstal driver… Jika Windows menanyakan penerbit, pilih “Tetap instal perangkat lunak driver ini”.
+tidak dapat menginstal driver
+Instalasi dibatalkan di jendela peringatan driver.
+Driver terinstal. Perlu memulai ulang.
+Driver terinstal.
+Paket driver %ls dihapus dari penyimpanan driver.
+tidak dapat menghapus perangkat
+Perangkat dihapus: %d.
+Show2Cam tidak terinstal sebelumnya.
+tidak dapat menjalankan bcdedit
+Kesalahan: bcdedit berakhir dengan kode %lu. Jika Secure Boot aktif, nonaktifkan terlebih dahulu.
+Mode tanda tangan uji aktif. Mulai ulang komputer dan jalankan instalasi lagi.
+Show2Cam — instalasi dan diagnostik.lnk
+Kesalahan: tidak dapat menentukan folder Program Files.
+Program sudah ada di %ls.
+Kesalahan: %ls sedang digunakan: tutup Show2Cam lalu coba lagi.
+Kesalahan menyalin %ls (kode %lu).
+Program diinstal ke %ls.
+Pintasan desktop dibuat.
+Tidak dapat membuat pintasan desktop.
+Panel kontrol Show2Cam
+Instal, instal ulang, hapus, dan diagnosis Show2Cam
+Folder log Show2Cam
+Pintasan menu Start dibuat (folder Show2Cam).
+Tidak semua pintasan menu Start dapat dibuat.
+Pintasan dihapus.
+Tidak dapat menghapus %ls (kode %lu): tutup Show2Cam.
+Pintasan dan program dihapus; folder %ls akan dihapus setelah penginstal ditutup.
+Pintasan dan program dihapus dari %ls.
+Versi %ls
+Instalasi Show2Cam %ls
+Perbarui
+Nonaktifkan mode uji
+— Menonaktifkan mode tanda tangan uji —
+Mode tanda tangan uji akan nonaktif setelah komputer dimulai ulang.
+Mode uji nonaktif setelah komputer dimulai ulang.\n\nMulai ulang komputer sekarang?
+✔  Mode tanda tangan uji aktif (sampai dimulai ulang)
+✖  Mode tanda tangan uji nonaktif (sampai dimulai ulang)
+Kesalahan: bcdedit berakhir dengan kode %lu.
+Show2Cam tidak mendukung Windows pada prosesor ARM.
+Penginstal untuk sistem ini tidak ditemukan: %ls\n\nEkstrak seluruh arsip.
+Tidak dapat mengekstrak penginstal ke folder sementara.
+Show2Cam — webcam virtual
+Webcam virtual: teks, gambar, video, stream
+Pengaturan kamera dipertahankan untuk versi baru.
+Pengaturan driver diatur ulang (setelah instalasi: satu kamera, 1280×720, 30 fps).
+Pemeriksaan: menunggu perangkat dan kameranya…
+Kamera: "%ls".
+Saat dimulai driver membuat %lu kamera (kode 0x%08lX).
+Driver berjalan, tetapi Windows tidak menampilkan kamera Show2Cam.
+Driver terpasang, tetapi kamera Show2Cam tidak berfungsi; penyebabnya di atas.
+Selesai: kamera Show2Cam sudah ada di Windows.
+Tanpa mode uji driver Show2Cam tidak akan dimuat: kamera Show2Cam menghilang sampai mode diaktifkan lagi.\n\nNonaktifkan mode uji?

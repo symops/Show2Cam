@@ -1,0 +1,136 @@
+le périphérique n'est pas configuré
+le périphérique n'a pas pu démarrer (le pilote a renvoyé une erreur au démarrage)
+le pilote doit être réinstallé
+le périphérique est désactivé
+le périphérique est absent
+le pilote n'est pas installé
+Windows n'a pas pu charger le pilote du périphérique
+erreur dans DriverEntry du pilote
+le pilote ne s'est pas chargé (endommagé ou incompatible)
+le pilote a signalé une erreur du périphérique
+le périphérique n'est pas connecté actuellement
+le pilote est bloqué par une stratégie
+Windows n'a pas pu vérifier la signature du pilote (activez le mode test)
+voir le code dans le Gestionnaire de périphériques
+actif
+désactivé
+absent
+débranché
+Pilote en cours : version %ls, dans le paquet : %ls.
+ATTENTION : la version du pilote en cours n'est pas celle du paquet. Cliquez sur « Réinstaller » ou redémarrez l'ordinateur.
+Pilote en cours : version %ls.
+Le service du pilote Show2Cam n'est pas enregistré.
+Service du pilote : %ls.
+démarré
+arrêté
+en cours de démarrage/arrêt
+Mode de signature de test : %ls ; Secure Boot : %ls.
+activé
+désactivé
+Périphérique ROOT\\Show2Cam introuvable : le pilote n'est pas installé.
+Le périphérique n'est pas démarré : code %lu — %ls.
+Le périphérique Show2Cam est démarré.
+Suppression de la version précédente…
+— Installation de Show2Cam —
+— Diagnostic —
+— Suppression de Show2Cam —
+— Activation du mode de signature de test —
+✔  Le mode de signature de test est activé
+✖  Le mode de signature de test est désactivé
+✔  Secure Boot est désactivé
+✖  Secure Boot est activé
+•  Le pilote Show2Cam n'est pas installé
+✔  Le pilote Show2Cam est installé
+✔  Le pilote Show2Cam est installé, version %ls (identique au programme d'installation)
+✔  Le pilote Show2Cam est installé, version %ls ; le programme d'installation contient %ls
+Réinstaller
+Installer
+État du système
+Activer le mode test
+Supprimer
+Lancer Show2Cam après l'installation
+Raccourci sur le Bureau
+Raccourcis dans le menu Démarrer
+Diagnostic
+Ouvrir le journal
+Fermer
+Des fichiers du pilote manquent à côté du programme d'installation (Show2Cam.inf/.sys/.cat/.cer, Show2Cam-Publisher.cer). Extrayez toute l'archive.
+Désactivez d'abord Secure Boot : avec lui, Windows ne charge pas les pilotes signés pour test.
+Cliquez sur « Activer le mode test », redémarrez l'ordinateur et relancez le programme d'installation.
+Show2Cam est déjà installé. Vous pouvez le réinstaller ou le supprimer.
+Prêt pour l'installation. Cliquez sur « Installer ».
+Redémarrez l'ordinateur pour terminer l'installation.
+Journal détaillé : %ls (bouton « Ouvrir le journal »). Envoyez-le au développeur.
+Le mode test sera actif après un redémarrage.\n\nRedémarrer l'ordinateur maintenant ?
+L'opération a échoué : voir les détails ci-dessus.
+Supprimer le pilote Show2Cam et ses périphériques ?
+le paquet du pilote n'a pas de catalogue signé (.cat)
+Windows n'a pas pu ajouter le paquet au magasin de pilotes
+aucun pilote correspondant dans l'INF
+le fichier n'a pas de signature numérique
+le certificat de signature n'est pas approuvé (certificat racine non installé)
+le certificat ne peut pas être utilisé à cette fin
+la signature est endommagée ou le fichier a été modifié après signature
+le certificat a expiré ou n'est pas encore valide (vérifiez l'horloge)
+Erreur : %ls (0x%08lX) : %ls. Détails : C:\\Windows\\INF\\setupapi.dev.log
+Erreur : %ls (0x%08lX) %ls
+certificat introuvable
+impossible de lire le certificat
+Les certificats de test Show2Cam ont été ajoutés aux magasins approuvés (autorité racine et éditeur).
+Erreur : fichier introuvable : %ls
+impossible de lire la classe du périphérique dans l'INF
+impossible de créer le périphérique
+Périphérique %ls créé.
+Installation du pilote… Si Windows vous interroge sur l'éditeur, choisissez « Installer ce pilote quand même ».
+impossible d'installer le pilote
+Installation annulée dans la fenêtre d'avertissement du pilote.
+Le pilote est installé. Un redémarrage est nécessaire.
+Le pilote est installé.
+Paquet de pilote %ls supprimé du magasin de pilotes.
+impossible de supprimer le périphérique
+Périphériques supprimés : %d.
+Show2Cam n'était pas installé.
+impossible de lancer bcdedit
+Erreur : bcdedit s'est terminé avec le code %lu. Si Secure Boot est activé, désactivez-le d'abord.
+Le mode de signature de test est activé. Redémarrez l'ordinateur et relancez l'installation.
+Show2Cam — installation et diagnostic.lnk
+Erreur : impossible de déterminer le dossier Program Files.
+Les programmes sont déjà dans %ls.
+Erreur : %ls est utilisé : fermez Show2Cam puis réessayez.
+Erreur de copie de %ls (code %lu).
+Programmes installés dans %ls.
+Raccourci créé sur le Bureau.
+Impossible de créer le raccourci sur le Bureau.
+Panneau de configuration Show2Cam
+Installer, réinstaller, supprimer et diagnostiquer Show2Cam
+Dossier des journaux Show2Cam
+Raccourcis créés dans le menu Démarrer (dossier Show2Cam).
+Tous les raccourcis du menu Démarrer n'ont pas pu être créés.
+Raccourcis supprimés.
+Impossible de supprimer %ls (code %lu) : fermez Show2Cam.
+Raccourcis et programmes supprimés ; le dossier %ls sera supprimé à la fermeture du programme d'installation.
+Raccourcis et programmes supprimés de %ls.
+Version %ls
+Installation de Show2Cam %ls
+Mettre à jour
+Désactiver le mode test
+— Désactivation du mode de signature de test —
+Le mode de signature de test sera désactivé après le redémarrage de l'ordinateur.
+Le mode test sera désactivé après un redémarrage.\n\nRedémarrer l'ordinateur maintenant ?
+✔  Le mode de signature de test est activé (jusqu'au redémarrage)
+✖  Le mode de signature de test est désactivé (jusqu'au redémarrage)
+Erreur : bcdedit s'est terminé avec le code %lu.
+Show2Cam ne prend pas en charge Windows sur processeurs ARM.
+Programme d'installation introuvable pour ce système : %ls\n\nExtrayez l'archive entière.
+Impossible d'extraire le programme d'installation dans un dossier temporaire.
+Show2Cam — webcams virtuelles
+Webcams virtuelles : texte, images, vidéo, flux
+Paramètres des caméras conservés pour la nouvelle version.
+Paramètres du pilote réinitialisés (après installation : une caméra, 1280×720, 30 i/s).
+Vérification : attente du périphérique et de ses caméras…
+Caméra : « %ls ».
+Au démarrage, le pilote a créé %lu caméra(s) (code 0x%08lX).
+Le pilote fonctionne, mais Windows n'affiche aucune caméra Show2Cam.
+Le pilote est installé, mais les caméras Show2Cam ne fonctionnent pas : la raison est ci-dessus.
+Terminé : les caméras Show2Cam sont disponibles dans Windows.
+Sans le mode test, le pilote Show2Cam ne se chargera pas : les caméras Show2Cam disparaîtront jusqu'à ce que le mode soit réactivé.\n\nDésactiver le mode test ?

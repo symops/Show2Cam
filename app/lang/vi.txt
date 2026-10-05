@@ -1,0 +1,136 @@
+thiết bị chưa được cấu hình
+không khởi động được thiết bị (trình điều khiển trả về lỗi khi khởi động)
+cần cài đặt lại trình điều khiển
+thiết bị bị vô hiệu hóa
+thiết bị không có mặt
+trình điều khiển chưa được cài đặt
+Windows không tải được trình điều khiển cho thiết bị
+lỗi trong DriverEntry của trình điều khiển
+trình điều khiển không tải được (bị hỏng hoặc không tương thích)
+trình điều khiển báo lỗi thiết bị
+thiết bị hiện không được kết nối
+trình điều khiển bị chặn bởi chính sách
+Windows không kiểm tra được chữ ký trình điều khiển (hãy bật chế độ thử nghiệm)
+xem mã trong Trình quản lý Thiết bị
+hoạt động
+đã tắt
+không có mặt
+chưa cắm
+Trình điều khiển đang chạy phiên bản %ls, trong gói: %ls.
+CHÚ Ý: trình điều khiển đang chạy không phải phiên bản trong gói. Nhấn “Cài đặt lại” hoặc khởi động lại máy tính.
+Trình điều khiển đang chạy phiên bản %ls.
+Dịch vụ trình điều khiển Show2Cam chưa được đăng ký.
+Dịch vụ trình điều khiển: %ls.
+đang chạy
+đã dừng
+đang khởi động/dừng
+Chế độ ký thử nghiệm: %ls; Secure Boot: %ls.
+bật
+tắt
+Không tìm thấy thiết bị ROOT\\Show2Cam: trình điều khiển chưa được cài đặt.
+Thiết bị chưa khởi động: mã %lu — %ls.
+Thiết bị Show2Cam đã khởi động.
+Đang gỡ phiên bản trước…
+— Đang cài đặt Show2Cam —
+— Chẩn đoán —
+— Đang gỡ Show2Cam —
+— Đang bật chế độ ký thử nghiệm —
+✔  Chế độ ký thử nghiệm đang bật
+✖  Chế độ ký thử nghiệm đang tắt
+✔  Secure Boot đang tắt
+✖  Secure Boot đang bật
+•  Trình điều khiển Show2Cam chưa được cài đặt
+✔  Trình điều khiển Show2Cam đã được cài đặt
+✔  Trình điều khiển Show2Cam đã được cài đặt, phiên bản %ls (giống trình cài đặt)
+✔  Trình điều khiển Show2Cam đã được cài đặt, phiên bản %ls; trình cài đặt có %ls
+Cài đặt lại
+Cài đặt
+Trạng thái hệ thống
+Bật chế độ thử nghiệm
+Gỡ bỏ
+Chạy Show2Cam sau khi cài đặt
+Lối tắt trên màn hình nền
+Lối tắt trong menu Start
+Chẩn đoán
+Mở nhật ký
+Đóng
+Thiếu tệp trình điều khiển bên cạnh trình cài đặt (Show2Cam.inf/.sys/.cat/.cer, Show2Cam-Publisher.cer). Hãy giải nén toàn bộ tệp lưu trữ.
+Trước tiên hãy tắt Secure Boot: khi bật, Windows không tải trình điều khiển ký thử nghiệm.
+Nhấn “Bật chế độ thử nghiệm”, khởi động lại máy tính rồi chạy lại trình cài đặt.
+Show2Cam đã được cài đặt. Bạn có thể cài đặt lại hoặc gỡ bỏ.
+Sẵn sàng cài đặt. Nhấn “Cài đặt”.
+Khởi động lại máy tính để hoàn tất cài đặt.
+Nhật ký chi tiết: %ls (nút “Mở nhật ký”). Hãy gửi cho nhà phát triển.
+Chế độ thử nghiệm sẽ bật sau khi khởi động lại.\n\nKhởi động lại máy tính ngay bây giờ?
+Thao tác thất bại: xem chi tiết ở trên.
+Gỡ trình điều khiển Show2Cam và các thiết bị của nó?
+gói trình điều khiển không có danh mục đã ký (.cat)
+Windows không thêm được gói vào kho trình điều khiển
+không tìm thấy trình điều khiển phù hợp trong INF
+tệp không có chữ ký số
+chứng chỉ ký không đáng tin cậy (chưa cài chứng chỉ gốc)
+không thể dùng chứng chỉ cho mục đích này
+chữ ký bị hỏng hoặc tệp đã bị thay đổi sau khi ký
+chứng chỉ đã hết hạn hoặc chưa có hiệu lực (kiểm tra đồng hồ)
+Lỗi: %ls (0x%08lX): %ls. Chi tiết: C:\\Windows\\INF\\setupapi.dev.log
+Lỗi: %ls (0x%08lX) %ls
+không tìm thấy chứng chỉ
+không đọc được chứng chỉ
+Đã thêm chứng chỉ thử nghiệm Show2Cam vào kho tin cậy (CA gốc và nhà phát hành).
+Lỗi: không tìm thấy tệp %ls
+không đọc được lớp thiết bị từ INF
+không tạo được thiết bị
+Đã tạo thiết bị %ls.
+Đang cài trình điều khiển… Nếu Windows hỏi về nhà phát hành, hãy chọn “Vẫn cài đặt phần mềm trình điều khiển này”.
+không cài được trình điều khiển
+Đã hủy cài đặt trong cửa sổ cảnh báo trình điều khiển.
+Đã cài trình điều khiển. Cần khởi động lại.
+Đã cài trình điều khiển.
+Đã gỡ gói trình điều khiển %ls khỏi kho trình điều khiển.
+không gỡ được thiết bị
+Số thiết bị đã gỡ: %d.
+Show2Cam chưa từng được cài đặt.
+không chạy được bcdedit
+Lỗi: bcdedit kết thúc với mã %lu. Nếu Secure Boot đang bật, hãy tắt nó trước.
+Chế độ ký thử nghiệm đã bật. Khởi động lại máy tính rồi chạy lại cài đặt.
+Show2Cam — cài đặt và chẩn đoán.lnk
+Lỗi: không xác định được thư mục Program Files.
+Các chương trình đã có trong %ls.
+Lỗi: %ls đang được dùng: hãy đóng Show2Cam rồi thử lại.
+Lỗi sao chép %ls (mã %lu).
+Đã cài các chương trình vào %ls.
+Đã tạo lối tắt trên màn hình nền.
+Không tạo được lối tắt trên màn hình nền.
+Bảng điều khiển Show2Cam
+Cài đặt, cài đặt lại, gỡ bỏ và chẩn đoán Show2Cam
+Thư mục nhật ký Show2Cam
+Đã tạo lối tắt trong menu Start (thư mục Show2Cam).
+Không tạo được tất cả lối tắt trong menu Start.
+Đã xóa lối tắt.
+Không xóa được %ls (mã %lu): hãy đóng Show2Cam.
+Đã xóa lối tắt và chương trình; thư mục %ls sẽ bị xóa sau khi đóng trình cài đặt.
+Đã xóa lối tắt và chương trình khỏi %ls.
+Phiên bản %ls
+Cài đặt Show2Cam %ls
+Cập nhật
+Tắt chế độ thử nghiệm
+— Đang tắt chế độ ký thử nghiệm —
+Chế độ ký thử nghiệm sẽ tắt sau khi máy tính khởi động lại.
+Chế độ thử nghiệm sẽ tắt sau khi khởi động lại.\n\nKhởi động lại máy tính ngay bây giờ?
+✔  Chế độ ký thử nghiệm đang bật (đến khi khởi động lại)
+✖  Chế độ ký thử nghiệm đang tắt (đến khi khởi động lại)
+Lỗi: bcdedit kết thúc với mã %lu.
+Show2Cam không hỗ trợ Windows trên bộ xử lý ARM.
+Không tìm thấy trình cài đặt cho hệ thống này: %ls\n\nHãy giải nén toàn bộ tệp lưu trữ.
+Không thể giải nén trình cài đặt vào thư mục tạm.
+Show2Cam — webcam ảo
+Webcam ảo: văn bản, hình ảnh, video, luồng
+Đã giữ cài đặt camera cho phiên bản mới.
+Đã đặt lại cài đặt trình điều khiển (sau khi cài: một camera, 1280×720, 30 khung hình/giây).
+Kiểm tra: đang chờ thiết bị và các camera…
+Camera: "%ls".
+Khi khởi động, trình điều khiển đã tạo %lu camera (mã 0x%08lX).
+Trình điều khiển đang chạy nhưng Windows không hiển thị camera Show2Cam.
+Đã cài trình điều khiển nhưng camera Show2Cam không hoạt động — nguyên nhân ở trên.
+Xong: camera Show2Cam đã có trong Windows.
+Không có chế độ thử nghiệm, trình điều khiển Show2Cam sẽ không tải: các camera Show2Cam sẽ biến mất cho đến khi bật lại chế độ này.\n\nTắt chế độ thử nghiệm?

@@ -1,0 +1,136 @@
+el dispositivo no está configurado
+no se pudo iniciar el dispositivo (el controlador devolvió un error al iniciar)
+hay que reinstalar el controlador
+el dispositivo está deshabilitado
+el dispositivo no está presente
+el controlador no está instalado
+Windows no pudo cargar el controlador del dispositivo
+error en DriverEntry del controlador
+el controlador no se cargó (dañado o incompatible)
+el controlador informó un error del dispositivo
+el dispositivo no está conectado ahora
+el controlador está bloqueado por una directiva
+Windows no pudo comprobar la firma del controlador (active el modo de prueba)
+vea el código en el Administrador de dispositivos
+activo
+deshabilitado
+no presente
+desconectado
+Controlador en ejecución: versión %ls, en el paquete: %ls.
+ATENCIÓN: la versión del controlador en ejecución no es la del paquete. Pulse «Reinstalar» o reinicie el equipo.
+Controlador en ejecución: versión %ls.
+El servicio del controlador Show2Cam no está registrado.
+Servicio del controlador: %ls.
+en ejecución
+detenido
+iniciándose/deteniéndose
+Modo de firma de prueba: %ls; Secure Boot: %ls.
+activado
+desactivado
+Dispositivo ROOT\\Show2Cam no encontrado: el controlador no está instalado.
+El dispositivo no está iniciado: código %lu — %ls.
+El dispositivo Show2Cam está iniciado.
+Quitando la versión anterior…
+— Instalando Show2Cam —
+— Diagnóstico —
+— Quitando Show2Cam —
+— Activando el modo de firma de prueba —
+✔  El modo de firma de prueba está activado
+✖  El modo de firma de prueba está desactivado
+✔  Secure Boot está desactivado
+✖  Secure Boot está activado
+•  El controlador Show2Cam no está instalado
+✔  El controlador Show2Cam está instalado
+✔  El controlador Show2Cam está instalado, versión %ls (igual que el instalador)
+✔  El controlador Show2Cam está instalado, versión %ls; el instalador trae %ls
+Reinstalar
+Instalar
+Estado del sistema
+Activar modo de prueba
+Quitar
+Iniciar Show2Cam tras la instalación
+Acceso directo en el escritorio
+Accesos directos en el menú Inicio
+Diagnóstico
+Abrir registro
+Cerrar
+Faltan archivos del controlador junto al instalador (Show2Cam.inf/.sys/.cat/.cer, Show2Cam-Publisher.cer). Extraiga el archivo completo.
+Primero desactive Secure Boot: con él Windows no carga controladores con firma de prueba.
+Pulse «Activar modo de prueba», reinicie el equipo y vuelva a ejecutar el instalador.
+Show2Cam ya está instalado. Puede reinstalarlo o quitarlo.
+Todo listo para instalar. Pulse «Instalar».
+Reinicie el equipo para terminar la instalación.
+Registro detallado: %ls (botón «Abrir registro»). Envíelo al desarrollador.
+El modo de prueba se activará tras reiniciar.\n\n¿Reiniciar el equipo ahora?
+La operación falló: vea los detalles arriba.
+¿Quitar el controlador Show2Cam y sus dispositivos?
+el paquete del controlador no tiene catálogo firmado (.cat)
+Windows no pudo añadir el paquete al almacén de controladores
+no se encontró un controlador adecuado en el INF
+el archivo no tiene firma digital
+el certificado de firma no es de confianza (certificado raíz no instalado)
+el certificado no se puede usar para este fin
+la firma está dañada o el archivo cambió después de firmarse
+el certificado caducó o aún no es válido (compruebe el reloj)
+Error: %ls (0x%08lX): %ls. Detalles: C:\\Windows\\INF\\setupapi.dev.log
+Error: %ls (0x%08lX) %ls
+certificado no encontrado
+no se pudo leer el certificado
+Los certificados de prueba de Show2Cam se añadieron a los de confianza (CA raíz y editor).
+Error: no se encontró el archivo %ls
+no se pudo leer la clase del dispositivo del INF
+no se pudo crear el dispositivo
+Dispositivo %ls creado.
+Instalando el controlador… Si Windows pregunta por el editor, elija «Instalar este software de controlador de todas formas».
+no se pudo instalar el controlador
+La instalación se canceló en la ventana de advertencia del controlador.
+El controlador está instalado. Se requiere reiniciar.
+El controlador está instalado.
+Paquete de controlador %ls quitado del almacén de controladores.
+no se pudo quitar el dispositivo
+Dispositivos quitados: %d.
+Show2Cam no estaba instalado.
+no se pudo ejecutar bcdedit
+Error: bcdedit terminó con el código %lu. Si Secure Boot está activado, desactívelo primero.
+El modo de firma de prueba está activado. Reinicie el equipo y vuelva a ejecutar la instalación.
+Show2Cam — instalación y diagnóstico.lnk
+Error: no se pudo determinar la carpeta Program Files.
+Los programas ya están en %ls.
+Error: %ls está en uso: cierre Show2Cam e inténtelo de nuevo.
+Error al copiar %ls (código %lu).
+Programas instalados en %ls.
+Acceso directo creado en el escritorio.
+No se pudo crear el acceso directo en el escritorio.
+Panel de control de Show2Cam
+Instalar, reinstalar, quitar y diagnosticar Show2Cam
+Carpeta de registros de Show2Cam
+Accesos directos creados en el menú Inicio (carpeta Show2Cam).
+No se pudieron crear todos los accesos directos del menú Inicio.
+Accesos directos quitados.
+No se pudo eliminar %ls (código %lu): cierre Show2Cam.
+Accesos directos y programas quitados; la carpeta %ls se eliminará al cerrar el instalador.
+Accesos directos y programas quitados de %ls.
+Versión %ls
+Instalación de Show2Cam %ls
+Actualizar
+Desactivar modo de prueba
+— Desactivando el modo de firma de prueba —
+El modo de firma de prueba quedará desactivado tras reiniciar el equipo.
+El modo de prueba se desactivará tras reiniciar.\n\n¿Reiniciar el equipo ahora?
+✔  El modo de firma de prueba está activado (hasta reiniciar)
+✖  El modo de firma de prueba está desactivado (hasta reiniciar)
+Error: bcdedit terminó con el código %lu.
+Show2Cam no es compatible con Windows en procesadores ARM.
+No se encontró el instalador para este sistema: %ls\n\nExtraiga el archivo completo.
+No se pudo extraer el instalador en una carpeta temporal.
+Show2Cam — cámaras web virtuales
+Cámaras web virtuales: texto, imágenes, vídeo, flujo
+Configuración de las cámaras conservada para la nueva versión.
+Configuración del controlador restablecida (tras la instalación: una cámara, 1280×720, 30 fps).
+Comprobación: esperando al dispositivo y sus cámaras…
+Cámara: «%ls».
+Al iniciarse, el controlador creó %lu cámara(s) (código 0x%08lX).
+El controlador funciona, pero Windows no muestra ninguna cámara de Show2Cam.
+El controlador está instalado, pero las cámaras de Show2Cam no funcionan: el motivo está arriba.
+Listo: las cámaras de Show2Cam ya están en Windows.
+Sin el modo de prueba el controlador Show2Cam no se cargará: las cámaras de Show2Cam desaparecerán hasta que el modo se active de nuevo.\n\n¿Desactivar el modo de prueba?

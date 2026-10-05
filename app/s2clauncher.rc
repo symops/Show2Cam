@@ -1,0 +1,31 @@
+#include <winuser.h>
+#include <winver.h>
+#include "../driver/version.h"
+1 RT_MANIFEST "s2clauncher.manifest"
+1 ICON "s2csetup.ico"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION     S2C_VER_MAJOR, S2C_VER_MINOR, S2C_VER_BUILD, S2C_VER_REV
+PRODUCTVERSION  S2C_VER_MAJOR, S2C_VER_MINOR, S2C_VER_BUILD, S2C_VER_REV
+FILEOS          VOS_NT_WINDOWS32
+FILETYPE        VFT_APP
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "041904B0"
+        BEGIN
+            VALUE "CompanyName",      S2C_AUTHOR
+            VALUE "LegalCopyright",   S2C_COPYRIGHT
+            VALUE "FileDescription",  "Show2Cam Setup"
+            VALUE "FileVersion",      S2C_VER_STR
+            VALUE "InternalName",     "Show2Cam-Setup"
+            VALUE "OriginalFilename", "Show2Cam-Setup.exe"
+            VALUE "ProductName",      "Show2Cam"
+            VALUE "ProductVersion",   S2C_VER_STR
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0419, 1200
+    END
+END

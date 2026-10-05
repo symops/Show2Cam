@@ -1,0 +1,136 @@
+aygıt yapılandırılmamış
+aygıt başlatılamadı (sürücü başlangıçta hata döndürdü)
+sürücünün yeniden yüklenmesi gerekiyor
+aygıt devre dışı
+aygıt mevcut değil
+sürücü yüklü değil
+Windows aygıtın sürücüsünü yükleyemedi
+sürücünün DriverEntry işlevinde hata
+sürücü yüklenmedi (bozuk veya uyumsuz)
+sürücü bir aygıt hatası bildirdi
+aygıt şu anda bağlı değil
+sürücü bir ilke tarafından engellendi
+Windows sürücü imzasını doğrulayamadı (test modunu açın)
+Aygıt Yöneticisi'ndeki koda bakın
+etkin
+devre dışı
+mevcut değil
+bağlı değil
+Çalışan sürücü sürümü %ls, pakette: %ls.
+DİKKAT: çalışan sürücü paketteki sürüm değil. “Yeniden yükle”ye tıklayın veya bilgisayarı yeniden başlatın.
+Çalışan sürücü sürümü %ls.
+Show2Cam sürücü hizmeti kayıtlı değil.
+Sürücü hizmeti: %ls.
+çalışıyor
+durduruldu
+başlatılıyor/durduruluyor
+Test imzalama modu: %ls; Secure Boot: %ls.
+açık
+kapalı
+ROOT\\Show2Cam aygıtı bulunamadı: sürücü yüklü değil.
+Aygıt başlatılmadı: kod %lu — %ls.
+Show2Cam aygıtı başlatıldı.
+Önceki sürüm kaldırılıyor…
+— Show2Cam yükleniyor —
+— Tanılama —
+— Show2Cam kaldırılıyor —
+— Test imzalama modu açılıyor —
+✔  Test imzalama modu açık
+✖  Test imzalama modu kapalı
+✔  Secure Boot kapalı
+✖  Secure Boot açık
+•  Show2Cam sürücüsü yüklü değil
+✔  Show2Cam sürücüsü yüklü
+✔  Show2Cam sürücüsü yüklü, sürüm %ls (kurulum programıyla aynı)
+✔  Show2Cam sürücüsü yüklü, sürüm %ls; kurulum programında %ls
+Yeniden yükle
+Yükle
+Sistem durumu
+Test modunu aç
+Kaldır
+Kurulumdan sonra Show2Cam'i başlat
+Masaüstü kısayolu
+Başlat menüsü kısayolları
+Tanılama
+Günlüğü aç
+Kapat
+Kurulum programının yanında sürücü dosyaları eksik (Show2Cam.inf/.sys/.cat/.cer, Show2Cam-Publisher.cer). Arşivin tamamını çıkarın.
+Önce Secure Boot'u kapatın: açıkken Windows test imzalı sürücüleri yüklemez.
+“Test modunu aç”a tıklayın, bilgisayarı yeniden başlatın ve kurulum programını tekrar çalıştırın.
+Show2Cam zaten yüklü. Yeniden yükleyebilir veya kaldırabilirsiniz.
+Kuruluma hazır. “Yükle”ye tıklayın.
+Kurulumu tamamlamak için bilgisayarı yeniden başlatın.
+Ayrıntılı günlük: %ls (“Günlüğü aç” düğmesi). Lütfen geliştiriciye gönderin.
+Test modu yeniden başlatmadan sonra etkinleşir.\n\nBilgisayar şimdi yeniden başlatılsın mı?
+İşlem başarısız oldu: ayrıntılar yukarıda.
+Show2Cam sürücüsü ve aygıtları kaldırılsın mı?
+sürücü paketinde imzalı katalog (.cat) yok
+Windows paketi sürücü deposuna ekleyemedi
+INF içinde uygun sürücü bulunamadı
+dosyanın dijital imzası yok
+imza sertifikası güvenilir değil (kök sertifika yüklü değil)
+sertifika bu amaçla kullanılamaz
+imza bozuk veya dosya imzalandıktan sonra değiştirilmiş
+sertifikanın süresi dolmuş veya henüz geçerli değil (saati kontrol edin)
+Hata: %ls (0x%08lX): %ls. Ayrıntılar: C:\\Windows\\INF\\setupapi.dev.log
+Hata: %ls (0x%08lX) %ls
+sertifika bulunamadı
+sertifika okunamadı
+Show2Cam test sertifikaları güvenilenlere eklendi (kök CA ve yayımcı).
+Hata: dosya bulunamadı: %ls
+aygıt sınıfı INF'den okunamadı
+aygıt oluşturulamadı
+%ls aygıtı oluşturuldu.
+Sürücü yükleniyor… Windows yayımcıyı sorarsa “Bu sürücü yazılımını yine de yükle”yi seçin.
+sürücü yüklenemedi
+Kurulum sürücü uyarı penceresinde iptal edildi.
+Sürücü yüklendi. Yeniden başlatma gerekiyor.
+Sürücü yüklendi.
+%ls sürücü paketi sürücü deposundan kaldırıldı.
+aygıt kaldırılamadı
+Kaldırılan aygıt sayısı: %d.
+Show2Cam yüklü değildi.
+bcdedit çalıştırılamadı
+Hata: bcdedit %lu koduyla sonlandı. Secure Boot açıksa önce kapatın.
+Test imzalama modu açık. Bilgisayarı yeniden başlatın ve kurulumu tekrar çalıştırın.
+Show2Cam — kurulum ve tanılama.lnk
+Hata: Program Files klasörü belirlenemedi.
+Programlar zaten %ls içinde.
+Hata: %ls kullanımda: Show2Cam'i kapatıp yeniden deneyin.
+%ls kopyalanırken hata (kod %lu).
+Programlar %ls konumuna yüklendi.
+Masaüstü kısayolu oluşturuldu.
+Masaüstü kısayolu oluşturulamadı.
+Show2Cam denetim masası
+Show2Cam'i yükle, yeniden yükle, kaldır ve tanıla
+Show2Cam günlük klasörü
+Başlat menüsü kısayolları oluşturuldu (Show2Cam klasörü).
+Başlat menüsü kısayollarının hepsi oluşturulamadı.
+Kısayollar kaldırıldı.
+%ls silinemedi (kod %lu): Show2Cam'i kapatın.
+Kısayollar ve programlar kaldırıldı; %ls klasörü kurulum programı kapanınca silinecek.
+Kısayollar ve programlar %ls konumundan kaldırıldı.
+Sürüm %ls
+Show2Cam Kurulumu %ls
+Güncelle
+Test modunu kapat
+— Test imzalama modu kapatılıyor —
+Test imzalama modu bilgisayar yeniden başlatıldıktan sonra kapalı olacak.
+Test modu yeniden başlatmadan sonra kapanır.\n\nBilgisayar şimdi yeniden başlatılsın mı?
+✔  Test imzalama modu açık (yeniden başlatmaya kadar)
+✖  Test imzalama modu kapalı (yeniden başlatmaya kadar)
+Hata: bcdedit %lu koduyla sonlandı.
+Show2Cam, ARM işlemcilerdeki Windows'u desteklemez.
+Bu sistem için kurulum programı bulunamadı: %ls\n\nArşivin tamamını çıkarın.
+Kurulum programı geçici bir klasöre çıkarılamadı.
+Show2Cam — sanal web kameraları
+Sanal web kameraları: metin, resim, video, akış
+Kamera ayarları yeni sürüm için korundu.
+Sürücü ayarları sıfırlandı (kurulumdan sonra: bir kamera, 1280×720, 30 fps).
+Denetim: aygıt ve kameraları bekleniyor…
+Kamera: "%ls".
+Sürücü başlarken %lu kamera oluşturdu (kod 0x%08lX).
+Sürücü çalışıyor, ancak Windows Show2Cam kamerası göstermiyor.
+Sürücü kuruldu, ancak Show2Cam kameraları çalışmıyor; nedeni yukarıda.
+Tamam: Show2Cam kameraları Windows'ta.
+Test modu olmadan Show2Cam sürücüsü yüklenmez: mod yeniden açılana kadar Show2Cam kameraları kaybolur.\n\nTest modu kapatılsın mı?

@@ -6,7 +6,7 @@ Signature="$WINDOWS NT$"
 Class=Camera
 ClassGuid={ca3e7ab9-b4c3-4ae6-8251-579ef933890f}
 Provider=%ProviderName%
-DriverVer=10/06/2026,1.0.279.27
+DriverVer=10/06/2026,1.0.279.63
 CatalogFile=Show2Cam.cat
 PnpLockdown=1
 

@@ -1,0 +1,136 @@
+het apparaat is niet geconfigureerd
+het apparaat kon niet starten (het stuurprogramma gaf een fout bij het starten)
+het stuurprogramma moet opnieuw worden geïnstalleerd
+het apparaat is uitgeschakeld
+het apparaat is niet aanwezig
+het stuurprogramma is niet geïnstalleerd
+Windows kon het stuurprogramma voor het apparaat niet laden
+fout in DriverEntry van het stuurprogramma
+het stuurprogramma is niet geladen (beschadigd of niet compatibel)
+het stuurprogramma meldde een apparaatfout
+het apparaat is momenteel niet aangesloten
+het stuurprogramma is geblokkeerd door beleid
+Windows kon de handtekening van het stuurprogramma niet controleren (schakel de testmodus in)
+zie de code in Apparaatbeheer
+actief
+uitgeschakeld
+niet aanwezig
+niet aangesloten
+Actief stuurprogramma: versie %ls, in het pakket: %ls.
+LET OP: het actieve stuurprogramma is niet de versie uit het pakket. Klik op ‘Opnieuw installeren’ of start de computer opnieuw op.
+Actief stuurprogramma: versie %ls.
+De stuurprogrammaservice van Show2Cam is niet geregistreerd.
+Stuurprogrammaservice: %ls.
+actief
+gestopt
+starten/stoppen
+Testondertekeningsmodus: %ls; Secure Boot: %ls.
+aan
+uit
+Apparaat ROOT\\Show2Cam niet gevonden: het stuurprogramma is niet geïnstalleerd.
+Het apparaat is niet gestart: code %lu — %ls.
+Het Show2Cam-apparaat is gestart.
+Vorige versie verwijderen…
+— Show2Cam installeren —
+— Diagnose —
+— Show2Cam verwijderen —
+— Testondertekeningsmodus inschakelen —
+✔  Testondertekeningsmodus staat aan
+✖  Testondertekeningsmodus staat uit
+✔  Secure Boot staat uit
+✖  Secure Boot staat aan
+•  Het Show2Cam-stuurprogramma is niet geïnstalleerd
+✔  Het Show2Cam-stuurprogramma is geïnstalleerd
+✔  Het Show2Cam-stuurprogramma is geïnstalleerd, versie %ls (gelijk aan het installatieprogramma)
+✔  Het Show2Cam-stuurprogramma is geïnstalleerd, versie %ls; het installatieprogramma bevat %ls
+Opnieuw installeren
+Installeren
+Systeemstatus
+Testmodus inschakelen
+Verwijderen
+Show2Cam starten na installatie
+Snelkoppeling op het bureaublad
+Snelkoppelingen in het menu Start
+Diagnose
+Logboek openen
+Sluiten
+Naast het installatieprogramma ontbreken stuurprogrammabestanden (Show2Cam.inf/.sys/.cat/.cer, Show2Cam-Publisher.cer). Pak het hele archief uit.
+Schakel eerst Secure Boot uit: daarmee laadt Windows geen test-ondertekende stuurprogramma's.
+Klik op ‘Testmodus inschakelen’, start de computer opnieuw op en voer het installatieprogramma opnieuw uit.
+Show2Cam is al geïnstalleerd. U kunt het opnieuw installeren of verwijderen.
+Klaar om te installeren. Klik op ‘Installeren’.
+Start de computer opnieuw op om de installatie te voltooien.
+Uitgebreid logboek: %ls (knop ‘Logboek openen’). Stuur het naar de ontwikkelaar.
+De testmodus wordt actief na een herstart.\n\nDe computer nu opnieuw opstarten?
+De bewerking is mislukt: zie de details hierboven.
+Het Show2Cam-stuurprogramma en de apparaten verwijderen?
+het stuurprogrammapakket heeft geen ondertekende catalogus (.cat)
+Windows kon het pakket niet toevoegen aan het stuurprogrammaarchief
+geen passend stuurprogramma gevonden in de INF
+het bestand heeft geen digitale handtekening
+het ondertekeningscertificaat wordt niet vertrouwd (basiscertificaat niet geïnstalleerd)
+het certificaat kan niet voor dit doel worden gebruikt
+de handtekening is beschadigd of het bestand is na ondertekening gewijzigd
+het certificaat is verlopen of nog niet geldig (controleer de klok)
+Fout: %ls (0x%08lX): %ls. Details: C:\\Windows\\INF\\setupapi.dev.log
+Fout: %ls (0x%08lX) %ls
+certificaat niet gevonden
+kan het certificaat niet lezen
+De Show2Cam-testcertificaten zijn toegevoegd aan de vertrouwde archieven (basis-CA en uitgever).
+Fout: bestand niet gevonden: %ls
+kan de apparaatklasse niet uit de INF lezen
+kan het apparaat niet maken
+Apparaat %ls gemaakt.
+Stuurprogramma installeren… Als Windows naar de uitgever vraagt, kies ‘Deze stuurprogrammasoftware toch installeren’.
+kan het stuurprogramma niet installeren
+Installatie geannuleerd in het waarschuwingsvenster van het stuurprogramma.
+Het stuurprogramma is geïnstalleerd. Opnieuw opstarten is vereist.
+Het stuurprogramma is geïnstalleerd.
+Stuurprogrammapakket %ls verwijderd uit het stuurprogrammaarchief.
+kan het apparaat niet verwijderen
+Apparaten verwijderd: %d.
+Show2Cam was niet geïnstalleerd.
+kan bcdedit niet starten
+Fout: bcdedit stopte met code %lu. Als Secure Boot aan staat, schakel het dan eerst uit.
+Testondertekeningsmodus staat aan. Start de computer opnieuw op en voer de installatie opnieuw uit.
+Show2Cam — installatie en diagnose.lnk
+Fout: kan de map Program Files niet bepalen.
+De programma's staan al in %ls.
+Fout: %ls is in gebruik: sluit Show2Cam en probeer het opnieuw.
+Fout bij kopiëren van %ls (code %lu).
+Programma's geïnstalleerd in %ls.
+Snelkoppeling op het bureaublad gemaakt.
+Kan de snelkoppeling op het bureaublad niet maken.
+Show2Cam-configuratiescherm
+Show2Cam installeren, opnieuw installeren, verwijderen en diagnosticeren
+Map met Show2Cam-logboeken
+Snelkoppelingen in het menu Start gemaakt (map Show2Cam).
+Niet alle snelkoppelingen in het menu Start konden worden gemaakt.
+Snelkoppelingen verwijderd.
+Kan %ls niet verwijderen (code %lu): sluit Show2Cam.
+Snelkoppelingen en programma's verwijderd; de map %ls wordt verwijderd na het sluiten van het installatieprogramma.
+Snelkoppelingen en programma's verwijderd uit %ls.
+Versie %ls
+Show2Cam-installatie %ls
+Bijwerken
+Testmodus uitschakelen
+— Testondertekeningsmodus uitschakelen —
+De testondertekeningsmodus staat uit nadat de computer opnieuw is opgestart.
+De testmodus wordt uitgeschakeld na een herstart.\n\nDe computer nu opnieuw opstarten?
+✔  Testondertekeningsmodus staat aan (tot herstart)
+✖  Testondertekeningsmodus staat uit (tot herstart)
+Fout: bcdedit is beëindigd met code %lu.
+Show2Cam ondersteunt Windows op ARM-processors niet.
+Installatieprogramma voor dit systeem niet gevonden: %ls\n\nPak het hele archief uit.
+Kan het installatieprogramma niet uitpakken naar een tijdelijke map.
+Show2Cam — virtuele webcams
+Virtuele webcams: tekst, afbeeldingen, video, stream
+Camera-instellingen behouden voor de nieuwe versie.
+Stuurprogramma-instellingen gereset (na installatie: één camera, 1280×720, 30 fps).
+Controle: wachten op het apparaat en de camera's…
+Camera: "%ls".
+Bij het starten maakte het stuurprogramma %lu camera('s) (code 0x%08lX).
+Het stuurprogramma werkt, maar Windows toont geen Show2Cam-camera's.
+Het stuurprogramma is geïnstalleerd, maar de Show2Cam-camera's werken niet; de oorzaak staat hierboven.
+Klaar: de Show2Cam-camera's staan in Windows.
+Zonder testmodus wordt het Show2Cam-stuurprogramma niet geladen: de Show2Cam-camera's verdwijnen totdat de modus weer wordt ingeschakeld.\n\nTestmodus uitschakelen?

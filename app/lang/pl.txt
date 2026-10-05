@@ -1,0 +1,136 @@
+urządzenie nie jest skonfigurowane
+nie udało się uruchomić urządzenia (sterownik zwrócił błąd przy starcie)
+sterownik trzeba zainstalować ponownie
+urządzenie jest wyłączone
+urządzenie jest nieobecne
+sterownik nie jest zainstalowany
+Windows nie mógł załadować sterownika urządzenia
+błąd w DriverEntry sterownika
+sterownik się nie załadował (uszkodzony lub niezgodny)
+sterownik zgłosił błąd urządzenia
+urządzenie nie jest teraz podłączone
+sterownik jest zablokowany przez zasady
+Windows nie mógł sprawdzić podpisu sterownika (włącz tryb testowy)
+zobacz kod w Menedżerze urządzeń
+aktywne
+wyłączone
+nieobecne
+odłączone
+Uruchomiony sterownik w wersji %ls, w pakiecie: %ls.
+UWAGA: działa inna wersja sterownika niż w pakiecie. Kliknij „Zainstaluj ponownie” lub uruchom ponownie komputer.
+Uruchomiony sterownik w wersji %ls.
+Usługa sterownika Show2Cam nie jest zarejestrowana.
+Usługa sterownika: %ls.
+działa
+zatrzymana
+uruchamia się/zatrzymuje
+Tryb podpisu testowego: %ls; Secure Boot: %ls.
+włączony
+wyłączony
+Nie znaleziono urządzenia ROOT\\Show2Cam: sterownik nie jest zainstalowany.
+Urządzenie nie jest uruchomione: kod %lu — %ls.
+Urządzenie Show2Cam jest uruchomione.
+Usuwanie poprzedniej wersji…
+— Instalacja Show2Cam —
+— Diagnostyka —
+— Usuwanie Show2Cam —
+— Włączanie trybu podpisu testowego —
+✔  Tryb podpisu testowego jest włączony
+✖  Tryb podpisu testowego jest wyłączony
+✔  Secure Boot jest wyłączony
+✖  Secure Boot jest włączony
+•  Sterownik Show2Cam nie jest zainstalowany
+✔  Sterownik Show2Cam jest zainstalowany
+✔  Sterownik Show2Cam jest zainstalowany, wersja %ls (jak w instalatorze)
+✔  Sterownik Show2Cam jest zainstalowany, wersja %ls; w instalatorze %ls
+Zainstaluj ponownie
+Zainstaluj
+Stan systemu
+Włącz tryb testowy
+Usuń
+Uruchom Show2Cam po instalacji
+Skrót na pulpicie
+Skróty w menu Start
+Diagnostyka
+Otwórz dziennik
+Zamknij
+Obok instalatora brakuje plików sterownika (Show2Cam.inf/.sys/.cat/.cer, Show2Cam-Publisher.cer). Rozpakuj całe archiwum.
+Najpierw wyłącz Secure Boot: przy nim Windows nie ładuje sterowników z podpisem testowym.
+Kliknij „Włącz tryb testowy”, uruchom ponownie komputer i jeszcze raz uruchom instalator.
+Show2Cam jest już zainstalowany. Możesz zainstalować go ponownie lub usunąć.
+Wszystko gotowe do instalacji. Kliknij „Zainstaluj”.
+Uruchom ponownie komputer, aby zakończyć instalację.
+Szczegółowy dziennik: %ls (przycisk „Otwórz dziennik”). Wyślij go twórcy programu.
+Tryb testowy włączy się po ponownym uruchomieniu.\n\nUruchomić ponownie komputer teraz?
+Operacja nie powiodła się: szczegóły powyżej.
+Usunąć sterownik Show2Cam i jego urządzenia?
+pakiet sterownika nie ma podpisanego katalogu (.cat)
+Windows nie mógł dodać pakietu do magazynu sterowników
+nie znaleziono pasującego sterownika w pliku INF
+plik nie ma podpisu cyfrowego
+certyfikat podpisu nie jest zaufany (certyfikat główny nie jest zainstalowany)
+certyfikatu nie można użyć do tego celu
+podpis jest uszkodzony lub plik zmieniono po podpisaniu
+certyfikat wygasł lub jeszcze nie jest ważny (sprawdź zegar)
+Błąd: %ls (0x%08lX): %ls. Szczegóły: C:\\Windows\\INF\\setupapi.dev.log
+Błąd: %ls (0x%08lX) %ls
+nie znaleziono certyfikatu
+nie udało się odczytać certyfikatu
+Certyfikaty testowe Show2Cam dodano do zaufanych (główny urząd certyfikacji i wydawca).
+Błąd: nie znaleziono pliku %ls
+nie udało się odczytać klasy urządzenia z pliku INF
+nie udało się utworzyć urządzenia
+Utworzono urządzenie %ls.
+Instalowanie sterownika… Jeśli Windows zapyta o wydawcę, wybierz „Zainstaluj mimo to oprogramowanie tego sterownika”.
+nie udało się zainstalować sterownika
+Instalację anulowano w oknie ostrzeżenia o sterowniku.
+Sterownik jest zainstalowany. Wymagane jest ponowne uruchomienie.
+Sterownik jest zainstalowany.
+Pakiet sterownika %ls usunięto z magazynu sterowników.
+nie udało się usunąć urządzenia
+Usunięto urządzeń: %d.
+Show2Cam nie był zainstalowany.
+nie udało się uruchomić bcdedit
+Błąd: bcdedit zakończył się kodem %lu. Jeśli Secure Boot jest włączony, najpierw go wyłącz.
+Tryb podpisu testowego jest włączony. Uruchom ponownie komputer i jeszcze raz uruchom instalację.
+Show2Cam — instalacja i diagnostyka.lnk
+Błąd: nie można ustalić folderu Program Files.
+Programy są już w %ls.
+Błąd: %ls jest zajęty: zamknij Show2Cam i spróbuj ponownie.
+Błąd kopiowania %ls (kod %lu).
+Programy zainstalowano w %ls.
+Utworzono skrót na pulpicie.
+Nie udało się utworzyć skrótu na pulpicie.
+Panel sterowania Show2Cam
+Instalacja, ponowna instalacja, usuwanie i diagnostyka Show2Cam
+Folder z dziennikami Show2Cam
+Utworzono skróty w menu Start (folder Show2Cam).
+Nie wszystkie skróty w menu Start udało się utworzyć.
+Skróty usunięte.
+Nie udało się usunąć %ls (kod %lu): zamknij Show2Cam.
+Skróty i programy usunięte; folder %ls zostanie usunięty po zamknięciu instalatora.
+Skróty i programy usunięte z %ls.
+Wersja %ls
+Instalacja Show2Cam %ls
+Aktualizuj
+Wyłącz tryb testowy
+— Wyłączanie trybu podpisu testowego —
+Tryb podpisu testowego zostanie wyłączony po ponownym uruchomieniu komputera.
+Tryb testowy wyłączy się po ponownym uruchomieniu.\n\nUruchomić ponownie komputer teraz?
+✔  Tryb podpisu testowego jest włączony (do ponownego uruchomienia)
+✖  Tryb podpisu testowego jest wyłączony (do ponownego uruchomienia)
+Błąd: bcdedit zakończył się kodem %lu.
+Show2Cam nie obsługuje systemu Windows na procesorach ARM.
+Nie znaleziono instalatora dla tego systemu: %ls\n\nRozpakuj całe archiwum.
+Nie udało się rozpakować instalatora do folderu tymczasowego.
+Show2Cam — wirtualne kamery internetowe
+Wirtualne kamery: tekst, obrazy, wideo, strumień
+Ustawienia kamer zachowane dla nowej wersji.
+Ustawienia sterownika zresetowane (po instalacji: jedna kamera, 1280×720, 30 kl./s).
+Sprawdzanie: oczekiwanie na urządzenie i kamery…
+Kamera: „%ls”.
+Przy starcie sterownik utworzył kamer: %lu (kod 0x%08lX).
+Sterownik działa, ale Windows nie pokazuje kamer Show2Cam.
+Sterownik jest zainstalowany, ale kamery Show2Cam nie działają — przyczyna powyżej.
+Gotowe: kamery Show2Cam są dostępne w systemie Windows.
+Bez trybu testowego sterownik Show2Cam nie będzie ładowany: kamery Show2Cam znikną do czasu ponownego włączenia trybu.\n\nWyłączyć tryb testowy?

@@ -1,0 +1,136 @@
+das Gerät ist nicht konfiguriert
+das Gerät konnte nicht gestartet werden (der Treiber meldete beim Start einen Fehler)
+der Treiber muss neu installiert werden
+das Gerät ist deaktiviert
+das Gerät ist nicht vorhanden
+der Treiber ist nicht installiert
+Windows konnte den Treiber für das Gerät nicht laden
+Fehler in DriverEntry des Treibers
+der Treiber wurde nicht geladen (beschädigt oder inkompatibel)
+der Treiber meldete einen Gerätefehler
+das Gerät ist derzeit nicht verbunden
+der Treiber ist durch eine Richtlinie blockiert
+Windows konnte die Treibersignatur nicht prüfen (Testmodus aktivieren)
+siehe Code im Geräte-Manager
+aktiv
+deaktiviert
+nicht vorhanden
+nicht angeschlossen
+Laufender Treiber: Version %ls, im Paket: %ls.
+ACHTUNG: Es läuft nicht die Treiberversion aus dem Paket. Klicken Sie auf „Neu installieren“ oder starten Sie den Computer neu.
+Laufender Treiber: Version %ls.
+Der Show2Cam-Treiberdienst ist nicht registriert.
+Treiberdienst: %ls.
+läuft
+beendet
+startet/stoppt
+Testsignaturmodus: %ls; Secure Boot: %ls.
+ein
+aus
+Gerät ROOT\\Show2Cam nicht gefunden: der Treiber ist nicht installiert.
+Das Gerät ist nicht gestartet: Code %lu — %ls.
+Das Show2Cam-Gerät ist gestartet.
+Vorherige Version wird entfernt…
+— Show2Cam wird installiert —
+— Diagnose —
+— Show2Cam wird entfernt —
+— Testsignaturmodus wird aktiviert —
+✔  Testsignaturmodus ist aktiv
+✖  Testsignaturmodus ist aus
+✔  Secure Boot ist aus
+✖  Secure Boot ist aktiv
+•  Der Show2Cam-Treiber ist nicht installiert
+✔  Der Show2Cam-Treiber ist installiert
+✔  Der Show2Cam-Treiber ist installiert, Version %ls (wie im Installationsprogramm)
+✔  Der Show2Cam-Treiber ist installiert, Version %ls; im Installationsprogramm %ls
+Neu installieren
+Installieren
+Systemstatus
+Testmodus aktivieren
+Entfernen
+Show2Cam nach der Installation starten
+Verknüpfung auf dem Desktop
+Verknüpfungen im Startmenü
+Diagnose
+Protokoll öffnen
+Schließen
+Neben dem Installationsprogramm fehlen Treiberdateien (Show2Cam.inf/.sys/.cat/.cer, Show2Cam-Publisher.cer). Entpacken Sie das ganze Archiv.
+Schalten Sie zuerst Secure Boot aus: damit lädt Windows keine testsignierten Treiber.
+Klicken Sie auf „Testmodus aktivieren“, starten Sie den Computer neu und führen Sie das Installationsprogramm erneut aus.
+Show2Cam ist bereits installiert. Sie können es neu installieren oder entfernen.
+Bereit zur Installation. Klicken Sie auf „Installieren“.
+Starten Sie den Computer neu, um die Installation abzuschließen.
+Ausführliches Protokoll: %ls (Schaltfläche „Protokoll öffnen“). Bitte an den Entwickler senden.
+Der Testmodus wird nach einem Neustart aktiv.\n\nComputer jetzt neu starten?
+Der Vorgang ist fehlgeschlagen: Details siehe oben.
+Den Show2Cam-Treiber und seine Geräte entfernen?
+das Treiberpaket hat keinen signierten Katalog (.cat)
+Windows konnte das Paket nicht zum Treiberspeicher hinzufügen
+kein passender Treiber in der INF gefunden
+die Datei hat keine digitale Signatur
+das Signaturzertifikat ist nicht vertrauenswürdig (Stammzertifikat nicht installiert)
+das Zertifikat kann für diesen Zweck nicht verwendet werden
+die Signatur ist beschädigt oder die Datei wurde nach dem Signieren geändert
+das Zertifikat ist abgelaufen oder noch nicht gültig (Uhr prüfen)
+Fehler: %ls (0x%08lX): %ls. Details: C:\\Windows\\INF\\setupapi.dev.log
+Fehler: %ls (0x%08lX) %ls
+Zertifikat nicht gefunden
+Zertifikat kann nicht gelesen werden
+Die Show2Cam-Testzertifikate wurden als vertrauenswürdig hinzugefügt (Stammzertifizierungsstelle und Herausgeber).
+Fehler: Datei nicht gefunden: %ls
+die Geräteklasse kann nicht aus der INF gelesen werden
+das Gerät kann nicht erstellt werden
+Gerät %ls erstellt.
+Treiber wird installiert… Wenn Windows nach dem Herausgeber fragt, wählen Sie „Diese Treibersoftware trotzdem installieren“.
+der Treiber kann nicht installiert werden
+Die Installation wurde im Treiber-Warnfenster abgebrochen.
+Der Treiber ist installiert. Ein Neustart ist erforderlich.
+Der Treiber ist installiert.
+Treiberpaket %ls aus dem Treiberspeicher entfernt.
+das Gerät kann nicht entfernt werden
+Entfernte Geräte: %d.
+Show2Cam war nicht installiert.
+bcdedit kann nicht gestartet werden
+Fehler: bcdedit endete mit Code %lu. Wenn Secure Boot aktiv ist, schalten Sie es zuerst aus.
+Testsignaturmodus ist aktiv. Starten Sie den Computer neu und führen Sie die Installation erneut aus.
+Show2Cam — Installation und Diagnose.lnk
+Fehler: der Ordner Program Files kann nicht ermittelt werden.
+Die Programme sind bereits in %ls.
+Fehler: %ls ist belegt: schließen Sie Show2Cam und versuchen Sie es erneut.
+Fehler beim Kopieren von %ls (Code %lu).
+Programme installiert in %ls.
+Desktop-Verknüpfung erstellt.
+Die Desktop-Verknüpfung kann nicht erstellt werden.
+Show2Cam-Systemsteuerung
+Show2Cam installieren, neu installieren, entfernen und diagnostizieren
+Ordner mit den Show2Cam-Protokollen
+Startmenü-Verknüpfungen erstellt (Ordner Show2Cam).
+Nicht alle Startmenü-Verknüpfungen konnten erstellt werden.
+Verknüpfungen entfernt.
+%ls kann nicht gelöscht werden (Code %lu): schließen Sie Show2Cam.
+Verknüpfungen und Programme entfernt; der Ordner %ls wird nach dem Schließen des Installationsprogramms gelöscht.
+Verknüpfungen und Programme aus %ls entfernt.
+Version %ls
+Show2Cam-Installation %ls
+Aktualisieren
+Testmodus deaktivieren
+— Testsignaturmodus wird deaktiviert —
+Der Testsignaturmodus ist nach dem Neustart des Computers aus.
+Der Testmodus wird nach einem Neustart ausgeschaltet.\n\nComputer jetzt neu starten?
+✔  Testsignaturmodus ist aktiv (bis zum Neustart)
+✖  Testsignaturmodus ist aus (bis zum Neustart)
+Fehler: bcdedit wurde mit Code %lu beendet.
+Show2Cam unterstützt Windows auf ARM-Prozessoren nicht.
+Das Installationsprogramm für dieses System wurde nicht gefunden: %ls\n\nEntpacken Sie das ganze Archiv.
+Das Installationsprogramm konnte nicht in einen temporären Ordner entpackt werden.
+Show2Cam — virtuelle Webcams
+Virtuelle Webcams: Text, Bilder, Video, Stream
+Kameraeinstellungen für die neue Version übernommen.
+Treibereinstellungen zurückgesetzt (nach der Installation: eine Kamera, 1280×720, 30 fps).
+Prüfung: Warten auf das Gerät und seine Kameras…
+Kamera: „%ls“.
+Der Treiber hat beim Start %lu Kamera(s) erstellt (Code 0x%08lX).
+Der Treiber läuft, aber Windows zeigt keine Show2Cam-Kamera an.
+Der Treiber ist installiert, aber die Show2Cam-Kameras funktionieren nicht – Grund siehe oben.
+Fertig: Die Show2Cam-Kameras sind in Windows verfügbar.
+Ohne Testmodus wird der Show2Cam-Treiber nicht geladen: die Show2Cam-Kameras verschwinden, bis der Modus wieder aktiviert wird.\n\nTestmodus deaktivieren?
