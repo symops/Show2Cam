@@ -3,6 +3,7 @@
 #include "setupcore.h"
 #include "lang.h"
 #include "applog.h"
+#include "autostart.h"
 #include <shlobj.h>
 #include <shobjidl.h>
 #include <objbase.h>
@@ -208,6 +209,7 @@ bool SetupRemoveFiles(bool* deleteLater, SetupLog log, void* ctx)
     wchar_t path[MAX_PATH], dir[MAX_PATH], self[MAX_PATH];
 
     // Shortcuts and the start with Windows (of the user running the removal).
+    S2cSetAutostart(false, L"", false);
     if (KnownFolder(kFolderPublicDesktop, path, kLinkPanel)) DeleteFileW(path);
     wchar_t menu[MAX_PATH];
     if (KnownFolder(kFolderCommonPrograms, menu, L"Show2Cam"))

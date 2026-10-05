@@ -134,3 +134,109 @@ Il driver funziona, ma Windows non mostra le videocamere Show2Cam.
 Il driver è installato, ma le videocamere Show2Cam non funzionano: il motivo è sopra.
 Fatto: le videocamere Show2Cam sono disponibili in Windows.
 Senza la modalità test il driver Show2Cam non si carica: le videocamere Show2Cam scompaiono finché la modalità non viene riattivata.\n\nDisattivare la modalità test?
+Show2Cam non può funzionare: Secure Boot è attivo e il driver Show2Cam con firma di test non si carica.\n\nDisattiva Secure Boot nelle impostazioni UEFI (VMware: VM → Settings → Options → Advanced), poi avvia Show2Cam-Setup.exe.
+Show2Cam non può funzionare: la modalità firma di test di Windows è disattiva e senza di essa il driver Show2Cam non si carica.\n\nAvvia Show2Cam-Setup.exe, fai clic su «Attiva modalità test» e riavvia il computer.
+Show2Cam non può funzionare: il driver Show2Cam non è installato.\n\nAvvia Show2Cam-Setup.exe e fai clic su «Installa».
+Il registro eventi è stato cancellato.
+Immagini
+Video
+Flusso MJPEG
+Testo
+%lu×%lu, %lu fps
+in pausa
+nessuna connessione
+● in uso
+○ non in uso
+Speak2Mic: %ls (predefinito)
+Speak2Mic Speaker (non trovato: Speak2Mic è installato?)
+Muto
+Dispositivo scelto (non collegato ora)
+Testo:
+Indirizzo:
+Cartella:
+Riproduci
+Pausa
+Chiudi verifica
+Prova
+Nessuna telecamera Show2Cam trovata: il driver non è installato o si sta riavviando.
+Nessuna connessione con la telecamera (il driver si sta riavviando?).
+Telecamera
+in uso da un programma
+non in uso
+diventerà %ls quando la telecamera sarà chiusa
+Nessun segnale: %ls
+Nessun file adatto nella cartella.
+Errore: %ls
+Sorgente: %lu×%lu
+audio: %ls
+senza audio
+Telecamera %d: %ls
+Telecamera «%ls»: flusso MJPEG %ls.
+Telecamera «%ls»: sorgente — %ls.
+Telecamera «%ls»: in pausa.
+Telecamera «%ls»: riproduzione.
+Telecamera «%ls» rinominata in «%ls».
+Impossibile rinominare la telecamera (codice %lu).
+Telecamera «%ls»: cartella %ls.
+Verifica — %ls
+In attesa di un fotogramma…
+Riavvio del dispositivo Show2Cam…
+Numero di telecamere: %d.
+Servono i diritti di amministratore: la richiesta è stata rifiutata.
+Numero di telecamere salvato. Windows non ha potuto riavviare il dispositivo al volo (un programma sta usando una telecamera?): riavvia il computer.
+Impossibile cambiare il numero di telecamere (codice %d).
+Reimpostare le impostazioni di tutte le telecamere Show2Cam?\n\nSorgente — il testo «Camera N», risoluzione — come la sorgente, nomi — predefiniti.
+Tutte le impostazioni sono state ripristinate.
+Telecamera «%ls»: nessun segnale da %ls — riconnessione…
+Telecamera «%ls»: il segnale è tornato.
+Telecamera «%ls»: nessun file adatto nella cartella (%ls).
+Telecamera «%ls»: video «%ls».
+Telecamera «%ls»: impossibile riprodurre il video (%ls).
+Telecamera «%ls»: formato %ls.
+Telecamera «%ls»: il formato %ls verrà impostato quando tutti i programmi chiuderanno la telecamera.
+Telecamera «%ls»: Speak2Mic Speaker non trovato — video senza audio.
+Telecamera «%ls»: il dispositivo audio scelto non è stato trovato — video senza audio.
+Ripristina tutto
+Lingua:
+Telecamere
+Sorgente
+Formato
+Stato
+Numero di telecamere:
+Applica
+Nome:
+Rinomina
+Sorgente:
+Immagini da una cartella (cambio ogni 5 s)
+Video da una cartella
+Flusso MJPEG in rete
+Sfoglia…
+Apri
+Audio del video:
+Risoluzione:
+Come la sorgente
+Fotogrammi al secondo:
+Cancella il registro eventi
+Avvia il pannello di controllo con Windows (nell'area di notifica)
+Una finestra con ciò che la telecamera mostra adesso
+Show2Cam — pannello di controllo
+Apri il pannello di controllo
+Esci
+Pannello di controllo di Show2Cam avviato, versione %ls
+Avvio automatico del pannello attivato.
+Avvio automatico del pannello disattivato.
+Aprire ora il programma di installazione di Show2Cam?
+Impossibile aprire «%ls» (formato non supportato da Windows?).
+Impossibile aprire l’immagine
+Nessuna immagine nella cartella
+Nessun video nella cartella
+Impossibile riprodurre il video
+riconnessione…
+Nessun segnale
+impossibile decodificare un fotogramma
+indirizzo non valido
+errore di connessione %lu
+il server non risponde (%lu)
+il flusso non sembra MJPEG
+connessione interrotta (%lu)
+il server ha chiuso la connessione

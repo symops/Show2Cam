@@ -5,7 +5,9 @@
 //   Camera<N>Width    even, 160..3840 (default 1280)
 //   Camera<N>Height   even, 120..2160 (default 720)
 //   Camera<N>Fps      1..60 (default 30)
-// Changing them takes a device restart (disable + enable), like "Apply" in the Show2Cam program.
+//   Camera<N>Name     REG_SZ, the camera's name (default "Show2Cam Camera N")
+// The camera count takes a device restart (disable + enable); size, rate and name are also changed at run time
+// by the Show2Cam program through the camera's property set (S2C_PROPERTY_FORMAT / S2C_PROPERTY_NAME).
 #include "common.h"
 #include "log.h"
 #include "version.h"
@@ -74,6 +76,7 @@ static NTSTATUS S2C_CB DeviceStart(_In_ PKSDEVICE Device, _In_ PIRP Irp, _In_opt
                                        0, nullptr, nullptr, &c->Factory);
         if (NT_SUCCESS(status)) status = KsFilterFactorySetDeviceClassesState(c->Factory, TRUE);
         S2cLog("Camera %lu: %lux%lu %lu fps -> 0x%08lX", i + 1, w, h, fps, (ULONG)status);
+        if (NT_SUCCESS(status)) S2cCameraApplySavedName(c);    // the INF put the default name back on an install
         if (NT_SUCCESS(status)) created++;
     }
     KsReleaseDevice(Device);

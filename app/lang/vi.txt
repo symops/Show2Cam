@@ -134,3 +134,109 @@ Trình điều khiển đang chạy nhưng Windows không hiển thị camera Sh
 Đã cài trình điều khiển nhưng camera Show2Cam không hoạt động — nguyên nhân ở trên.
 Xong: camera Show2Cam đã có trong Windows.
 Không có chế độ thử nghiệm, trình điều khiển Show2Cam sẽ không tải: các camera Show2Cam sẽ biến mất cho đến khi bật lại chế độ này.\n\nTắt chế độ thử nghiệm?
+Show2Cam không thể hoạt động: Secure Boot đang bật, và trình điều khiển Show2Cam ký thử nghiệm không tải được khi đó.\n\nHãy tắt Secure Boot trong cài đặt UEFI (VMware: VM → Settings → Options → Advanced), sau đó chạy Show2Cam-Setup.exe.
+Show2Cam không thể hoạt động: chế độ ký thử nghiệm của Windows đang tắt, thiếu nó trình điều khiển Show2Cam không tải.\n\nHãy chạy Show2Cam-Setup.exe, bấm "Bật chế độ thử nghiệm" rồi khởi động lại máy tính.
+Show2Cam không thể hoạt động: trình điều khiển Show2Cam chưa được cài đặt.\n\nHãy chạy Show2Cam-Setup.exe và bấm "Cài đặt".
+Đã xóa nhật ký sự kiện.
+Hình ảnh
+Video
+Luồng MJPEG
+Văn bản
+%lu×%lu, %lu khung/giây
+tạm dừng
+mất kết nối
+● đang dùng
+○ không dùng
+Speak2Mic: %ls (mặc định)
+Speak2Mic Speaker (không tìm thấy: Speak2Mic đã được cài chưa?)
+Tắt tiếng
+Thiết bị đã chọn (hiện không kết nối)
+Văn bản:
+Địa chỉ:
+Thư mục:
+Phát
+Tạm dừng
+Đóng kiểm tra
+Kiểm tra
+Không tìm thấy camera Show2Cam: trình điều khiển chưa được cài hoặc đang khởi động lại.
+Không kết nối được với camera (trình điều khiển đang khởi động lại?).
+Camera
+đang được chương trình dùng
+không dùng
+sẽ thành %ls khi camera được đóng
+Không có tín hiệu: %ls
+Thư mục không có tệp phù hợp.
+Lỗi: %ls
+Nguồn: %lu×%lu
+âm thanh: %ls
+không có âm thanh
+Camera %d: %ls
+Camera “%ls”: luồng MJPEG %ls.
+Camera “%ls”: nguồn — %ls.
+Camera “%ls”: tạm dừng.
+Camera “%ls”: đang phát.
+Đã đổi tên camera “%ls” thành “%ls”.
+Không thể đổi tên camera (mã %lu).
+Camera “%ls”: thư mục %ls.
+Kiểm tra — %ls
+Đang chờ khung hình…
+Đang khởi động lại thiết bị Show2Cam…
+Số camera: %d.
+Cần quyền quản trị viên: yêu cầu đã bị từ chối.
+Đã lưu số camera. Windows không thể khởi động lại thiết bị khi đang chạy (có chương trình đang giữ camera?) — hãy khởi động lại máy tính.
+Không thể thay đổi số camera (mã %d).
+Đặt lại cài đặt của tất cả camera Show2Cam?\n\nNguồn — văn bản “Camera N”, độ phân giải — như nguồn, tên — mặc định.
+Đã đặt lại mọi cài đặt về mặc định.
+Camera “%ls”: không có tín hiệu từ %ls — đang kết nối lại…
+Camera “%ls”: đã có tín hiệu.
+Camera “%ls”: thư mục không có tệp phù hợp (%ls).
+Camera “%ls”: video “%ls”.
+Camera “%ls”: không thể phát video (%ls).
+Camera “%ls”: định dạng %ls.
+Camera “%ls”: định dạng %ls sẽ được đặt khi mọi chương trình đóng camera.
+Camera “%ls”: không tìm thấy Speak2Mic Speaker — video không có âm thanh.
+Camera “%ls”: không tìm thấy thiết bị âm thanh đã chọn — video không có âm thanh.
+Đặt lại tất cả
+Ngôn ngữ:
+Camera
+Nguồn
+Định dạng
+Trạng thái
+Số camera:
+Áp dụng
+Tên:
+Đổi tên
+Nguồn:
+Hình ảnh từ thư mục (đổi mỗi 5 giây)
+Video từ thư mục
+Luồng MJPEG qua mạng
+Duyệt…
+Mở
+Âm thanh video:
+Độ phân giải:
+Như nguồn
+Khung hình/giây:
+Xóa nhật ký sự kiện
+Khởi động bảng điều khiển cùng Windows (trong khay hệ thống)
+Cửa sổ hiển thị những gì camera đang phát
+Show2Cam — bảng điều khiển
+Mở bảng điều khiển
+Thoát
+Đã khởi động bảng điều khiển Show2Cam, phiên bản %ls
+Đã bật tự khởi động bảng điều khiển.
+Đã tắt tự khởi động bảng điều khiển.
+Mở trình cài đặt Show2Cam ngay bây giờ?
+Không thể mở “%ls” (Windows không hỗ trợ định dạng?).
+Không thể mở hình ảnh
+Thư mục không có hình ảnh
+Thư mục không có video
+Không thể phát video
+đang kết nối lại…
+Không có tín hiệu
+không giải mã được khung hình
+địa chỉ không hợp lệ
+lỗi kết nối %lu
+máy chủ không phản hồi (%lu)
+luồng không giống MJPEG
+mất kết nối (%lu)
+máy chủ đã đóng kết nối

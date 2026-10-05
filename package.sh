@@ -29,7 +29,7 @@ for ARCH in x64 x86; do
     if [ $ARCH = x64 ]; then DRVOUT=driver/mingw/out; APP=app; MODEL=NTamd64; OSATTR=_v100_X64
     else DRVOUT=driver/mingw/out-x86; APP=app/x86; MODEL=NTx86; OSATTR=_v100; fi
     cp $DRVOUT/Show2Cam.sys $DRVOUT/Show2Cam.cer $DRVOUT/Show2Cam-Publisher.cer $A/
-    cp $APP/Show2Cam-Setup.exe $APP/s2cinstall.exe $A/
+    cp $APP/Show2Cam.exe $APP/Show2Cam-Setup.exe $APP/s2cinstall.exe $A/
     cp scripts/uninstall.cmd $A/
 
     # INF of this architecture: gen.py writes NTamd64 and NTarm64 models; keep NTamd64 (x64) or turn it into NTx86.

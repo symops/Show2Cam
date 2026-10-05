@@ -25,36 +25,7 @@
 #define S2C_CB
 #endif
 
-// ---------------------------------------------------------------------------
-// The interface to the Show2Cam program: property set on every camera filter (open its device interface).
-//   S2C_PROPERTY_FRAME  (SET)  S2C_FRAME_HEADER + Width*Height BGRA pixels, top-down: the picture to show
-//                               (any size, scaled to the negotiated one); Width = 0: back to the test pattern
-//   S2C_PROPERTY_STATUS (GET)  S2C_STATUS
-// {6F1C2A9E-3B57-4E0C-9D1A-5C2E7B3F8A41}
-#define STATIC_PROPSETID_Show2Cam 0x6f1c2a9e, 0x3b57, 0x4e0c, 0x9d, 0x1a, 0x5c, 0x2e, 0x7b, 0x3f, 0x8a, 0x41
-enum { S2C_PROPERTY_FRAME = 0, S2C_PROPERTY_STATUS = 1 };
-#define S2C_FRAME_MAGIC 0x4D415246      // 'FRAM'
-#define S2C_MAX_FRAME_PIXELS (3840u * 2160u)
-
-struct S2C_FRAME_HEADER
-{
-    ULONG Magic;
-    ULONG Width;
-    ULONG Height;
-    ULONG Flags;                        // reserved, 0
-};
-
-struct S2C_STATUS
-{
-    ULONG Index;                        // 0-based camera number
-    ULONG Width, Height, Fps;           // what the camera offers
-    ULONG Streaming;                    // pins in the run state
-    ULONG SourceWidth, SourceHeight;    // last picture from the program (0: test pattern)
-    ULONG Reserved;
-    ULONGLONG FramesDelivered;
-    ULONGLONG FramesDropped;
-    ULONGLONG PicturesReceived;
-};
+#include "s2cproto.h"
 
 // ---------------------------------------------------------------------------
 
@@ -79,6 +50,7 @@ struct S2C_CAMERA
     ULONG                   PictureWidth, PictureHeight;
 
     volatile LONG           Streaming;
+    volatile LONG           PinsOpen;
     volatile LONGLONG       FramesDelivered, FramesDropped, PicturesReceived;
 };
 #define S2C_CAMERA_SIGNATURE 0x324D4143
@@ -93,6 +65,8 @@ struct S2C_DEVICE
 // camera.cpp
 NTSTATUS S2cCameraCreate(_In_ ULONG Index, _In_ ULONG Width, _In_ ULONG Height, _In_ ULONG Fps, _Out_ S2C_CAMERA** Camera);
 void     S2cCameraFree(_In_ S2C_CAMERA* Camera);
+// Puts the camera's saved name (Camera<N>Name) on its device interfaces; once its filter factory exists.
+void     S2cCameraApplySavedName(_In_ S2C_CAMERA* Camera);
 S2C_CAMERA* S2cCameraFromFilter(_In_ PKSFILTER Filter);
 S2C_CAMERA* S2cCameraFromPin(_In_ PKSPIN Pin);
 // Bytes of one frame of the negotiated format (YUY2, NV12 or RGB32).

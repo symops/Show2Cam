@@ -134,3 +134,109 @@ Het stuurprogramma werkt, maar Windows toont geen Show2Cam-camera's.
 Het stuurprogramma is geïnstalleerd, maar de Show2Cam-camera's werken niet; de oorzaak staat hierboven.
 Klaar: de Show2Cam-camera's staan in Windows.
 Zonder testmodus wordt het Show2Cam-stuurprogramma niet geladen: de Show2Cam-camera's verdwijnen totdat de modus weer wordt ingeschakeld.\n\nTestmodus uitschakelen?
+Show2Cam kan niet werken: Secure Boot staat aan en het testondertekende Show2Cam-stuurprogramma laadt daarmee niet.\n\nSchakel Secure Boot uit in de UEFI-instellingen (VMware: VM → Settings → Options → Advanced) en start daarna Show2Cam-Setup.exe.
+Show2Cam kan niet werken: de Windows-testondertekeningsmodus staat uit en zonder deze modus laadt het Show2Cam-stuurprogramma niet.\n\nStart Show2Cam-Setup.exe, klik op "Testmodus inschakelen" en start de computer opnieuw op.
+Show2Cam kan niet werken: het Show2Cam-stuurprogramma is niet geïnstalleerd.\n\nStart Show2Cam-Setup.exe en klik op "Installeren".
+Het gebeurtenislogboek is gewist.
+Afbeeldingen
+Video
+MJPEG-stream
+Tekst
+%lu×%lu, %lu fps
+gepauzeerd
+geen verbinding
+● in gebruik
+○ niet in gebruik
+Speak2Mic: %ls (standaard)
+Speak2Mic Speaker (niet gevonden: is Speak2Mic geïnstalleerd?)
+Dempen
+Gekozen apparaat (nu niet aangesloten)
+Tekst:
+Adres:
+Map:
+Afspelen
+Pauze
+Controle sluiten
+Testen
+Geen Show2Cam-camera’s gevonden: het stuurprogramma is niet geïnstalleerd of start opnieuw.
+Geen verbinding met de camera (start het stuurprogramma opnieuw?).
+Camera
+in gebruik door een programma
+niet in gebruik
+wordt %ls zodra de camera gesloten is
+Geen signaal: %ls
+Geen geschikte bestanden in de map.
+Fout: %ls
+Bron: %lu×%lu
+geluid: %ls
+zonder geluid
+Camera %d: %ls
+Camera ‘%ls’: MJPEG-stream %ls.
+Camera ‘%ls’: bron — %ls.
+Camera ‘%ls’: gepauzeerd.
+Camera ‘%ls’: afspelen.
+Camera ‘%ls’ hernoemd naar ‘%ls’.
+Kan de camera niet hernoemen (code %lu).
+Camera ‘%ls’: map %ls.
+Controle — %ls
+Wachten op een beeld…
+Show2Cam-apparaat wordt opnieuw gestart…
+Aantal camera’s: %d.
+Beheerdersrechten vereist: de aanvraag is geweigerd.
+Aantal camera’s opgeslagen. Windows kon het apparaat niet tijdens gebruik herstarten (houdt een programma een camera vast?) — start de computer opnieuw op.
+Kan het aantal camera’s niet wijzigen (code %d).
+De instellingen van alle Show2Cam-camera’s herstellen?\n\nBron — de tekst ‘Camera N’, resolutie — zoals de bron, namen — standaard.
+Alle instellingen zijn hersteld naar de standaardwaarden.
+Camera ‘%ls’: geen signaal van %ls — opnieuw verbinden…
+Camera ‘%ls’: signaal is terug.
+Camera ‘%ls’: geen geschikte bestanden in de map (%ls).
+Camera ‘%ls’: video ‘%ls’.
+Camera ‘%ls’: kan de video niet afspelen (%ls).
+Camera ‘%ls’: formaat %ls.
+Camera ‘%ls’: formaat %ls wordt ingesteld zodra alle programma’s de camera sluiten.
+Camera ‘%ls’: Speak2Mic Speaker niet gevonden — video zonder geluid.
+Camera ‘%ls’: het gekozen geluidsapparaat is niet gevonden — video zonder geluid.
+Alles herstellen
+Taal:
+Camera’s
+Bron
+Formaat
+Status
+Aantal camera’s:
+Toepassen
+Naam:
+Naam wijzigen
+Bron:
+Afbeeldingen uit een map (wisselen elke 5 s)
+Video’s uit een map
+MJPEG-stream via het netwerk
+Bladeren…
+Openen
+Videogeluid:
+Resolutie:
+Zoals de bron
+Beelden per seconde:
+Gebeurtenislogboek wissen
+Configuratiescherm met Windows starten (in het systeemvak)
+Een venster met wat de camera nu toont
+Show2Cam — configuratiescherm
+Configuratiescherm openen
+Afsluiten
+Show2Cam-configuratiescherm gestart, versie %ls
+Automatisch starten van het configuratiescherm aan.
+Automatisch starten van het configuratiescherm uit.
+Het Show2Cam-installatieprogramma nu openen?
+Kan ‘%ls’ niet openen (formaat niet ondersteund door Windows?).
+Kan de afbeelding niet openen
+Geen afbeeldingen in de map
+Geen video’s in de map
+Kan de video niet afspelen
+opnieuw verbinden…
+Geen signaal
+kan een beeld niet decoderen
+ongeldig adres
+verbindingsfout %lu
+de server reageert niet (%lu)
+de stream lijkt geen MJPEG
+de verbinding is verbroken (%lu)
+de server heeft de verbinding gesloten

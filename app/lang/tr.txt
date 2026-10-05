@@ -134,3 +134,109 @@ Sürücü çalışıyor, ancak Windows Show2Cam kamerası göstermiyor.
 Sürücü kuruldu, ancak Show2Cam kameraları çalışmıyor; nedeni yukarıda.
 Tamam: Show2Cam kameraları Windows'ta.
 Test modu olmadan Show2Cam sürücüsü yüklenmez: mod yeniden açılana kadar Show2Cam kameraları kaybolur.\n\nTest modu kapatılsın mı?
+Show2Cam çalışamıyor: Secure Boot açık ve test imzalı Show2Cam sürücüsü bununla yüklenmiyor.\n\nUEFI ayarlarında Secure Boot'u kapatın (VMware: VM → Settings → Options → Advanced), ardından Show2Cam-Setup.exe dosyasını çalıştırın.
+Show2Cam çalışamıyor: Windows test imzalama modu kapalı ve o olmadan Show2Cam sürücüsü yüklenmiyor.\n\nShow2Cam-Setup.exe dosyasını çalıştırın, "Test modunu aç" düğmesine tıklayın ve bilgisayarı yeniden başlatın.
+Show2Cam çalışamıyor: Show2Cam sürücüsü yüklü değil.\n\nShow2Cam-Setup.exe dosyasını çalıştırın ve "Yükle" düğmesine tıklayın.
+Olay günlüğü temizlendi.
+Görüntüler
+Video
+MJPEG akışı
+Metin
+%lu×%lu, %lu fps
+duraklatıldı
+bağlantı yok
+● kullanımda
+○ kullanılmıyor
+Speak2Mic: %ls (varsayılan)
+Speak2Mic Speaker (bulunamadı: Speak2Mic yüklü mü?)
+Sessiz
+Seçilen aygıt (şu an bağlı değil)
+Metin:
+Adres:
+Klasör:
+Çal
+Duraklat
+Denetimi kapat
+Test et
+Show2Cam kamerası bulunamadı: sürücü yüklü değil veya yeniden başlatılıyor.
+Kamerayla bağlantı yok (sürücü yeniden mi başlatılıyor?).
+Kamera
+bir program kullanıyor
+kullanılmıyor
+kamera kapatıldığında %ls olacak
+Sinyal yok: %ls
+Klasörde uygun dosya yok.
+Hata: %ls
+Kaynak: %lu×%lu
+ses: %ls
+sessiz
+Kamera %d: %ls
+“%ls” kamerası: MJPEG akışı %ls.
+“%ls” kamerası: kaynak — %ls.
+“%ls” kamerası: duraklatıldı.
+“%ls” kamerası: oynatılıyor.
+“%ls” kamerasının adı “%ls” olarak değiştirildi.
+Kameranın adı değiştirilemedi (kod %lu).
+“%ls” kamerası: klasör %ls.
+Denetim — %ls
+Kare bekleniyor…
+Show2Cam aygıtı yeniden başlatılıyor…
+Kamera sayısı: %d.
+Yönetici hakları gerekli: istek reddedildi.
+Kamera sayısı kaydedildi. Windows aygıtı çalışırken yeniden başlatamadı (bir program kamerayı mı tutuyor?) — bilgisayarı yeniden başlatın.
+Kamera sayısı değiştirilemedi (kod %d).
+Tüm Show2Cam kameralarının ayarları sıfırlansın mı?\n\nKaynak — “Camera N” metni, çözünürlük — kaynak gibi, adlar — varsayılan.
+Tüm ayarlar varsayılana sıfırlandı.
+“%ls” kamerası: %ls kaynağından sinyal yok — yeniden bağlanılıyor…
+“%ls” kamerası: sinyal geri geldi.
+“%ls” kamerası: klasörde uygun dosya yok (%ls).
+“%ls” kamerası: video “%ls”.
+“%ls” kamerası: video oynatılamadı (%ls).
+“%ls” kamerası: biçim %ls.
+“%ls” kamerası: %ls biçimi, tüm programlar kamerayı kapattığında ayarlanacak.
+“%ls” kamerası: Speak2Mic Speaker bulunamadı — video sessiz.
+“%ls” kamerası: seçilen ses aygıtı bulunamadı — video sessiz.
+Tümünü sıfırla
+Dil:
+Kameralar
+Kaynak
+Biçim
+Durum
+Kamera sayısı:
+Uygula
+Ad:
+Yeniden adlandır
+Kaynak:
+Klasördeki görüntüler (her 5 sn'de değişir)
+Klasördeki videolar
+Ağ üzerinden MJPEG akışı
+Gözat…
+Aç
+Video sesi:
+Çözünürlük:
+Kaynak gibi
+Saniyedeki kare:
+Olay günlüğünü temizle
+Denetim masasını Windows ile başlat (sistem tepsisinde)
+Kameranın şu an gösterdiğini içeren bir pencere
+Show2Cam — denetim masası
+Denetim masasını aç
+Çıkış
+Show2Cam denetim masası başlatıldı, sürüm %ls
+Denetim masasının otomatik başlatılması açık.
+Denetim masasının otomatik başlatılması kapalı.
+Show2Cam kurulum programı şimdi açılsın mı?
+“%ls” açılamadı (biçim Windows tarafından desteklenmiyor mu?).
+Görüntü açılamadı
+Klasörde görüntü yok
+Klasörde video yok
+Video oynatılamadı
+yeniden bağlanılıyor…
+Sinyal yok
+kare çözülemedi
+geçersiz adres
+bağlantı hatası %lu
+sunucu yanıt vermiyor (%lu)
+akış MJPEG'e benzemiyor
+bağlantı koptu (%lu)
+sunucu bağlantıyı kapattı

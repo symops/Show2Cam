@@ -134,3 +134,109 @@ O driver está em execução, mas o Windows não mostra câmeras do Show2Cam.
 O driver está instalado, mas as câmeras do Show2Cam não funcionam: o motivo está acima.
 Pronto: as câmeras do Show2Cam estão no Windows.
 Sem o modo de teste o driver Show2Cam não será carregado: as câmeras do Show2Cam desaparecem até que o modo seja ativado novamente.\n\nDesativar o modo de teste?
+O Show2Cam não pode funcionar: o Secure Boot está ativado e o driver Show2Cam com assinatura de teste não é carregado com ele.\n\nDesative o Secure Boot nas configurações UEFI (VMware: VM → Settings → Options → Advanced) e depois execute Show2Cam-Setup.exe.
+O Show2Cam não pode funcionar: o modo de assinatura de teste do Windows está desativado e sem ele o driver Show2Cam não é carregado.\n\nExecute Show2Cam-Setup.exe, clique em "Ativar modo de teste" e reinicie o computador.
+O Show2Cam não pode funcionar: o driver Show2Cam não está instalado.\n\nExecute Show2Cam-Setup.exe e clique em "Instalar".
+O log de eventos foi limpo.
+Imagens
+Vídeo
+Fluxo MJPEG
+Texto
+%lu×%lu, %lu qps
+pausado
+sem conexão
+● em uso
+○ fora de uso
+Speak2Mic: %ls (padrão)
+Speak2Mic Speaker (não encontrado: o Speak2Mic está instalado?)
+Mudo
+Dispositivo escolhido (desconectado agora)
+Texto:
+Endereço:
+Pasta:
+Tocar
+Pausar
+Fechar verificação
+Testar
+Nenhuma câmera Show2Cam encontrada: o driver não está instalado ou está reiniciando.
+Sem conexão com a câmera (o driver está reiniciando?).
+Câmera
+em uso por um programa
+fora de uso
+passará a %ls quando a câmera for fechada
+Sem sinal: %ls
+Nenhum arquivo adequado na pasta.
+Erro: %ls
+Origem: %lu×%lu
+som: %ls
+sem som
+Câmera %d: %ls
+Câmera “%ls”: fluxo MJPEG %ls.
+Câmera “%ls”: origem — %ls.
+Câmera “%ls”: pausada.
+Câmera “%ls”: reproduzindo.
+Câmera “%ls” renomeada para “%ls”.
+Não foi possível renomear a câmera (código %lu).
+Câmera “%ls”: pasta %ls.
+Verificação — %ls
+Aguardando um quadro…
+Reiniciando o dispositivo Show2Cam…
+Número de câmeras: %d.
+São necessários direitos de administrador: a solicitação foi recusada.
+Número de câmeras salvo. O Windows não conseguiu reiniciar o dispositivo em funcionamento (algum programa está usando uma câmera?) — reinicie o computador.
+Não foi possível alterar o número de câmeras (código %d).
+Redefinir as configurações de todas as câmeras Show2Cam?\n\nOrigem — o texto “Camera N”, resolução — como a origem, nomes — padrão.
+Todas as configurações foram redefinidas para o padrão.
+Câmera “%ls”: sem sinal de %ls — reconectando…
+Câmera “%ls”: o sinal voltou.
+Câmera “%ls”: nenhum arquivo adequado na pasta (%ls).
+Câmera “%ls”: vídeo “%ls”.
+Câmera “%ls”: não foi possível reproduzir o vídeo (%ls).
+Câmera “%ls”: formato %ls.
+Câmera “%ls”: o formato %ls será aplicado quando todos os programas fecharem a câmera.
+Câmera “%ls”: Speak2Mic Speaker não encontrado — vídeo sem som.
+Câmera “%ls”: o dispositivo de som escolhido não foi encontrado — vídeo sem som.
+Redefinir tudo
+Idioma:
+Câmeras
+Origem
+Formato
+Estado
+Número de câmeras:
+Aplicar
+Nome:
+Renomear
+Origem:
+Imagens de uma pasta (troca a cada 5 s)
+Vídeos de uma pasta
+Fluxo MJPEG pela rede
+Procurar…
+Abrir
+Som do vídeo:
+Resolução:
+Como a origem
+Quadros por segundo:
+Limpar o log de eventos
+Iniciar o painel de controle com o Windows (na bandeja)
+Uma janela com o que a câmera mostra agora
+Show2Cam — painel de controle
+Abrir o painel de controle
+Sair
+Painel de controle do Show2Cam iniciado, versão %ls
+Inicialização automática do painel ativada.
+Inicialização automática do painel desativada.
+Abrir o instalador do Show2Cam agora?
+Não foi possível abrir “%ls” (formato não suportado pelo Windows?).
+Não foi possível abrir a imagem
+Nenhuma imagem na pasta
+Nenhum vídeo na pasta
+Não foi possível reproduzir o vídeo
+reconectando…
+Sem sinal
+não foi possível decodificar um quadro
+endereço inválido
+erro de conexão %lu
+o servidor não responde (%lu)
+o fluxo não parece MJPEG
+a conexão caiu (%lu)
+o servidor fechou a conexão

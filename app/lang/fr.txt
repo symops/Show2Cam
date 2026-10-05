@@ -134,3 +134,109 @@ Le pilote fonctionne, mais Windows n'affiche aucune caméra Show2Cam.
 Le pilote est installé, mais les caméras Show2Cam ne fonctionnent pas : la raison est ci-dessus.
 Terminé : les caméras Show2Cam sont disponibles dans Windows.
 Sans le mode test, le pilote Show2Cam ne se chargera pas : les caméras Show2Cam disparaîtront jusqu'à ce que le mode soit réactivé.\n\nDésactiver le mode test ?
+Show2Cam ne peut pas fonctionner : Secure Boot est activé, et le pilote Show2Cam signé en mode test ne se charge pas avec lui.\n\nDésactivez Secure Boot dans les paramètres UEFI (VMware : VM → Settings → Options → Advanced), puis lancez Show2Cam-Setup.exe.
+Show2Cam ne peut pas fonctionner : le mode de signature de test de Windows est désactivé, et le pilote Show2Cam ne se charge pas sans lui.\n\nLancez Show2Cam-Setup.exe, cliquez sur « Activer le mode test » et redémarrez l'ordinateur.
+Show2Cam ne peut pas fonctionner : le pilote Show2Cam n'est pas installé.\n\nLancez Show2Cam-Setup.exe et cliquez sur « Installer ».
+Le journal des événements a été effacé.
+Images
+Vidéo
+Flux MJPEG
+Texte
+%lu×%lu, %lu im/s
+en pause
+pas de connexion
+● utilisée
+○ non utilisée
+Speak2Mic : %ls (par défaut)
+Speak2Mic Speaker (introuvable : Speak2Mic est-il installé ?)
+Muet
+Périphérique choisi (non connecté actuellement)
+Texte :
+Adresse :
+Dossier :
+Lire
+Pause
+Fermer la vérification
+Tester
+Aucune caméra Show2Cam trouvée : le pilote n’est pas installé ou redémarre.
+Pas de connexion avec la caméra (le pilote redémarre-t-il ?).
+Caméra
+utilisée par un programme
+non utilisée
+deviendra %ls quand la caméra sera fermée
+Pas de signal : %ls
+Aucun fichier adapté dans le dossier.
+Erreur : %ls
+Source : %lu×%lu
+son : %ls
+sans son
+Caméra %d : %ls
+Caméra « %ls » : flux MJPEG %ls.
+Caméra « %ls » : source — %ls.
+Caméra « %ls » : pause.
+Caméra « %ls » : lecture.
+Caméra « %ls » renommée en « %ls ».
+Impossible de renommer la caméra (code %lu).
+Caméra « %ls » : dossier %ls.
+Vérification — %ls
+En attente d’une image…
+Redémarrage du périphérique Show2Cam…
+Nombre de caméras : %d.
+Droits d'administrateur requis : la demande a été refusée.
+Nombre de caméras enregistré. Windows n’a pas pu redémarrer le périphérique à chaud (un programme utilise-t-il une caméra ?) — redémarrez l’ordinateur.
+Impossible de changer le nombre de caméras (code %d).
+Réinitialiser les réglages de toutes les caméras Show2Cam ?\n\nSource — le texte « Camera N », résolution — comme la source, noms — par défaut.
+Tous les réglages ont été réinitialisés.
+Caméra « %ls » : pas de signal de %ls — reconnexion…
+Caméra « %ls » : le signal est revenu.
+Caméra « %ls » : aucun fichier adapté dans le dossier (%ls).
+Caméra « %ls » : vidéo « %ls ».
+Caméra « %ls » : impossible de lire la vidéo (%ls).
+Caméra « %ls » : format %ls.
+Caméra « %ls » : le format %ls sera appliqué quand tous les programmes auront fermé la caméra.
+Caméra « %ls » : Speak2Mic Speaker introuvable — vidéo sans son.
+Caméra « %ls » : le périphérique audio choisi est introuvable — vidéo sans son.
+Réinitialiser tout
+Langue :
+Caméras
+Source
+Format
+État
+Nombre de caméras :
+Appliquer
+Nom :
+Renommer
+Source :
+Images d’un dossier (changement toutes les 5 s)
+Vidéos d’un dossier
+Flux MJPEG par le réseau
+Parcourir…
+Ouvrir
+Son de la vidéo :
+Résolution :
+Comme la source
+Images par seconde :
+Effacer le journal des événements
+Démarrer le panneau de configuration avec Windows (dans la zone de notification)
+Une fenêtre avec ce que la caméra montre en ce moment
+Show2Cam — panneau de configuration
+Ouvrir le panneau de configuration
+Quitter
+Panneau de configuration Show2Cam démarré, version %ls
+Démarrage automatique du panneau activé.
+Démarrage automatique du panneau désactivé.
+Ouvrir le programme d'installation de Show2Cam maintenant ?
+Impossible d’ouvrir « %ls » (format non pris en charge par Windows ?).
+Impossible d’ouvrir l’image
+Aucune image dans le dossier
+Aucune vidéo dans le dossier
+Impossible de lire la vidéo
+reconnexion…
+Pas de signal
+impossible de décoder une image
+adresse non valide
+erreur de connexion %lu
+le serveur ne répond pas (%lu)
+le flux ne ressemble pas à du MJPEG
+la connexion a été interrompue (%lu)
+le serveur a fermé la connexion

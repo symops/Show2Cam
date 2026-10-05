@@ -9,11 +9,50 @@ static KSPIN_LOCK g_logLock;
 static char       g_log[S2C_LOG_SIZE];
 static ULONG      g_logLen;
 static BOOLEAN    g_logDirty;
+static KEVENT     g_fileLock;          // serialises the file writes (a KEVENT keeps us at PASSIVE_LEVEL)
+
+// The log file: Parameters\LogFile (NT path, written by the installer), else the default below.
+#ifndef RTL_QUERY_REGISTRY_TYPECHECK
+#define RTL_QUERY_REGISTRY_TYPECHECK       0x00000100
+#define RTL_QUERY_REGISTRY_TYPECHECK_SHIFT 24
+#endif
+#define S2C_LOG_FILE_DEFAULT L"\\??\\C:\\ProgramData\\Show2Cam\\logs\\driver.log"
+
+static void WriteLogFile(const char* text, ULONG len)
+{
+    WCHAR pathBuf[260];
+    UNICODE_STRING path = { 0, sizeof(pathBuf) - sizeof(WCHAR), pathBuf };
+    RTL_QUERY_REGISTRY_TABLE q[2];
+    RtlZeroMemory(q, sizeof(q));
+    q[0].Flags = RTL_QUERY_REGISTRY_DIRECT | RTL_QUERY_REGISTRY_REQUIRED | RTL_QUERY_REGISTRY_TYPECHECK;
+    q[0].DefaultType = REG_SZ << RTL_QUERY_REGISTRY_TYPECHECK_SHIFT;
+    q[0].Name = (PWSTR)L"LogFile";
+    q[0].EntryContext = &path;
+    if (!NT_SUCCESS(RtlQueryRegistryValues(RTL_REGISTRY_SERVICES, S2C_PARAMS_KEY, q, nullptr, nullptr)) || path.Length == 0)
+    {
+        RtlInitUnicodeString(&path, S2C_LOG_FILE_DEFAULT);
+    }
+
+    OBJECT_ATTRIBUTES oa;
+    InitializeObjectAttributes(&oa, &path, OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, nullptr, nullptr);
+    IO_STATUS_BLOCK io;
+    HANDLE file;
+    // The whole ring is rewritten each time: the file always holds the current log (the folder is
+    // created by the installer; until it exists, or early in boot, the write simply fails).
+    if (NT_SUCCESS(ZwCreateFile(&file, GENERIC_WRITE | SYNCHRONIZE, &oa, &io, nullptr, FILE_ATTRIBUTE_NORMAL,
+                                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, FILE_OVERWRITE_IF,
+                                FILE_SYNCHRONOUS_IO_NONALERT | FILE_NON_DIRECTORY_FILE, nullptr, 0)))
+    {
+        ZwWriteFile(file, nullptr, nullptr, nullptr, &io, (PVOID)text, len, nullptr, nullptr);
+        ZwClose(file);
+    }
+}
 
 
 void S2cLogInit()
 {
     KeInitializeSpinLock(&g_logLock);
+    KeInitializeEvent(&g_fileLock, SynchronizationEvent, TRUE);
     g_logLen = 0;
     g_log[0] = 0;
 }
@@ -74,8 +113,11 @@ void S2cLogFlush()
     // Snapshot the log as UTF-16 (the text is ASCII) with CRLF line ends.
     SIZE_T cap = (SIZE_T)(S2C_LOG_SIZE * 2 + 2) * sizeof(WCHAR);
     WCHAR* w = (WCHAR*)ExAllocatePool2(POOL_FLAG_NON_PAGED, cap, S2C_POOLTAG);
-    if (!w)
+    char* a = (char*)ExAllocatePool2(POOL_FLAG_NON_PAGED, S2C_LOG_SIZE * 2 + 2, S2C_POOLTAG);
+    if (!w || !a)
     {
+        if (w) ExFreePoolWithTag(w, S2C_POOLTAG);
+        if (a) ExFreePoolWithTag(a, S2C_POOLTAG);
         return;
     }
     ULONG wl = 0;
@@ -83,7 +125,8 @@ void S2cLogFlush()
     KeAcquireSpinLock(&g_logLock, &irql);
     for (ULONG i = 0; i < g_logLen; i++)
     {
-        if (g_log[i] == '\n') w[wl++] = L'\r';
+        if (g_log[i] == '\n') { a[wl] = '\r'; w[wl++] = L'\r'; }
+        a[wl] = g_log[i];
         w[wl++] = (WCHAR)(unsigned char)g_log[i];
     }
     w[wl] = 0;
@@ -92,6 +135,11 @@ void S2cLogFlush()
 
     RtlWriteRegistryValue(RTL_REGISTRY_SERVICES, S2C_PARAMS_KEY, L"DriverLog", REG_SZ, w, (wl + 1) * sizeof(WCHAR));
     ExFreePoolWithTag(w, S2C_POOLTAG);
+
+    KeWaitForSingleObject(&g_fileLock, Executive, KernelMode, FALSE, nullptr);
+    WriteLogFile(a, wl);
+    KeSetEvent(&g_fileLock, IO_NO_INCREMENT, FALSE);
+    ExFreePoolWithTag(a, S2C_POOLTAG);
 }
 
 void S2cLogSetValue(_In_z_ PCWSTR Name, _In_ ULONG Value)

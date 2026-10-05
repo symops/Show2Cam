@@ -71,6 +71,7 @@ static NTSTATUS S2C_CB PinCreate(_In_ PKSPIN Pin, _In_ PIRP Irp)
     // Video capture clients expect KS_FRAME_INFO after every stream header.
     Pin->StreamHeaderSize = sizeof(KSSTREAM_HEADER) + sizeof(KS_FRAME_INFO);
     Pin->Context = p;
+    InterlockedIncrement(&camera->PinsOpen);
     S2cLog("Camera %lu: pin opened", camera->Index + 1);
     S2cLogFlush();
     return STATUS_SUCCESS;
@@ -84,6 +85,7 @@ static NTSTATUS S2C_CB PinClose(_In_ PKSPIN Pin, _In_ PIRP Irp)
     {
         if (p->Timer) ExDeleteTimer(p->Timer, TRUE, TRUE, nullptr);     // cancel and wait for a running callback
         if (p->Running) InterlockedDecrement(&p->Camera->Streaming);
+        InterlockedDecrement(&p->Camera->PinsOpen);
         S2cLog("Camera %lu: pin closed", p->Camera->Index + 1);
         ExFreePoolWithTag(p, S2C_POOLTAG);
         Pin->Context = nullptr;
@@ -282,6 +284,7 @@ static NTSTATUS S2C_CB GetStatus(_In_ PIRP Irp, _In_ PKSIDENTIFIER Request, _Ino
     s->Streaming = (ULONG)c->Streaming;
     s->SourceWidth = c->PictureWidth;
     s->SourceHeight = c->PictureHeight;
+    s->PinsOpen = (ULONG)c->PinsOpen;
     s->FramesDelivered = (ULONGLONG)c->FramesDelivered;
     s->FramesDropped = (ULONGLONG)c->FramesDropped;
     s->PicturesReceived = (ULONGLONG)c->PicturesReceived;
@@ -289,10 +292,71 @@ static NTSTATUS S2C_CB GetStatus(_In_ PIRP Irp, _In_ PKSIDENTIFIER Request, _Ino
     return STATUS_SUCCESS;
 }
 
+static void SetRanges(S2C_CAMERA* c, ULONG Width, ULONG Height, ULONG Fps);
+static void ApplyName(S2C_CAMERA* c, PCWSTR Name);
+
+static void SaveDword(S2C_CAMERA* c, PCWSTR What, ULONG Value)
+{
+    WCHAR name[32];
+    RtlStringCchPrintfW(name, 32, L"Camera%lu%ls", c->Index + 1, What);
+    RtlWriteRegistryValue(RTL_REGISTRY_SERVICES, L"Show2Cam\\Parameters", name, REG_DWORD, &Value, sizeof(Value));
+}
+
+static NTSTATUS S2C_CB SetFormat(_In_ PIRP Irp, _In_ PKSIDENTIFIER Request, _Inout_ PVOID Data)
+{
+    UNREFERENCED_PARAMETER(Request);
+    S2C_CAMERA* c = CameraFromIrp(Irp);
+    if (!c || PropertyDataSize(Irp) < sizeof(S2C_FORMAT)) return STATUS_INVALID_PARAMETER;
+    const S2C_FORMAT* f = (const S2C_FORMAT*)Data;
+    if (f->Width < S2C_MIN_WIDTH || f->Width > S2C_MAX_WIDTH || f->Height < S2C_MIN_HEIGHT || f->Height > S2C_MAX_HEIGHT ||
+        (f->Width & 1) || (f->Height & 1) || f->Fps < 1 || f->Fps > S2C_MAX_FPS)
+        return STATUS_INVALID_PARAMETER;
+    if (f->Width == c->Width && f->Height == c->Height && f->Fps == c->Fps) return STATUS_SUCCESS;
+    // The formats are read by every program that opens the camera: they change only while nobody has it open.
+    if (c->PinsOpen > 0)
+    {
+        S2cLog("Camera %lu: format %lux%lu %lu fps refused, the camera is in use", c->Index + 1, f->Width, f->Height, f->Fps);
+        S2cLogFlush();
+        return STATUS_DEVICE_BUSY;
+    }
+    SetRanges(c, f->Width, f->Height, f->Fps);
+    NTSTATUS cache = KsFilterFactoryUpdateCacheData(c->Factory, nullptr);
+    SaveDword(c, L"Width", f->Width);
+    SaveDword(c, L"Height", f->Height);
+    SaveDword(c, L"Fps", f->Fps);
+    S2cLog("Camera %lu: format set to %lux%lu %lu fps (cache 0x%08lX)", c->Index + 1, f->Width, f->Height, f->Fps, (ULONG)cache);
+    S2cLogFlush();
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS S2C_CB SetName(_In_ PIRP Irp, _In_ PKSIDENTIFIER Request, _Inout_ PVOID Data)
+{
+    UNREFERENCED_PARAMETER(Request);
+    S2C_CAMERA* c = CameraFromIrp(Irp);
+    if (!c || PropertyDataSize(Irp) < sizeof(S2C_NAME)) return STATUS_INVALID_PARAMETER;
+    WCHAR name[S2C_NAME_CHARS];
+    RtlCopyMemory(name, ((const S2C_NAME*)Data)->Name, sizeof(name));
+    name[S2C_NAME_CHARS - 1] = 0;
+    WCHAR value[32];
+    RtlStringCchPrintfW(value, 32, L"Camera%luName", c->Index + 1);
+    if (name[0])
+        RtlWriteRegistryValue(RTL_REGISTRY_SERVICES, L"Show2Cam\\Parameters", value, REG_SZ, name,
+                              (ULONG)((wcslen(name) + 1) * sizeof(WCHAR)));
+    else
+        RtlDeleteRegistryValue(RTL_REGISTRY_SERVICES, L"Show2Cam\\Parameters", value);
+    ApplyName(c, name);
+    S2cLogFlush();
+    return STATUS_SUCCESS;
+}
+
 static const KSPROPERTY_ITEM kProperties[] = {
     { S2C_PROPERTY_FRAME, { nullptr }, sizeof(KSPROPERTY), sizeof(S2C_FRAME_HEADER), { (PFNKSHANDLER)SetFrame },
       nullptr, 0, nullptr, nullptr, 0 },
     { S2C_PROPERTY_STATUS, { (PFNKSHANDLER)GetStatus }, sizeof(KSPROPERTY), sizeof(S2C_STATUS), { nullptr },
+      nullptr, 0, nullptr, nullptr, 0 },
+    { S2C_PROPERTY_FORMAT, { nullptr }, sizeof(KSPROPERTY), sizeof(S2C_FORMAT), { (PFNKSHANDLER)SetFormat },
+      nullptr, 0, nullptr, nullptr, 0 },
+    { S2C_PROPERTY_NAME, { nullptr }, sizeof(KSPROPERTY), sizeof(S2C_NAME), { (PFNKSHANDLER)SetName },
       nullptr, 0, nullptr, nullptr, 0 },
 };
 static const KSPROPERTY_SET kPropertySets[] = {
@@ -362,27 +426,19 @@ static void InitRange(KS_DATARANGE_VIDEO* r, const GUID& sub, ULONG fourcc, USHO
     v->bmiHeader.biSizeImage = size;
 }
 
-NTSTATUS S2cCameraCreate(_In_ ULONG Index, _In_ ULONG Width, _In_ ULONG Height, _In_ ULONG Fps, _Out_ S2C_CAMERA** Camera)
+// The formats (YUY2, NV12, RGB32 at one size and rate) and the buffer framing for them.
+static void SetRanges(S2C_CAMERA* c, ULONG Width, ULONG Height, ULONG Fps)
 {
-    *Camera = nullptr;
-    S2C_CAMERA* c = (S2C_CAMERA*)ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(S2C_CAMERA), S2C_POOLTAG);
-    if (!c) return STATUS_INSUFFICIENT_RESOURCES;
-    c->Signature = S2C_CAMERA_SIGNATURE;
-    c->Index = Index;
     c->Width = Width;
     c->Height = Height;
     c->Fps = Fps;
-    RtlStringCchPrintfW(c->RefString, 16, L"Camera%lu", Index + 1);
-    ExInitializeFastMutex(&c->Lock);
-
     InitRange(&c->Ranges[0], kSubYUY2, FOURCC('Y', 'U', 'Y', '2'), 16, Width, Height, Fps);
     InitRange(&c->Ranges[1], kSubNV12, FOURCC('N', 'V', '1', '2'), 12, Width, Height, Fps);
     InitRange(&c->Ranges[2], kSubRGB32, 0, 32, Width, Height, Fps);
-    for (ULONG i = 0; i < S2C_FORMATS; i++) c->RangePointers[i] = &c->Ranges[i].DataRange;
 
     // One frame buffer per sample, system memory, up to the largest format (RGB32).
     KSALLOCATOR_FRAMING_EX* f = &c->Framing;
-    ULONG maxSize = Width * Height * 4;
+    RtlZeroMemory(f, sizeof(*f));
     f->CountItems = 1;
     f->OutputCompression.RatioNumerator = 1;
     f->OutputCompression.RatioDenominator = 1;
@@ -393,10 +449,71 @@ NTSTATUS S2cCameraCreate(_In_ ULONG Index, _In_ ULONG Width, _In_ ULONG Height, 
     f->FramingItem[0].PhysicalRange.MaxFrameSize = (ULONG)-1;
     f->FramingItem[0].PhysicalRange.Stepping = 1;
     f->FramingItem[0].FramingRange.Range.MinFrameSize = Width * Height * 3 / 2;
-    f->FramingItem[0].FramingRange.Range.MaxFrameSize = maxSize;
+    f->FramingItem[0].FramingRange.Range.MaxFrameSize = Width * Height * 4;
     f->FramingItem[0].FramingRange.Range.Stepping = 1;
-    f->FramingItem[0].FramingRange.InPlaceWeight = 0;
-    f->FramingItem[0].FramingRange.NotInPlaceWeight = 0;
+}
+
+// The name on the camera's device interfaces (one per category: video, capture, camera): the "FriendlyName" value
+// of each interface's registry key (what the INF set, read by programs listing cameras) and the matching property.
+static const DEVPROPKEY kInterfaceFriendlyName = { { 0x026e516e, 0xb814, 0x414b, { 0x83, 0xcd, 0x85, 0x6d, 0x6f, 0xef, 0x48, 0x22 } }, 2 };
+
+static void ApplyName(S2C_CAMERA* c, PCWSTR Name)
+{
+    WCHAR fallback[S2C_NAME_CHARS];
+    if (!Name || !Name[0])
+    {
+        RtlStringCchPrintfW(fallback, S2C_NAME_CHARS, L"Show2Cam Camera %lu", c->Index + 1);
+        Name = fallback;
+    }
+    PUNICODE_STRING link = c->Factory ? KsFilterFactoryGetSymbolicLink(c->Factory) : nullptr;
+    if (!link || !link->Buffer) return;
+    ULONG bytes = (ULONG)((wcslen(Name) + 1) * sizeof(WCHAR));
+    UNICODE_STRING valueName;
+    RtlInitUnicodeString(&valueName, L"FriendlyName");
+    ULONG done = 0;
+    for (ULONG i = 0; i < 3; i++)
+    {
+        UNICODE_STRING alias = {};
+        if (!NT_SUCCESS(IoGetDeviceInterfaceAlias(link, &kCategories[i], &alias))) continue;
+        HANDLE key;
+        if (NT_SUCCESS(IoOpenDeviceInterfaceRegistryKey(&alias, KEY_SET_VALUE, &key)))
+        {
+            if (NT_SUCCESS(ZwSetValueKey(key, &valueName, 0, REG_SZ, (PVOID)Name, bytes))) done++;
+            ZwClose(key);
+        }
+        IoSetDeviceInterfacePropertyData(&alias, &kInterfaceFriendlyName, 0, 0, DEVPROP_TYPE_STRING, bytes, (PVOID)Name);
+        RtlFreeUnicodeString(&alias);
+    }
+    S2cLog("Camera %lu: name \"%ls\" (%lu of 3 interfaces)", c->Index + 1, Name, done);
+}
+
+void S2cCameraApplySavedName(_In_ S2C_CAMERA* Camera)
+{
+    WCHAR value[32], buffer[S2C_NAME_CHARS] = {};
+    RtlStringCchPrintfW(value, 32, L"Camera%luName", Camera->Index + 1);
+    UNICODE_STRING name = { 0, (USHORT)(sizeof(buffer) - sizeof(WCHAR)), buffer };
+    RTL_QUERY_REGISTRY_TABLE q[2];
+    RtlZeroMemory(q, sizeof(q));
+    q[0].Flags = RTL_QUERY_REGISTRY_DIRECT | RTL_QUERY_REGISTRY_REQUIRED | RTL_QUERY_REGISTRY_TYPECHECK;
+    q[0].Name = value;
+    q[0].EntryContext = &name;
+    q[0].DefaultType = REG_SZ << RTL_QUERY_REGISTRY_TYPECHECK_SHIFT;
+    if (NT_SUCCESS(RtlQueryRegistryValues(RTL_REGISTRY_SERVICES, L"Show2Cam\\Parameters", q, nullptr, nullptr)) && buffer[0])
+        ApplyName(Camera, buffer);
+}
+
+NTSTATUS S2cCameraCreate(_In_ ULONG Index, _In_ ULONG Width, _In_ ULONG Height, _In_ ULONG Fps, _Out_ S2C_CAMERA** Camera)
+{
+    *Camera = nullptr;
+    S2C_CAMERA* c = (S2C_CAMERA*)ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(S2C_CAMERA), S2C_POOLTAG);
+    if (!c) return STATUS_INSUFFICIENT_RESOURCES;
+    c->Signature = S2C_CAMERA_SIGNATURE;
+    c->Index = Index;
+    RtlStringCchPrintfW(c->RefString, 16, L"Camera%lu", Index + 1);
+    ExInitializeFastMutex(&c->Lock);
+
+    SetRanges(c, Width, Height, Fps);
+    for (ULONG i = 0; i < S2C_FORMATS; i++) c->RangePointers[i] = &c->Ranges[i].DataRange;
 
     KSPIN_DESCRIPTOR_EX* pd = &c->PinDescriptor;
     pd->Dispatch = &kPinDispatch;

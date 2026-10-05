@@ -162,6 +162,16 @@ bool SetupGetDeviceState(ULONG* status, ULONG* problem, wchar_t* instanceId, siz
     return found;
 }
 
+// Tells the driver where to write its log file (Parameters\LogFile, an NT path): driver.log next to ours.
+static void SetDriverLogFile()
+{
+    wchar_t path[MAX_PATH + 16];
+    _snwprintf(path, MAX_PATH + 16, L"\\??\\%ls\\driver.log", AppLogDir());
+    path[MAX_PATH + 15] = 0;
+    RegSetKeyValueW(HKEY_LOCAL_MACHINE, L"SYSTEM\\CurrentControlSet\\Services\\Show2Cam\\Parameters", L"LogFile", REG_SZ, path,
+                    (DWORD)((wcslen(path) + 1) * sizeof(wchar_t)));
+}
+
 bool SetupInstallDriver(const wchar_t* infArg, bool* rebootNeeded, SetupLog log, void* ctx)
 {
     *rebootNeeded = false;
@@ -207,6 +217,7 @@ bool SetupInstallDriver(const wchar_t* infArg, bool* rebootNeeded, SetupLog log,
         Log(log, ctx, TR(L"Создано устройство %ls."), kHardwareId);
     }
 
+    SetDriverLogFile();
     Log(log, ctx, TR(L"Установка драйвера… Если Windows спросит про издателя, выберите «Все равно установить»."));
     BOOL reboot = FALSE;
     if (!UpdateDriverForPlugAndPlayDevicesW(nullptr, kHardwareId, inf, INSTALLFLAG_FORCE, &reboot))
@@ -269,14 +280,23 @@ static bool IsStatusValue(const wchar_t* name)
     return !_wcsicmp(name, L"StartStatus") || !_wcsicmp(name, L"CamerasCreated") || !_wcsicmp(name, L"DriverLog");
 }
 
-// The user's driver settings (camera count, sizes, frame rates: every DWORD but the status values), kept across an
-// update / reinstall: removing the driver package may delete the service key with them.
+// The user's driver settings (camera count, sizes, frame rates: every DWORD but the status values; the cameras'
+// names Camera<N>Name), kept across an update / reinstall: removing the driver package may delete the service key
+// with them.
 struct DriverSettings
 {
     int     count;
     wchar_t name[64][32];
+    DWORD   type[64];
     DWORD   value[64];
+    wchar_t text[64][64];
 };
+
+static bool IsCameraName(const wchar_t* name)
+{
+    size_t n = wcslen(name);
+    return _wcsnicmp(name, L"Camera", 6) == 0 && n > 10 && _wcsicmp(name + n - 4, L"Name") == 0;
+}
 
 static void SaveDriverSettings(DriverSettings* s)
 {
@@ -285,13 +305,22 @@ static void SaveDriverSettings(DriverSettings* s)
     if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, S2C_PARAMS_PATH, 0, KEY_READ, &key) != ERROR_SUCCESS) return;
     for (DWORD i = 0; s->count < 64; i++)
     {
-        wchar_t name[32];
-        DWORD nameLen = 32, type = 0, value = 0, size = sizeof(value);
-        LSTATUS rs = RegEnumValueW(key, i, name, &nameLen, nullptr, &type, (BYTE*)&value, &size);
+        wchar_t name[32], text[64] = L"";
+        DWORD nameLen = 32, type = 0, size = sizeof(text);
+        LSTATUS rs = RegEnumValueW(key, i, name, &nameLen, nullptr, &type, (BYTE*)text, &size);
         if (rs == ERROR_NO_MORE_ITEMS) break;
-        if (rs != ERROR_SUCCESS || type != REG_DWORD || IsStatusValue(name)) continue;
+        if (rs != ERROR_SUCCESS || IsStatusValue(name)) continue;
+        if (type == REG_DWORD && size == sizeof(DWORD))
+            s->value[s->count] = *(DWORD*)text;
+        else if (type == REG_SZ && IsCameraName(name))
+        {
+            text[63] = 0;
+            wcscpy(s->text[s->count], text);
+        }
+        else
+            continue;
         wcscpy(s->name[s->count], name);
-        s->value[s->count++] = value;
+        s->type[s->count++] = type;
     }
     RegCloseKey(key);
 }
@@ -306,8 +335,16 @@ static void RestoreDriverSettings(const DriverSettings* s, SetupLog log, void* c
         return;
     for (int i = 0; i < s->count; i++)
     {
-        RegSetValueExW(key, s->name[i], 0, REG_DWORD, (const BYTE*)&s->value[i], sizeof(DWORD));
-        AppLog(L"kept setting %ls = %lu", s->name[i], s->value[i]);
+        if (s->type[i] == REG_SZ)
+        {
+            RegSetValueExW(key, s->name[i], 0, REG_SZ, (const BYTE*)s->text[i], (DWORD)((wcslen(s->text[i]) + 1) * sizeof(wchar_t)));
+            AppLog(L"kept setting %ls = \"%ls\"", s->name[i], s->text[i]);
+        }
+        else
+        {
+            RegSetValueExW(key, s->name[i], 0, REG_DWORD, (const BYTE*)&s->value[i], sizeof(DWORD));
+            AppLog(L"kept setting %ls = %lu", s->name[i], s->value[i]);
+        }
     }
     RegCloseKey(key);
     Log(log, ctx, TR(L"Настройки камер сохранены для новой версии."));

@@ -134,6 +134,112 @@ The driver runs, but Windows shows no Show2Cam camera.
 The driver is installed, but the Show2Cam cameras do not work: see above why.
 Done: the Show2Cam cameras are in Windows.
 Without test mode the Show2Cam driver will not load: the Show2Cam cameras disappear until the mode is enabled again.\n\nDisable test mode?
+Show2Cam cannot work: Secure Boot is on, and the test-signed Show2Cam driver does not load with it.\n\nTurn Secure Boot off in the UEFI settings (VMware: VM → Settings → Options → Advanced), then run Show2Cam-Setup.exe.
+Show2Cam cannot work: Windows test signing mode is off, and the Show2Cam driver does not load without it.\n\nRun Show2Cam-Setup.exe, click "Enable test mode" and restart the computer.
+Show2Cam cannot work: the Show2Cam driver is not installed.\n\nRun Show2Cam-Setup.exe and click "Install".
+The event log was cleared.
+Images
+Video
+MJPEG stream
+Text
+%lu×%lu, %lu fps
+paused
+no connection
+● in use
+○ not in use
+Speak2Mic: %ls (default)
+Speak2Mic Speaker (not found: is Speak2Mic installed?)
+Mute
+Selected device (not connected now)
+Text:
+Address:
+Folder:
+Play
+Pause
+Close check
+Test
+No Show2Cam cameras found: the driver is not installed or is restarting.
+No connection to the camera (is the driver restarting?).
+Camera
+used by a program
+not in use
+will become %ls when the camera is closed
+No signal: %ls
+No suitable files in the folder.
+Error: %ls
+Source: %lu×%lu
+sound: %ls
+no sound
+Camera %d: %ls
+Camera “%ls”: MJPEG stream %ls.
+Camera “%ls”: source — %ls.
+Camera “%ls”: paused.
+Camera “%ls”: playing.
+Camera “%ls” renamed to “%ls”.
+Could not rename the camera (code %lu).
+Camera “%ls”: folder %ls.
+Check — %ls
+Waiting for a frame…
+Restarting the Show2Cam device…
+Number of cameras: %d.
+Administrator rights are required: the request was declined.
+Number of cameras saved. Windows could not restart the device on the fly (is a program holding a camera?) — restart the computer.
+Could not change the number of cameras (code %d).
+Reset the settings of all Show2Cam cameras?\n\nSource — the text “Camera N”, resolution — as the source, names — default.
+All settings were reset to the defaults.
+Camera “%ls”: no signal from %ls — reconnecting…
+Camera “%ls”: signal is back.
+Camera “%ls”: no suitable files in the folder (%ls).
+Camera “%ls”: video “%ls”.
+Camera “%ls”: could not play the video (%ls).
+Camera “%ls”: format %ls.
+Camera “%ls”: format %ls will be set when all programs close the camera.
+Camera “%ls”: Speak2Mic Speaker not found — video without sound.
+Camera “%ls”: the selected sound device was not found — video without sound.
+Reset all settings
+Language:
+Cameras
+Source
+Format
+State
+Number of cameras:
+Apply
+Name:
+Rename
+Source:
+Images from a folder (change every 5 s)
+Videos from a folder
+MJPEG stream over the network
+Browse…
+Open
+Video sound:
+Resolution:
+As the source
+Frames per second:
+Clear the event log
+Start the control panel with Windows (in the tray)
+A window with what the camera shows right now
+Show2Cam — control panel
+Open the control panel
+Exit
+Show2Cam control panel started, version %ls
+Control panel autostart on.
+Control panel autostart off.
+Open the Show2Cam installer now?
+Could not open “%ls” (format not supported by Windows?).
+Could not open the image
+No images in the folder
+No videos in the folder
+Could not play the video
+reconnecting…
+No signal
+could not decode a frame
+invalid address
+connection error %lu
+the server does not respond (%lu)
+the stream does not look like MJPEG
+the connection was lost (%lu)
+the server closed the connection
 [driver] the driver log is empty: the driver has never started
 [driver] ---- driver log (DriverLog) ----
 [setupapi] cannot open %ls (%lu)

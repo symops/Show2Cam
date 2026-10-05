@@ -25,18 +25,12 @@
 #include <io.h>
 #include <fcntl.h>
 #include "../driver/version.h"
+#include "../driver/s2cproto.h"     // the driver's property set
 
 static const wchar_t kHardwareId[] = L"ROOT\\Show2Cam";
 static const wchar_t kParams[] = L"SYSTEM\\CurrentControlSet\\Services\\Show2Cam\\Parameters";
 static const GUID kCategoryVideo = { 0x6994ad05, 0x93ef, 0x11d0, { 0xa3, 0xcc, 0x00, 0xa0, 0xc9, 0x22, 0x31, 0x96 } };
 static const GUID kPropSetShow2Cam = { 0x6f1c2a9e, 0x3b57, 0x4e0c, { 0x9d, 0x1a, 0x5c, 0x2e, 0x7b, 0x3f, 0x8a, 0x41 } };
-enum { S2C_PROPERTY_FRAME = 0, S2C_PROPERTY_STATUS = 1 };
-struct S2C_FRAME_HEADER { ULONG Magic, Width, Height, Flags; };
-struct S2C_STATUS
-{
-    ULONG Index, Width, Height, Fps, Streaming, SourceWidth, SourceHeight, Reserved;
-    ULONGLONG FramesDelivered, FramesDropped, PicturesReceived;
-};
 
 static FILE* g_log;
 
@@ -59,6 +53,8 @@ static void Out(const wchar_t* fmt, ...)
     }
 }
 
+static wchar_t g_logDir[MAX_PATH];
+
 static void OpenLog()
 {
     wchar_t dir[MAX_PATH];
@@ -67,6 +63,7 @@ static void OpenLog()
     CreateDirectoryW(dir, nullptr);
     wcscat(dir, L"\\logs");
     CreateDirectoryW(dir, nullptr);
+    wcscpy(g_logDir, dir);
     wcscat(dir, L"\\install.log");
     g_log = _wfopen(dir, L"a, ccs=UTF-8");
 }
@@ -137,6 +134,14 @@ static int CmdInstall()
     Sibling(L"Show2Cam-Publisher.cer", pub);
     if (!AddCertificate(root, L"Root") || !AddCertificate(pub, L"TrustedPublisher")) return 1;
     Out(L"test certificates trusted");
+    if (g_logDir[0])
+    {
+        // The driver writes its log to driver.log next to install.log (Parameters\LogFile, an NT path).
+        wchar_t file[MAX_PATH + 16];
+        _snwprintf(file, MAX_PATH + 16, L"\\??\\%ls\\driver.log", g_logDir);
+        file[MAX_PATH + 15] = 0;
+        RegSetKeyValueW(HKEY_LOCAL_MACHINE, kParams, L"LogFile", REG_SZ, file, (DWORD)((wcslen(file) + 1) * sizeof(wchar_t)));
+    }
     if (ForEachDevice([](HDEVINFO, SP_DEVINFO_DATA*) {}) == 0)
     {
         GUID cls;

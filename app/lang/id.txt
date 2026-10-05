@@ -134,3 +134,109 @@ Driver berjalan, tetapi Windows tidak menampilkan kamera Show2Cam.
 Driver terpasang, tetapi kamera Show2Cam tidak berfungsi; penyebabnya di atas.
 Selesai: kamera Show2Cam sudah ada di Windows.
 Tanpa mode uji driver Show2Cam tidak akan dimuat: kamera Show2Cam menghilang sampai mode diaktifkan lagi.\n\nNonaktifkan mode uji?
+Show2Cam tidak dapat bekerja: Secure Boot aktif, dan driver Show2Cam bertanda tangan uji tidak dimuat dengannya.\n\nNonaktifkan Secure Boot di pengaturan UEFI (VMware: VM → Settings → Options → Advanced), lalu jalankan Show2Cam-Setup.exe.
+Show2Cam tidak dapat bekerja: mode tanda tangan uji Windows nonaktif, dan tanpanya driver Show2Cam tidak dimuat.\n\nJalankan Show2Cam-Setup.exe, klik "Aktifkan mode uji" dan mulai ulang komputer.
+Show2Cam tidak dapat bekerja: driver Show2Cam belum terpasang.\n\nJalankan Show2Cam-Setup.exe dan klik "Instal".
+Log peristiwa telah dihapus.
+Gambar
+Video
+Aliran MJPEG
+Teks
+%lu×%lu, %lu fps
+dijeda
+tidak terhubung
+● sedang dipakai
+○ tidak dipakai
+Speak2Mic: %ls (bawaan)
+Speak2Mic Speaker (tidak ditemukan: apakah Speak2Mic terpasang?)
+Bisukan
+Perangkat terpilih (sedang tidak terhubung)
+Teks:
+Alamat:
+Folder:
+Putar
+Jeda
+Tutup pemeriksaan
+Uji
+Kamera Show2Cam tidak ditemukan: driver belum terpasang atau sedang dimulai ulang.
+Tidak ada koneksi ke kamera (driver sedang dimulai ulang?).
+Kamera
+dipakai oleh program
+tidak dipakai
+akan menjadi %ls setelah kamera ditutup
+Tidak ada sinyal: %ls
+Tidak ada berkas yang cocok di folder.
+Kesalahan: %ls
+Sumber: %lu×%lu
+suara: %ls
+tanpa suara
+Kamera %d: %ls
+Kamera “%ls”: aliran MJPEG %ls.
+Kamera “%ls”: sumber — %ls.
+Kamera “%ls”: dijeda.
+Kamera “%ls”: diputar.
+Kamera “%ls” diganti nama menjadi “%ls”.
+Gagal mengganti nama kamera (kode %lu).
+Kamera “%ls”: folder %ls.
+Pemeriksaan — %ls
+Menunggu bingkai…
+Memulai ulang perangkat Show2Cam…
+Jumlah kamera: %d.
+Hak administrator diperlukan: permintaan ditolak.
+Jumlah kamera disimpan. Windows tidak dapat memulai ulang perangkat saat berjalan (ada program yang memakai kamera?) — mulai ulang komputer.
+Gagal mengubah jumlah kamera (kode %d).
+Setel ulang pengaturan semua kamera Show2Cam?\n\nSumber — teks “Camera N”, resolusi — sama dengan sumber, nama — bawaan.
+Semua pengaturan telah diatur ulang ke bawaan.
+Kamera “%ls”: tidak ada sinyal dari %ls — menyambung ulang…
+Kamera “%ls”: sinyal kembali.
+Kamera “%ls”: tidak ada berkas yang cocok di folder (%ls).
+Kamera “%ls”: video “%ls”.
+Kamera “%ls”: video tidak dapat diputar (%ls).
+Kamera “%ls”: format %ls.
+Kamera “%ls”: format %ls akan diterapkan setelah semua program menutup kamera.
+Kamera “%ls”: Speak2Mic Speaker tidak ditemukan — video tanpa suara.
+Kamera “%ls”: perangkat suara terpilih tidak ditemukan — video tanpa suara.
+Atur ulang semua
+Bahasa:
+Kamera
+Sumber
+Format
+Status
+Jumlah kamera:
+Terapkan
+Nama:
+Ganti nama
+Sumber:
+Gambar dari folder (berganti setiap 5 dtk)
+Video dari folder
+Aliran MJPEG lewat jaringan
+Telusuri…
+Buka
+Suara video:
+Resolusi:
+Sama dengan sumber
+Bingkai per detik:
+Hapus log peristiwa
+Jalankan panel kontrol bersama Windows (di baki sistem)
+Jendela berisi apa yang sedang ditampilkan kamera
+Show2Cam — panel kontrol
+Buka panel kontrol
+Keluar
+Panel kontrol Show2Cam dimulai, versi %ls
+Mulai otomatis panel kontrol aktif.
+Mulai otomatis panel kontrol nonaktif.
+Buka penginstal Show2Cam sekarang?
+Gagal membuka “%ls” (format tidak didukung Windows?).
+Gagal membuka gambar
+Tidak ada gambar di folder
+Tidak ada video di folder
+Video tidak dapat diputar
+menyambung ulang…
+Tidak ada sinyal
+gagal mendekode bingkai
+alamat tidak valid
+kesalahan koneksi %lu
+server tidak merespons (%lu)
+aliran tidak tampak seperti MJPEG
+koneksi terputus (%lu)
+server menutup koneksi

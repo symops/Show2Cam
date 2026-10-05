@@ -134,3 +134,109 @@ El controlador funciona, pero Windows no muestra ninguna cámara de Show2Cam.
 El controlador está instalado, pero las cámaras de Show2Cam no funcionan: el motivo está arriba.
 Listo: las cámaras de Show2Cam ya están en Windows.
 Sin el modo de prueba el controlador Show2Cam no se cargará: las cámaras de Show2Cam desaparecerán hasta que el modo se active de nuevo.\n\n¿Desactivar el modo de prueba?
+Show2Cam no puede funcionar: Secure Boot está activado y el controlador Show2Cam con firma de prueba no se carga con él.\n\nDesactive Secure Boot en la configuración UEFI (VMware: VM → Settings → Options → Advanced) y luego ejecute Show2Cam-Setup.exe.
+Show2Cam no puede funcionar: el modo de firma de prueba de Windows está desactivado y sin él el controlador Show2Cam no se carga.\n\nEjecute Show2Cam-Setup.exe, pulse «Activar modo de prueba» y reinicie el equipo.
+Show2Cam no puede funcionar: el controlador Show2Cam no está instalado.\n\nEjecute Show2Cam-Setup.exe y pulse «Instalar».
+Se borró el registro de eventos.
+Imágenes
+Vídeo
+Flujo MJPEG
+Texto
+%lu×%lu, %lu fps
+en pausa
+sin conexión
+● en uso
+○ sin usar
+Speak2Mic: %ls (predeterminado)
+Speak2Mic Speaker (no encontrado: ¿está instalado Speak2Mic?)
+Silenciar
+Dispositivo elegido (no conectado ahora)
+Texto:
+Dirección:
+Carpeta:
+Reproducir
+Pausa
+Cerrar comprobación
+Probar
+No se encontraron cámaras Show2Cam: el controlador no está instalado o se está reiniciando.
+Sin conexión con la cámara (¿se está reiniciando el controlador?).
+Cámara
+en uso por un programa
+sin usar
+pasará a %ls cuando se cierre la cámara
+Sin señal: %ls
+No hay archivos adecuados en la carpeta.
+Error: %ls
+Origen: %lu×%lu
+sonido: %ls
+sin sonido
+Cámara %d: %ls
+Cámara «%ls»: flujo MJPEG %ls.
+Cámara «%ls»: origen — %ls.
+Cámara «%ls»: en pausa.
+Cámara «%ls»: reproduciendo.
+Cámara «%ls» renombrada a «%ls».
+No se pudo renombrar la cámara (código %lu).
+Cámara «%ls»: carpeta %ls.
+Comprobación — %ls
+Esperando un fotograma…
+Reiniciando el dispositivo Show2Cam…
+Número de cámaras: %d.
+Se necesitan permisos de administrador: la solicitud fue rechazada.
+Número de cámaras guardado. Windows no pudo reiniciar el dispositivo en caliente (¿un programa usa una cámara?): reinicie el equipo.
+No se pudo cambiar el número de cámaras (código %d).
+¿Restablecer la configuración de todas las cámaras Show2Cam?\n\nOrigen — el texto «Camera N», resolución — como el origen, nombres — predeterminados.
+Todos los ajustes se restablecieron a los predeterminados.
+Cámara «%ls»: sin señal de %ls — reconectando…
+Cámara «%ls»: la señal ha vuelto.
+Cámara «%ls»: no hay archivos adecuados en la carpeta (%ls).
+Cámara «%ls»: vídeo «%ls».
+Cámara «%ls»: no se pudo reproducir el vídeo (%ls).
+Cámara «%ls»: formato %ls.
+Cámara «%ls»: el formato %ls se aplicará cuando todos los programas cierren la cámara.
+Cámara «%ls»: no se encontró Speak2Mic Speaker — vídeo sin sonido.
+Cámara «%ls»: no se encontró el dispositivo de sonido elegido — vídeo sin sonido.
+Restablecer todo
+Idioma:
+Cámaras
+Origen
+Formato
+Estado
+Número de cámaras:
+Aplicar
+Nombre:
+Cambiar nombre
+Origen:
+Imágenes de una carpeta (cambio cada 5 s)
+Vídeos de una carpeta
+Flujo MJPEG por la red
+Examinar…
+Abrir
+Sonido del vídeo:
+Resolución:
+Como el origen
+Fotogramas por segundo:
+Borrar el registro de eventos
+Iniciar el panel de control con Windows (en la bandeja)
+Una ventana con lo que la cámara muestra ahora
+Show2Cam — panel de control
+Abrir el panel de control
+Salir
+Panel de control de Show2Cam iniciado, versión %ls
+Inicio automático del panel activado.
+Inicio automático del panel desactivado.
+¿Abrir el instalador de Show2Cam ahora?
+No se pudo abrir «%ls» (¿formato no admitido por Windows?).
+No se pudo abrir la imagen
+No hay imágenes en la carpeta
+No hay vídeos en la carpeta
+No se pudo reproducir el vídeo
+reconectando…
+Sin señal
+no se pudo decodificar un fotograma
+dirección no válida
+error de conexión %lu
+el servidor no responde (%lu)
+el flujo no parece MJPEG
+se perdió la conexión (%lu)
+el servidor cerró la conexión

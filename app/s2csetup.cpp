@@ -9,6 +9,7 @@
 #include "diag.h"
 #include "applog.h"
 #include "devctl.h"
+#include "autostart.h"
 #include <commctrl.h>
 #include <shellapi.h>
 #include <stdio.h>
@@ -101,8 +102,18 @@ static DWORD WINAPI Worker(LPVOID)
             wchar_t* slash = wcsrchr(dir, L'\\');
             if (slash) *slash = 0;
             SetupRemoveOldDriverPackages(WorkerLog, nullptr);
-            if (SetupInstallFiles(dir, WorkerLog, nullptr) && (g_wantDesktop || g_wantStartMenu))
-                SetupCreateShortcuts(g_wantDesktop, g_wantStartMenu, WorkerLog, nullptr);
+            if (SetupInstallFiles(dir, WorkerLog, nullptr))
+            {
+                // The cameras show their sources while the panel runs: it starts with Windows (in the tray) unless
+                // the user switched that off in the panel.
+                wchar_t panel[MAX_PATH];
+                if (S2cAutostartWanted() && SetupProgramDir(panel) && wcslen(panel) < MAX_PATH - 16)
+                {
+                    wcscat(panel, L"\\Show2Cam.exe");
+                    if (GetFileAttributesW(panel) != INVALID_FILE_ATTRIBUTES) S2cSetAutostart(true, panel, false);
+                }
+                if (g_wantDesktop || g_wantStartMenu) SetupCreateShortcuts(g_wantDesktop, g_wantStartMenu, WorkerLog, nullptr);
+            }
         }
         if (g_ok && !g_reboot)
         {

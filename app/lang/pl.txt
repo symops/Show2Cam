@@ -134,3 +134,109 @@ Sterownik działa, ale Windows nie pokazuje kamer Show2Cam.
 Sterownik jest zainstalowany, ale kamery Show2Cam nie działają — przyczyna powyżej.
 Gotowe: kamery Show2Cam są dostępne w systemie Windows.
 Bez trybu testowego sterownik Show2Cam nie będzie ładowany: kamery Show2Cam znikną do czasu ponownego włączenia trybu.\n\nWyłączyć tryb testowy?
+Show2Cam nie może działać: Secure Boot jest włączony, a sterownik Show2Cam z podpisem testowym nie ładuje się przy nim.\n\nWyłącz Secure Boot w ustawieniach UEFI (VMware: VM → Settings → Options → Advanced), a następnie uruchom Show2Cam-Setup.exe.
+Show2Cam nie może działać: tryb podpisu testowego systemu Windows jest wyłączony, a bez niego sterownik Show2Cam się nie ładuje.\n\nUruchom Show2Cam-Setup.exe, kliknij „Włącz tryb testowy” i uruchom ponownie komputer.
+Show2Cam nie może działać: sterownik Show2Cam nie jest zainstalowany.\n\nUruchom Show2Cam-Setup.exe i kliknij „Zainstaluj”.
+Dziennik zdarzeń został wyczyszczony.
+Obrazy
+Wideo
+Strumień MJPEG
+Tekst
+%lu×%lu, %lu kl./s
+wstrzymana
+brak połączenia
+● w użyciu
+○ nieużywana
+Speak2Mic: %ls (domyślnie)
+Speak2Mic Speaker (nie znaleziono: czy Speak2Mic jest zainstalowany?)
+Wycisz
+Wybrane urządzenie (teraz niepodłączone)
+Tekst:
+Adres:
+Folder:
+Odtwórz
+Pauza
+Zamknij podgląd
+Testuj
+Nie znaleziono kamer Show2Cam: sterownik nie jest zainstalowany lub uruchamia się ponownie.
+Brak połączenia z kamerą (sterownik uruchamia się ponownie?).
+Kamera
+używana przez program
+nieużywana
+zmieni się na %ls, gdy kamera zostanie zamknięta
+Brak sygnału: %ls
+Brak odpowiednich plików w folderze.
+Błąd: %ls
+Źródło: %lu×%lu
+dźwięk: %ls
+bez dźwięku
+Kamera %d: %ls
+Kamera „%ls”: strumień MJPEG %ls.
+Kamera „%ls”: źródło — %ls.
+Kamera „%ls”: pauza.
+Kamera „%ls”: odtwarzanie.
+Zmieniono nazwę kamery „%ls” na „%ls”.
+Nie udało się zmienić nazwy kamery (kod %lu).
+Kamera „%ls”: folder %ls.
+Podgląd — %ls
+Oczekiwanie na klatkę…
+Ponowne uruchamianie urządzenia Show2Cam…
+Liczba kamer: %d.
+Wymagane uprawnienia administratora: żądanie odrzucono.
+Liczba kamer zapisana. Windows nie mógł ponownie uruchomić urządzenia w locie (program trzyma kamerę?) — uruchom ponownie komputer.
+Nie udało się zmienić liczby kamer (kod %d).
+Zresetować ustawienia wszystkich kamer Show2Cam?\n\nŹródło — tekst „Camera N”, rozdzielczość — jak źródło, nazwy — domyślne.
+Wszystkie ustawienia przywrócono do domyślnych.
+Kamera „%ls”: brak sygnału z %ls — ponowne łączenie…
+Kamera „%ls”: sygnał wrócił.
+Kamera „%ls”: brak odpowiednich plików w folderze (%ls).
+Kamera „%ls”: wideo „%ls”.
+Kamera „%ls”: nie udało się odtworzyć wideo (%ls).
+Kamera „%ls”: format %ls.
+Kamera „%ls”: format %ls zostanie ustawiony, gdy wszystkie programy zamkną kamerę.
+Kamera „%ls”: nie znaleziono Speak2Mic Speaker — wideo bez dźwięku.
+Kamera „%ls”: nie znaleziono wybranego urządzenia dźwiękowego — wideo bez dźwięku.
+Przywróć wszystko
+Język:
+Kamery
+Źródło
+Format
+Stan
+Liczba kamer:
+Zastosuj
+Nazwa:
+Zmień nazwy
+Źródło:
+Obrazy z folderu (zmiana co 5 s)
+Wideo z folderu
+Strumień MJPEG przez sieć
+Przeglądaj…
+Otwórz
+Dźwięk wideo:
+Rozdzielczość:
+Jak źródło
+Klatek na sekundę:
+Wyczyść dziennik zdarzeń
+Uruchamiaj panel sterowania razem z Windows (w zasobniku)
+Okno z tym, co kamera teraz pokazuje
+Show2Cam — panel sterowania
+Otwórz panel sterowania
+Zakończ
+Uruchomiono panel sterowania Show2Cam, wersja %ls
+Autostart panelu sterowania włączony.
+Autostart panelu sterowania wyłączony.
+Otworzyć teraz instalator Show2Cam?
+Nie udało się otworzyć „%ls” (format nieobsługiwany przez Windows?).
+Nie udało się otworzyć obrazu
+Brak obrazów w folderze
+Brak wideo w folderze
+Nie udało się odtworzyć wideo
+ponowne łączenie…
+Brak sygnału
+nie udało się zdekodować klatki
+nieprawidłowy adres
+błąd połączenia %lu
+serwer nie odpowiada (%lu)
+strumień nie wygląda na MJPEG
+połączenie zostało przerwane (%lu)
+serwer zamknął połączenie

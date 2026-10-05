@@ -134,3 +134,109 @@ Der Treiber läuft, aber Windows zeigt keine Show2Cam-Kamera an.
 Der Treiber ist installiert, aber die Show2Cam-Kameras funktionieren nicht – Grund siehe oben.
 Fertig: Die Show2Cam-Kameras sind in Windows verfügbar.
 Ohne Testmodus wird der Show2Cam-Treiber nicht geladen: die Show2Cam-Kameras verschwinden, bis der Modus wieder aktiviert wird.\n\nTestmodus deaktivieren?
+Show2Cam kann nicht arbeiten: Secure Boot ist aktiv, und der testsignierte Show2Cam-Treiber wird damit nicht geladen.\n\nSchalten Sie Secure Boot in den UEFI-Einstellungen aus (VMware: VM → Settings → Options → Advanced) und starten Sie dann Show2Cam-Setup.exe.
+Show2Cam kann nicht arbeiten: der Windows-Testsignaturmodus ist aus, ohne ihn wird der Show2Cam-Treiber nicht geladen.\n\nStarten Sie Show2Cam-Setup.exe, klicken Sie auf „Testmodus aktivieren“ und starten Sie den Computer neu.
+Show2Cam kann nicht arbeiten: der Show2Cam-Treiber ist nicht installiert.\n\nStarten Sie Show2Cam-Setup.exe und klicken Sie auf „Installieren“.
+Das Ereignisprotokoll wurde geleert.
+Bilder
+Video
+MJPEG-Stream
+Text
+%lu×%lu, %lu Bilder/s
+pausiert
+keine Verbindung
+● in Verwendung
+○ nicht in Verwendung
+Speak2Mic: %ls (Standard)
+Speak2Mic Speaker (nicht gefunden: ist Speak2Mic installiert?)
+Stumm
+Gewähltes Gerät (derzeit nicht verbunden)
+Text:
+Adresse:
+Ordner:
+Abspielen
+Pause
+Prüfung schließen
+Testen
+Keine Show2Cam-Kameras gefunden: Der Treiber ist nicht installiert oder startet neu.
+Keine Verbindung zur Kamera (startet der Treiber neu?).
+Kamera
+von einem Programm verwendet
+nicht in Verwendung
+wird %ls, sobald die Kamera geschlossen ist
+Kein Signal: %ls
+Keine passenden Dateien im Ordner.
+Fehler: %ls
+Quelle: %lu×%lu
+Ton: %ls
+ohne Ton
+Kamera %d: %ls
+Kamera „%ls“: MJPEG-Stream %ls.
+Kamera „%ls“: Quelle — %ls.
+Kamera „%ls“: pausiert.
+Kamera „%ls“: Wiedergabe.
+Kamera „%ls“ in „%ls“ umbenannt.
+Die Kamera konnte nicht umbenannt werden (Code %lu).
+Kamera „%ls“: Ordner %ls.
+Prüfung — %ls
+Warten auf ein Bild…
+Show2Cam-Gerät wird neu gestartet…
+Anzahl der Kameras: %d.
+Administratorrechte erforderlich: die Anfrage wurde abgelehnt.
+Anzahl der Kameras gespeichert. Windows konnte das Gerät nicht im laufenden Betrieb neu starten (hält ein Programm eine Kamera?) — starten Sie den Computer neu.
+Die Anzahl der Kameras konnte nicht geändert werden (Code %d).
+Einstellungen aller Show2Cam-Kameras zurücksetzen?\n\nQuelle — der Text „Camera N“, Auflösung — wie die Quelle, Namen — Standard.
+Alle Einstellungen wurden auf die Standardwerte zurückgesetzt.
+Kamera „%ls“: kein Signal von %ls — neue Verbindung…
+Kamera „%ls“: Signal ist wieder da.
+Kamera „%ls“: keine passenden Dateien im Ordner (%ls).
+Kamera „%ls“: Video „%ls“.
+Kamera „%ls“: Video konnte nicht abgespielt werden (%ls).
+Kamera „%ls“: Format %ls.
+Kamera „%ls“: Das Format %ls wird gesetzt, sobald alle Programme die Kamera schließen.
+Kamera „%ls“: Speak2Mic Speaker nicht gefunden — Video ohne Ton.
+Kamera „%ls“: Das gewählte Audiogerät wurde nicht gefunden — Video ohne Ton.
+Alle Einstellungen zurücksetzen
+Sprache:
+Kameras
+Quelle
+Format
+Zustand
+Anzahl der Kameras:
+Übernehmen
+Name:
+Umbenennen
+Quelle:
+Bilder aus einem Ordner (Wechsel alle 5 s)
+Videos aus einem Ordner
+MJPEG-Stream über das Netzwerk
+Durchsuchen…
+Öffnen
+Videoton:
+Auflösung:
+Wie die Quelle
+Bilder pro Sekunde:
+Ereignisprotokoll leeren
+Systemsteuerung mit Windows starten (im Infobereich)
+Ein Fenster mit dem, was die Kamera gerade zeigt
+Show2Cam — Systemsteuerung
+Systemsteuerung öffnen
+Beenden
+Show2Cam-Systemsteuerung gestartet, Version %ls
+Autostart der Systemsteuerung ein.
+Autostart der Systemsteuerung aus.
+Show2Cam-Installationsprogramm jetzt öffnen?
+„%ls“ konnte nicht geöffnet werden (Format von Windows nicht unterstützt?).
+Das Bild konnte nicht geöffnet werden
+Keine Bilder im Ordner
+Keine Videos im Ordner
+Das Video konnte nicht abgespielt werden
+neue Verbindung…
+Kein Signal
+Bild konnte nicht dekodiert werden
+ungültige Adresse
+Verbindungsfehler %lu
+der Server antwortet nicht (%lu)
+der Stream sieht nicht nach MJPEG aus
+die Verbindung wurde unterbrochen (%lu)
+der Server hat die Verbindung geschlossen

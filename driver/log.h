@@ -1,6 +1,7 @@
 // Driver log: a ring of text lines kept in memory, mirrored to the kernel debugger (DebugView) and
 // saved to HKLM\SYSTEM\CurrentControlSet\Services\Show2Cam\Parameters\DriverLog (REG_SZ) so the
-// user-mode tools can show it. S2cLog may be called at IRQL <= DISPATCH_LEVEL; S2cLogFlush only at
+// user-mode tools can show it, and to the file Parameters\LogFile (default
+// C:\ProgramData\Show2Cam\logs\driver.log). S2cLog may be called at IRQL <= DISPATCH_LEVEL; S2cLogFlush only at
 // PASSIVE_LEVEL (it is a no-op otherwise, the lines are written by the next flush).
 #pragma once
 

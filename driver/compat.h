@@ -12,4 +12,17 @@ extern "C" NTKERNELAPI PVOID NTAPI ExAllocatePool2(POOL_FLAGS Flags, SIZE_T Numb
 
 extern "C" NTKERNELAPI VOID NTAPI KeQuerySystemTimePrecise(PLARGE_INTEGER CurrentTime);
 
+#ifndef DEVPROPKEY_DEFINED
+#define DEVPROPKEY_DEFINED
+typedef GUID DEVPROPGUID;
+typedef ULONG DEVPROPID;
+typedef struct _DEVPROPKEY { DEVPROPGUID fmtid; DEVPROPID pid; } DEVPROPKEY;
+#endif
+typedef ULONG DEVPROPTYPE;
+#ifndef DEVPROP_TYPE_STRING
+#define DEVPROP_TYPE_STRING 0x00000012
+#endif
+extern "C" NTKERNELAPI NTSTATUS NTAPI IoSetDeviceInterfacePropertyData(PUNICODE_STRING SymbolicLinkName, const DEVPROPKEY* PropertyKey,
+                                                                      LCID Lcid, ULONG Flags, DEVPROPTYPE Type, ULONG Size, PVOID Data);
+
 #endif
