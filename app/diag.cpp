@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <wchar.h>
+#include <wctype.h>
 
 #define PARAMS_KEY L"SYSTEM\\CurrentControlSet\\Services\\Show2Cam\\Parameters"
 
@@ -45,7 +46,24 @@ static const wchar_t* ProblemText(ULONG p)
 }
 
 
-// Counts Show2Cam sound endpoints; optionally reports each one.
+// True when the interface belongs to a device driven by the Show2Cam service. The device instance is
+// named after the class by Windows (ROOT\CAMERA\0000), so the interface path can't be matched by name.
+static bool IsShow2CamInterface(HDEVINFO set, SP_DEVICE_INTERFACE_DATA* di, wchar_t* path, size_t len)
+{
+    BYTE buf[2048];
+    auto* d = (SP_DEVICE_INTERFACE_DETAIL_DATA_W*)buf;
+    d->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_W);
+    SP_DEVINFO_DATA info = { sizeof(info) };
+    if (!SetupDiGetDeviceInterfaceDetailW(set, di, d, sizeof(buf), nullptr, &info)) return false;
+    wchar_t service[64] = L"";
+    if (!SetupDiGetDeviceRegistryPropertyW(set, &info, SPDRP_SERVICE, nullptr, (BYTE*)service, sizeof(service) - 2, nullptr)
+        || _wcsicmp(service, L"Show2Cam") != 0)
+        return false;
+    wcsncpy(path, d->DevicePath, len - 1);
+    path[len - 1] = 0;
+    return true;
+}
+
 // The Show2Cam cameras Windows offers to programs (video interfaces of ROOT\Show2Cam): how many, and (report)
 // their names.
 static int ScanCameras(SetupLog log, void* ctx, bool report)
@@ -57,15 +75,8 @@ static int ScanCameras(SetupLog log, void* ctx, bool report)
     SP_DEVICE_INTERFACE_DATA di = { sizeof(di) };
     for (DWORD i = 0; SetupDiEnumDeviceInterfaces(set, nullptr, &kCategoryVideo, i, &di); i++)
     {
-        BYTE buf[2048];
-        auto* d = (SP_DEVICE_INTERFACE_DETAIL_DATA_W*)buf;
-        d->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_W);
-        if (!SetupDiGetDeviceInterfaceDetailW(set, &di, d, sizeof(buf), nullptr, nullptr)) continue;
-        wchar_t lower[1024];
-        wcsncpy(lower, d->DevicePath, 1023);
-        lower[1023] = 0;
-        _wcslwr(lower);
-        if (!wcsstr(lower, L"root#show2cam")) continue;
+        wchar_t path[1024];
+        if (!IsShow2CamInterface(set, &di, path, 1024)) continue;
         n++;
         if (!report) continue;
         wchar_t name[256] = L"?";
@@ -77,7 +88,7 @@ static int ScanCameras(SetupLog log, void* ctx, bool report)
             RegCloseKey(k);
         }
         Say(log, ctx, TR(L"Камера: «%ls»."), name);
-        AppLog(L"camera interface %ls", d->DevicePath);
+        AppLog(L"camera interface %ls", path);
     }
     SetupDiDestroyDeviceInfoList(set);
     return n;
@@ -109,7 +120,7 @@ bool DiagRunningDriverVersion(wchar_t* running, size_t len)
             {
                 last += wcslen(key);
                 size_t k = 0;
-                while (last[k] && last[k] != L',' && last[k] != L' ' && k + 1 < len) { running[k] = last[k]; k++; }
+                while (last[k] && last[k] != L',' && !iswspace(last[k]) && k + 1 < len) { running[k] = last[k]; k++; }
                 running[k] = 0;
                 found = k > 0;
             }
@@ -199,10 +210,10 @@ static void LogSetupApiSection()
         ReadFile(f, buf, len, &got, nullptr);
         buf[got] = 0;
 
-        // Find the last "speak2mic" (case-insensitive), then the section around it.
+        // Find the last "show2cam" (case-insensitive), then the section around it.
         char* hit = nullptr;
         for (char* p = buf; *p; p++)
-            if (_strnicmp(p, "speak2mic", 9) == 0) hit = p;
+            if (_strnicmp(p, "show2cam", 8) == 0) hit = p;
         if (!hit)
         {
             AppLog(TR(L"[setupapi] в setupapi.dev.log нет записей о Show2Cam"));

@@ -232,6 +232,24 @@ static bool SetParam(const wchar_t* name, DWORD value)
 }
 
 // ---------------------------------------------------------------------------
+// True when the interface belongs to a device driven by the Show2Cam service. The device instance is
+// named after the class by Windows (ROOT\CAMERA\0000), so the interface path can't be matched by name.
+static bool IsShow2CamInterface(HDEVINFO set, SP_DEVICE_INTERFACE_DATA* di, wchar_t* path, size_t len)
+{
+    BYTE buf[2048];
+    auto* d = (SP_DEVICE_INTERFACE_DETAIL_DATA_W*)buf;
+    d->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_W);
+    SP_DEVINFO_DATA info = { sizeof(info) };
+    if (!SetupDiGetDeviceInterfaceDetailW(set, di, d, sizeof(buf), nullptr, &info)) return false;
+    wchar_t service[64] = L"";
+    if (!SetupDiGetDeviceRegistryPropertyW(set, &info, SPDRP_SERVICE, nullptr, (BYTE*)service, sizeof(service) - 2, nullptr)
+        || _wcsicmp(service, L"Show2Cam") != 0)
+        return false;
+    wcsncpy(path, d->DevicePath, len - 1);
+    path[len - 1] = 0;
+    return true;
+}
+
 // Cameras (device interfaces "...#Camera<N>" of KSCATEGORY_VIDEO)
 
 static bool CameraPath(int n, wchar_t* path, size_t len, wchar_t* name, size_t nameLen)
@@ -244,18 +262,15 @@ static bool CameraPath(int n, wchar_t* path, size_t len, wchar_t* name, size_t n
     SP_DEVICE_INTERFACE_DATA di = { sizeof(di) };
     for (DWORD i = 0; !found && SetupDiEnumDeviceInterfaces(set, nullptr, &kCategoryVideo, i, &di); i++)
     {
-        BYTE buf[2048];
-        auto* d = (SP_DEVICE_INTERFACE_DETAIL_DATA_W*)buf;
-        d->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_W);
-        if (!SetupDiGetDeviceInterfaceDetailW(set, &di, d, sizeof(buf), nullptr, nullptr)) continue;
+        wchar_t found_path[1024];
+        if (!IsShow2CamInterface(set, &di, found_path, 1024)) continue;
         wchar_t lower[1024];
-        wcsncpy(lower, d->DevicePath, 1023);
-        lower[1023] = 0;
+        wcscpy(lower, found_path);
         _wcslwr(lower);
         size_t L = wcslen(lower), W = wcslen(want);
-        if (wcsstr(lower, L"root#show2cam") && L >= W && wcscmp(lower + L - W, want) == 0)
+        if (L >= W && wcscmp(lower + L - W, want) == 0)
         {
-            wcsncpy(path, d->DevicePath, len - 1);
+            wcsncpy(path, found_path, len - 1);
             path[len - 1] = 0;
             if (name)
             {
