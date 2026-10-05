@@ -1,0 +1,541 @@
+// One virtual camera: its AVStream filter (one video capture pin), the formats it offers, the picture it shows
+// (from the Show2Cam program, otherwise a test pattern) and the conversion into the negotiated format.
+#include "common.h"
+#include "log.h"
+
+// GUIDs (the MinGW headers only declare some of them; FOURCC subtypes: {XXXXXXXX-0000-0010-8000-00AA00389B71}).
+static const GUID kTypeVideo        = { STATIC_KSDATAFORMAT_TYPE_VIDEO };
+static const GUID kSpecVideoInfo    = { STATIC_KSDATAFORMAT_SPECIFIER_VIDEOINFO };
+static const GUID kSubYUY2          = { 0x32595559, 0x0000, 0x0010, { 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71 } };
+static const GUID kSubNV12          = { 0x3231564e, 0x0000, 0x0010, { 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71 } };
+static const GUID kSubRGB32         = { 0xe436eb7e, 0x524f, 0x11ce, { 0x9f, 0x53, 0x00, 0x20, 0xaf, 0x0b, 0xa7, 0x70 } };
+static const GUID kCategories[3]    = {
+    { STATIC_KSCATEGORY_VIDEO },
+    { STATIC_KSCATEGORY_CAPTURE },
+    { 0xe5323777, 0xf976, 0x4f5b, { 0x9b, 0x55, 0xb9, 0x46, 0x99, 0xc4, 0x6e, 0x44 } },   // KSCATEGORY_VIDEO_CAMERA
+};
+static const GUID kPinNameCapture   = { STATIC_PINNAME_VIDEO_CAPTURE };
+static const GUID kPropSetShow2Cam  = { STATIC_PROPSETID_Show2Cam };
+static const GUID kMemoryNonPaged   = { STATIC_KSMEMORY_TYPE_KERNEL_NONPAGED };
+
+// Statistics counters: atomic on x64; x86 has no 64-bit interlocked add, a lost increment there is harmless.
+#if defined(_X86_)
+#define S2C_ADD64(target, value) ((target) += (value))
+#else
+#define S2C_ADD64(target, value) InterlockedAdd64(&(target), (value))
+#endif
+
+#define FOURCC(a, b, c, d) ((ULONG)(a) | ((ULONG)(b) << 8) | ((ULONG)(c) << 16) | ((ULONG)(d) << 24))
+
+// ---------------------------------------------------------------------------
+// Pin: streaming state
+
+struct S2C_PIN
+{
+    S2C_CAMERA*         Camera;
+    PEX_TIMER           Timer;
+    LARGE_INTEGER       RunStart;       // QPC when the pin went to run
+    LARGE_INTEGER       QpcFrequency;
+    ULONGLONG           FramesDone;     // frames delivered or dropped since RunStart
+    BOOLEAN             Running;
+};
+
+static ULONGLONG QpcNow100ns(S2C_PIN* p)
+{
+    LARGE_INTEGER now = KeQueryPerformanceCounter(nullptr);
+    ULONGLONG ticks = (ULONGLONG)(now.QuadPart - p->RunStart.QuadPart);
+    ULONGLONG f = (ULONGLONG)p->QpcFrequency.QuadPart;
+    return (ticks / f) * 10000000ULL + ((ticks % f) * 10000000ULL) / f;
+}
+
+static VOID NTAPI FrameTimer(_In_ PEX_TIMER Timer, _In_opt_ PVOID Context)
+{
+    UNREFERENCED_PARAMETER(Timer);
+    KsPinAttemptProcessing((PKSPIN)Context, TRUE);     // Process runs at PASSIVE_LEVEL on a worker
+}
+
+static NTSTATUS S2C_CB PinCreate(_In_ PKSPIN Pin, _In_ PIRP Irp)
+{
+    UNREFERENCED_PARAMETER(Irp);
+    S2C_CAMERA* camera = S2cCameraFromPin(Pin);
+    if (!camera) return STATUS_INVALID_DEVICE_STATE;
+    S2C_PIN* p = (S2C_PIN*)ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(S2C_PIN), S2C_POOLTAG);
+    if (!p) return STATUS_INSUFFICIENT_RESOURCES;
+    p->Camera = camera;
+    p->Timer = ExAllocateTimer(FrameTimer, Pin, EX_TIMER_HIGH_RESOLUTION);
+    if (!p->Timer)
+    {
+        ExFreePoolWithTag(p, S2C_POOLTAG);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    // Video capture clients expect KS_FRAME_INFO after every stream header.
+    Pin->StreamHeaderSize = sizeof(KSSTREAM_HEADER) + sizeof(KS_FRAME_INFO);
+    Pin->Context = p;
+    S2cLog("Camera %lu: pin opened", camera->Index + 1);
+    S2cLogFlush();
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS S2C_CB PinClose(_In_ PKSPIN Pin, _In_ PIRP Irp)
+{
+    UNREFERENCED_PARAMETER(Irp);
+    S2C_PIN* p = (S2C_PIN*)Pin->Context;
+    if (p)
+    {
+        if (p->Timer) ExDeleteTimer(p->Timer, TRUE, TRUE, nullptr);     // cancel and wait for a running callback
+        if (p->Running) InterlockedDecrement(&p->Camera->Streaming);
+        S2cLog("Camera %lu: pin closed", p->Camera->Index + 1);
+        ExFreePoolWithTag(p, S2C_POOLTAG);
+        Pin->Context = nullptr;
+    }
+    S2cLogFlush();
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS S2C_CB PinSetDeviceState(_In_ PKSPIN Pin, _In_ KSSTATE ToState, _In_ KSSTATE FromState)
+{
+    S2C_PIN* p = (S2C_PIN*)Pin->Context;
+    if (!p) return STATUS_SUCCESS;
+    S2C_CAMERA* c = p->Camera;
+    if (ToState == KSSTATE_RUN && !p->Running)
+    {
+        p->RunStart = KeQueryPerformanceCounter(&p->QpcFrequency);
+        p->FramesDone = 0;
+        p->Running = TRUE;
+        InterlockedIncrement(&c->Streaming);
+        LONGLONG period = 10000000LL / (c->Fps ? c->Fps : 30);         // 100 ns units
+        ExSetTimer(p->Timer, -period, period, nullptr);
+    }
+    else if (ToState != KSSTATE_RUN && p->Running)
+    {
+        ExCancelTimer(p->Timer, nullptr);
+        p->Running = FALSE;
+        InterlockedDecrement(&c->Streaming);
+    }
+    S2cLog("Camera %lu: state %d -> %d", c->Index + 1, (int)FromState, (int)ToState);
+    return STATUS_SUCCESS;
+}
+
+// Accepts only the formats of this camera (the framework already picked the matching range).
+static NTSTATUS S2C_CB PinSetDataFormat(_In_ PKSPIN Pin, _In_opt_ PKSDATAFORMAT OldFormat, _In_opt_ PKSMULTIPLE_ITEM OldAttributeList,
+                                        _In_ const KSDATARANGE* DataRange, _In_opt_ const KSATTRIBUTE_LIST* AttributeRange)
+{
+    UNREFERENCED_PARAMETER(OldFormat);
+    UNREFERENCED_PARAMETER(OldAttributeList);
+    UNREFERENCED_PARAMETER(AttributeRange);
+    const KSDATAFORMAT* f = Pin->ConnectionFormat;
+    if (!f || f->FormatSize < sizeof(KS_DATAFORMAT_VIDEOINFOHEADER) || !IsEqualGUID(f->Specifier, kSpecVideoInfo))
+        return STATUS_NO_MATCH;
+    const KS_VIDEOINFOHEADER* vih = &((const KS_DATAFORMAT_VIDEOINFOHEADER*)f)->VideoInfoHeader;
+    const KS_VIDEOINFOHEADER* ours = &((const KS_DATARANGE_VIDEO*)DataRange)->VideoInfoHeader;
+    LONG h = vih->bmiHeader.biHeight < 0 ? -vih->bmiHeader.biHeight : vih->bmiHeader.biHeight;
+    // biSizeImage may be 0 (uncompressed formats): the frame size is computed from width, height and format.
+    if (!IsEqualGUID(f->SubFormat, DataRange->SubFormat) || vih->bmiHeader.biWidth != ours->bmiHeader.biWidth ||
+        h != ours->bmiHeader.biHeight || vih->bmiHeader.biCompression != ours->bmiHeader.biCompression)
+        return STATUS_NO_MATCH;
+    S2C_CAMERA* c = S2cCameraFromPin(Pin);
+    S2cLog("Camera %lu: format %lux%lu %.4s", c ? c->Index + 1 : 0, (ULONG)vih->bmiHeader.biWidth, (ULONG)h,
+           vih->bmiHeader.biCompression ? (const char*)&vih->bmiHeader.biCompression : "RGB");
+    return STATUS_SUCCESS;
+}
+
+// Delivers the frames that became due since the run started (one per call; the ones skipped count as dropped).
+static NTSTATUS S2C_CB PinProcess(_In_ PKSPIN Pin)
+{
+    S2C_PIN* p = (S2C_PIN*)Pin->Context;
+    if (!p || !p->Running) return STATUS_SUCCESS;
+    S2C_CAMERA* c = p->Camera;
+    ULONGLONG interval = 10000000ULL / (c->Fps ? c->Fps : 30);
+    ULONGLONG now = QpcNow100ns(p);
+    ULONGLONG due = now / interval + 1;                             // frames that should exist by now
+    if (p->FramesDone >= due) return STATUS_SUCCESS;
+
+    PKSSTREAM_POINTER leading = KsPinGetLeadingEdgeStreamPointer(Pin, KSSTREAM_POINTER_STATE_LOCKED);
+    if (!leading) return STATUS_SUCCESS;                            // no buffer from the client right now
+
+    if (due - p->FramesDone > 1)
+    {
+        S2C_ADD64(c->FramesDropped, (LONGLONG)(due - p->FramesDone - 1));
+        p->FramesDone = due - 1;
+    }
+
+    const KS_VIDEOINFOHEADER* vih = &((const KS_DATAFORMAT_VIDEOINFOHEADER*)Pin->ConnectionFormat)->VideoInfoHeader;
+    ULONG size = S2cFrameSize(vih);
+    PKSSTREAM_HEADER header = leading->StreamHeader;
+    ULONG used = 0;
+    if (leading->OffsetOut.Remaining >= size)
+    {
+        S2cRenderFrame(c, vih, leading->OffsetOut.Data, size, p->FramesDone);
+        used = size;
+    }
+    header->PresentationTime.Time = (LONGLONG)(p->FramesDone * interval);
+    header->PresentationTime.Numerator = 1;
+    header->PresentationTime.Denominator = 1;
+    header->Duration = (LONGLONG)interval;
+    header->OptionsFlags = KSSTREAM_HEADER_OPTIONSF_TIMEVALID | KSSTREAM_HEADER_OPTIONSF_DURATIONVALID |
+                           KSSTREAM_HEADER_OPTIONSF_SPLICEPOINT;
+    if (header->Size >= sizeof(KSSTREAM_HEADER) + sizeof(KS_FRAME_INFO))
+    {
+        PKS_FRAME_INFO fi = (PKS_FRAME_INFO)(header + 1);
+        fi->ExtendedHeaderSize = sizeof(KS_FRAME_INFO);
+        fi->dwFrameFlags = KS_VIDEO_FLAG_FRAME;
+        fi->PictureNumber = (LONGLONG)p->FramesDone;
+        fi->DropCount = c->FramesDropped;
+    }
+    p->FramesDone++;
+    S2C_ADD64(c->FramesDelivered, 1);
+    KsStreamPointerAdvanceOffsetsAndUnlock(leading, 0, used, TRUE);  // TRUE: hand the buffer back with this frame
+    return STATUS_SUCCESS;
+}
+
+// Format negotiation: the caller's range against one of ours -> our exact KS_DATAFORMAT_VIDEOINFOHEADER.
+static NTSTATUS S2C_CB PinIntersect(_In_ PVOID Context, _In_ PIRP Irp, _In_ PKSP_PIN PinInstance, _In_ PKSDATARANGE CallerRange,
+                                    _In_ PKSDATARANGE OurRange, _In_ ULONG BufferSize, _Out_opt_ PVOID Data, _Out_ PULONG DataSize)
+{
+    UNREFERENCED_PARAMETER(Context);
+    UNREFERENCED_PARAMETER(Irp);
+    UNREFERENCED_PARAMETER(PinInstance);
+    // The caller's range may be a KS_DATARANGE_VIDEO or a plain KSDATARANGE/format: only its GUIDs are used (the
+    // framework already matched them); every camera offers one size, which is what we return.
+    if (!IsEqualGUID(CallerRange->Specifier, kSpecVideoInfo)) return STATUS_NO_MATCH;
+    const KS_DATARANGE_VIDEO* ours = (const KS_DATARANGE_VIDEO*)OurRange;
+    ULONG size = sizeof(KS_DATAFORMAT_VIDEOINFOHEADER);
+    if (BufferSize == 0)
+    {
+        *DataSize = size;
+        return STATUS_BUFFER_OVERFLOW;
+    }
+    if (BufferSize < size || !Data) return STATUS_BUFFER_TOO_SMALL;
+    KS_DATAFORMAT_VIDEOINFOHEADER* f = (KS_DATAFORMAT_VIDEOINFOHEADER*)Data;
+    RtlCopyMemory(&f->DataFormat, &ours->DataRange, sizeof(KSDATAFORMAT));
+    f->DataFormat.FormatSize = size;
+    f->DataFormat.SampleSize = ours->VideoInfoHeader.bmiHeader.biSizeImage;
+    RtlCopyMemory(&f->VideoInfoHeader, &ours->VideoInfoHeader, sizeof(KS_VIDEOINFOHEADER));
+    *DataSize = size;
+    return STATUS_SUCCESS;
+}
+
+static const KSPIN_DISPATCH kPinDispatch = {
+    (PFNKSPINIRP)PinCreate, (PFNKSPINIRP)PinClose, (PFNKSPIN)PinProcess, nullptr,
+    (PFNKSPINSETDATAFORMAT)PinSetDataFormat, (PFNKSPINSETDEVICESTATE)PinSetDeviceState, nullptr, nullptr, nullptr, nullptr
+};
+
+// ---------------------------------------------------------------------------
+// Filter: the Show2Cam property set
+
+static S2C_CAMERA* CameraFromIrp(PIRP Irp)
+{
+    PKSFILTER filter = KsGetFilterFromIrp(Irp);
+    return filter ? S2cCameraFromFilter(filter) : nullptr;
+}
+
+static ULONG PropertyDataSize(PIRP Irp)
+{
+    return IoGetCurrentIrpStackLocation(Irp)->Parameters.DeviceIoControl.OutputBufferLength;
+}
+
+static NTSTATUS S2C_CB SetFrame(_In_ PIRP Irp, _In_ PKSIDENTIFIER Request, _Inout_ PVOID Data)
+{
+    UNREFERENCED_PARAMETER(Request);
+    S2C_CAMERA* c = CameraFromIrp(Irp);
+    ULONG size = PropertyDataSize(Irp);
+    const S2C_FRAME_HEADER* h = (const S2C_FRAME_HEADER*)Data;
+    if (!c || size < sizeof(S2C_FRAME_HEADER) || h->Magic != S2C_FRAME_MAGIC) return STATUS_INVALID_PARAMETER;
+    ULONG* copy = nullptr;
+    if (h->Width && h->Height)
+    {
+        if (h->Width > 3840 || h->Height > 2160 || (ULONGLONG)h->Width * h->Height * 4 > size - sizeof(S2C_FRAME_HEADER))
+            return STATUS_INVALID_PARAMETER;
+        SIZE_T bytes = (SIZE_T)h->Width * h->Height * 4;
+        copy = (ULONG*)ExAllocatePool2(POOL_FLAG_NON_PAGED, bytes, S2C_POOLTAG);
+        if (!copy) return STATUS_INSUFFICIENT_RESOURCES;
+        RtlCopyMemory(copy, h + 1, bytes);
+    }
+    ExAcquireFastMutex(&c->Lock);
+    ULONG* old = c->Picture;
+    BOOLEAN sizeChanged = !copy || c->PictureWidth != h->Width || c->PictureHeight != h->Height;
+    c->Picture = copy;
+    c->PictureWidth = copy ? h->Width : 0;
+    c->PictureHeight = copy ? h->Height : 0;
+    ExReleaseFastMutex(&c->Lock);
+    if (old) ExFreePoolWithTag(old, S2C_POOLTAG);
+    S2C_ADD64(c->PicturesReceived, 1);
+    if (sizeChanged)
+    {
+        S2cLog("Camera %lu: picture %lux%lu%s", c->Index + 1, h->Width, h->Height, copy ? "" : " (test pattern)");
+        S2cLogFlush();
+    }
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS S2C_CB GetStatus(_In_ PIRP Irp, _In_ PKSIDENTIFIER Request, _Inout_ PVOID Data)
+{
+    UNREFERENCED_PARAMETER(Request);
+    S2C_CAMERA* c = CameraFromIrp(Irp);
+    if (!c || PropertyDataSize(Irp) < sizeof(S2C_STATUS)) return STATUS_INVALID_PARAMETER;
+    S2C_STATUS* s = (S2C_STATUS*)Data;
+    RtlZeroMemory(s, sizeof(*s));
+    s->Index = c->Index;
+    s->Width = c->Width;
+    s->Height = c->Height;
+    s->Fps = c->Fps;
+    s->Streaming = (ULONG)c->Streaming;
+    s->SourceWidth = c->PictureWidth;
+    s->SourceHeight = c->PictureHeight;
+    s->FramesDelivered = (ULONGLONG)c->FramesDelivered;
+    s->FramesDropped = (ULONGLONG)c->FramesDropped;
+    s->PicturesReceived = (ULONGLONG)c->PicturesReceived;
+    Irp->IoStatus.Information = sizeof(S2C_STATUS);
+    return STATUS_SUCCESS;
+}
+
+static const KSPROPERTY_ITEM kProperties[] = {
+    { S2C_PROPERTY_FRAME, { nullptr }, sizeof(KSPROPERTY), sizeof(S2C_FRAME_HEADER), { (PFNKSHANDLER)SetFrame },
+      nullptr, 0, nullptr, nullptr, 0 },
+    { S2C_PROPERTY_STATUS, { (PFNKSHANDLER)GetStatus }, sizeof(KSPROPERTY), sizeof(S2C_STATUS), { nullptr },
+      nullptr, 0, nullptr, nullptr, 0 },
+};
+static const KSPROPERTY_SET kPropertySets[] = {
+    { &kPropSetShow2Cam, sizeof(kProperties) / sizeof(kProperties[0]), kProperties, 0, nullptr },
+};
+static const KSAUTOMATION_TABLE kFilterAutomation = {
+    1, sizeof(KSPROPERTY_ITEM), kPropertySets, 0, 0, nullptr, 0, 0, nullptr        // (x86: Alignment = 0)
+};
+
+// ---------------------------------------------------------------------------
+// Camera
+
+S2C_CAMERA* S2cCameraFromFilter(_In_ PKSFILTER Filter)
+{
+    S2C_CAMERA* c = CONTAINING_RECORD(Filter->Descriptor, S2C_CAMERA, FilterDescriptor);
+    return c->Signature == S2C_CAMERA_SIGNATURE ? c : nullptr;
+}
+
+S2C_CAMERA* S2cCameraFromPin(_In_ PKSPIN Pin)
+{
+    S2C_CAMERA* c = CONTAINING_RECORD(Pin->Descriptor, S2C_CAMERA, PinDescriptor);
+    return c->Signature == S2C_CAMERA_SIGNATURE ? c : nullptr;
+}
+
+static void InitRange(KS_DATARANGE_VIDEO* r, const GUID& sub, ULONG fourcc, USHORT bits, ULONG w, ULONG h, ULONG fps)
+{
+    RtlZeroMemory(r, sizeof(*r));
+    ULONG size = (ULONG)((ULONGLONG)w * h * bits / 8);
+    LONGLONG interval = 10000000LL / fps;
+    r->DataRange.FormatSize = sizeof(KS_DATARANGE_VIDEO);
+    r->DataRange.SampleSize = size;
+    r->DataRange.MajorFormat = kTypeVideo;
+    r->DataRange.SubFormat = sub;
+    r->DataRange.Specifier = kSpecVideoInfo;
+    r->bFixedSizeSamples = TRUE;
+    r->bTemporalCompression = FALSE;
+    r->StreamDescriptionFlags = KS_VIDEOSTREAM_CAPTURE;
+    r->MemoryAllocationFlags = 0;
+
+    KS_VIDEO_STREAM_CONFIG_CAPS* cc = &r->ConfigCaps;
+    cc->guid = kSpecVideoInfo;
+    cc->VideoStandard = KS_AnalogVideo_None;
+    cc->InputSize.cx = (LONG)w; cc->InputSize.cy = (LONG)h;
+    cc->MinCroppingSize = cc->InputSize;
+    cc->MaxCroppingSize = cc->InputSize;
+    cc->CropGranularityX = cc->CropGranularityY = 1;
+    cc->CropAlignX = cc->CropAlignY = 1;
+    cc->MinOutputSize = cc->InputSize;
+    cc->MaxOutputSize = cc->InputSize;
+    cc->OutputGranularityX = cc->OutputGranularityY = 1;
+    cc->MinFrameInterval = interval;
+    cc->MaxFrameInterval = interval;
+    cc->MinBitsPerSecond = (LONG)((ULONGLONG)size * 8 * fps > 0x7fffffff ? 0x7fffffff : (ULONGLONG)size * 8 * fps);
+    cc->MaxBitsPerSecond = cc->MinBitsPerSecond;
+
+    KS_VIDEOINFOHEADER* v = &r->VideoInfoHeader;
+    v->rcSource.right = v->rcTarget.right = (LONG)w;
+    v->rcSource.bottom = v->rcTarget.bottom = (LONG)h;
+    v->dwBitRate = (DWORD)cc->MaxBitsPerSecond;
+    v->AvgTimePerFrame = interval;
+    v->bmiHeader.biSize = sizeof(KS_BITMAPINFOHEADER);
+    v->bmiHeader.biWidth = (LONG)w;
+    v->bmiHeader.biHeight = (LONG)h;         // RGB: bottom-up; YUV: top-down by definition
+    v->bmiHeader.biPlanes = 1;
+    v->bmiHeader.biBitCount = bits;
+    v->bmiHeader.biCompression = fourcc;      // 0 = BI_RGB
+    v->bmiHeader.biSizeImage = size;
+}
+
+NTSTATUS S2cCameraCreate(_In_ ULONG Index, _In_ ULONG Width, _In_ ULONG Height, _In_ ULONG Fps, _Out_ S2C_CAMERA** Camera)
+{
+    *Camera = nullptr;
+    S2C_CAMERA* c = (S2C_CAMERA*)ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(S2C_CAMERA), S2C_POOLTAG);
+    if (!c) return STATUS_INSUFFICIENT_RESOURCES;
+    c->Signature = S2C_CAMERA_SIGNATURE;
+    c->Index = Index;
+    c->Width = Width;
+    c->Height = Height;
+    c->Fps = Fps;
+    RtlStringCchPrintfW(c->RefString, 16, L"Camera%lu", Index + 1);
+    ExInitializeFastMutex(&c->Lock);
+
+    InitRange(&c->Ranges[0], kSubYUY2, FOURCC('Y', 'U', 'Y', '2'), 16, Width, Height, Fps);
+    InitRange(&c->Ranges[1], kSubNV12, FOURCC('N', 'V', '1', '2'), 12, Width, Height, Fps);
+    InitRange(&c->Ranges[2], kSubRGB32, 0, 32, Width, Height, Fps);
+    for (ULONG i = 0; i < S2C_FORMATS; i++) c->RangePointers[i] = &c->Ranges[i].DataRange;
+
+    // One frame buffer per sample, system memory, up to the largest format (RGB32).
+    KSALLOCATOR_FRAMING_EX* f = &c->Framing;
+    ULONG maxSize = Width * Height * 4;
+    f->CountItems = 1;
+    f->OutputCompression.RatioNumerator = 1;
+    f->OutputCompression.RatioDenominator = 1;
+    f->FramingItem[0].MemoryType = kMemoryNonPaged;
+    f->FramingItem[0].Flags = KSALLOCATOR_REQUIREMENTF_SYSTEM_MEMORY | KSALLOCATOR_REQUIREMENTF_PREFERENCES_ONLY;
+    f->FramingItem[0].Frames = 3;
+    f->FramingItem[0].FileAlignment = FILE_LONG_ALIGNMENT;
+    f->FramingItem[0].PhysicalRange.MaxFrameSize = (ULONG)-1;
+    f->FramingItem[0].PhysicalRange.Stepping = 1;
+    f->FramingItem[0].FramingRange.Range.MinFrameSize = Width * Height * 3 / 2;
+    f->FramingItem[0].FramingRange.Range.MaxFrameSize = maxSize;
+    f->FramingItem[0].FramingRange.Range.Stepping = 1;
+    f->FramingItem[0].FramingRange.InPlaceWeight = 0;
+    f->FramingItem[0].FramingRange.NotInPlaceWeight = 0;
+
+    KSPIN_DESCRIPTOR_EX* pd = &c->PinDescriptor;
+    pd->Dispatch = &kPinDispatch;
+    pd->AutomationTable = nullptr;
+    pd->PinDescriptor.DataRangesCount = S2C_FORMATS;
+    pd->PinDescriptor.DataRanges = c->RangePointers;
+    pd->PinDescriptor.DataFlow = KSPIN_DATAFLOW_OUT;
+    pd->PinDescriptor.Communication = KSPIN_COMMUNICATION_BOTH;
+    pd->PinDescriptor.Category = &kPinNameCapture;
+    pd->PinDescriptor.Name = &kPinNameCapture;
+    pd->Flags = KSPIN_FLAG_PROCESS_IN_RUN_STATE_ONLY | KSPIN_FLAG_DO_NOT_INITIATE_PROCESSING;
+    pd->InstancesPossible = 1;
+    pd->InstancesNecessary = 1;
+    pd->AllocatorFraming = &c->Framing;
+    pd->IntersectHandler = (PFNKSINTERSECTHANDLEREX)PinIntersect;
+
+    KSFILTER_DESCRIPTOR* fd = &c->FilterDescriptor;
+    fd->Dispatch = nullptr;
+    fd->AutomationTable = &kFilterAutomation;
+    fd->Version = KSFILTER_DESCRIPTOR_VERSION;
+    fd->Flags = 0;
+    fd->ReferenceGuid = nullptr;
+    fd->PinDescriptorsCount = 1;
+    fd->PinDescriptorSize = sizeof(KSPIN_DESCRIPTOR_EX);
+    fd->PinDescriptors = pd;
+    fd->CategoriesCount = 3;
+    fd->Categories = kCategories;
+
+    *Camera = c;
+    return STATUS_SUCCESS;
+}
+
+void S2cCameraFree(_In_ S2C_CAMERA* Camera)
+{
+    if (Camera->Picture) ExFreePoolWithTag(Camera->Picture, S2C_POOLTAG);
+    ExFreePoolWithTag(Camera, S2C_POOLTAG);
+}
+
+// ---------------------------------------------------------------------------
+// Rendering
+
+// Test pattern: seven colour bars, the camera number as white blocks in the top left corner and a white bar
+// moving across the bottom (shows the picture is live).
+static ULONG PatternPixel(ULONG x, ULONG y, ULONG w, ULONG h, ULONG index, ULONGLONG frame)
+{
+    static const ULONG bars[7] = { 0xFFC0C0C0, 0xFFC0C000, 0xFF00C0C0, 0xFF00C000, 0xFFC000C0, 0xFFC00000, 0xFF0000C0 };
+    ULONG block = h / 12 ? h / 12 : 1;
+    if (y >= block / 2 && y < block / 2 + block)
+    {
+        ULONG k = (x - block / 2) / (block + block / 2);
+        ULONG inK = (x - block / 2) % (block + block / 2);
+        if (x >= block / 2 && k <= index && inK < block) return 0xFFFFFFFF;
+    }
+    if (y >= h - h / 8)
+    {
+        ULONG pos = (ULONG)((frame * (w / 60 ? w / 60 : 1)) % w);
+        return (x >= pos && x < pos + w / 16) ? 0xFFFFFFFF : 0xFF101010;
+    }
+    return bars[(x * 7) / w];
+}
+
+static inline void Yuv(ULONG bgra, int* Y, int* U, int* V)
+{
+    int b = bgra & 0xFF, g = (bgra >> 8) & 0xFF, r = (bgra >> 16) & 0xFF;
+    *Y = ((66 * r + 129 * g + 25 * b + 128) >> 8) + 16;           // BT.601, limited range
+    *U = ((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128;
+    *V = ((112 * r - 94 * g - 18 * b + 128) >> 8) + 128;
+}
+
+ULONG S2cFrameSize(_In_ const KS_VIDEOINFOHEADER* Info)
+{
+    ULONG w = (ULONG)Info->bmiHeader.biWidth;
+    ULONG h = (ULONG)(Info->bmiHeader.biHeight < 0 ? -Info->bmiHeader.biHeight : Info->bmiHeader.biHeight);
+    switch (Info->bmiHeader.biCompression)
+    {
+    case FOURCC('Y', 'U', 'Y', '2'): return w * h * 2;
+    case FOURCC('N', 'V', '1', '2'): return w * h * 3 / 2;
+    default:                         return w * h * 4;        // RGB32
+    }
+}
+
+void S2cRenderFrame(_In_ S2C_CAMERA* c, _In_ const KS_VIDEOINFOHEADER* Info, _Out_ PUCHAR Dst, _In_ ULONG DstSize,
+                    _In_ ULONGLONG FrameNumber)
+{
+    ULONG w = (ULONG)Info->bmiHeader.biWidth;
+    ULONG h = (ULONG)(Info->bmiHeader.biHeight < 0 ? -Info->bmiHeader.biHeight : Info->bmiHeader.biHeight);
+    ULONG fourcc = Info->bmiHeader.biCompression;
+    if (!w || !h) return;
+
+    ExAcquireFastMutex(&c->Lock);
+    const ULONG* pic = c->Picture;
+    ULONG pw = c->PictureWidth, ph = c->PictureHeight;
+    // Nearest-neighbour scaling of the picture to the output size (the program normally sends the exact size).
+    #define SRC(x, y) (pic ? pic[(SIZE_T)((y) * ph / h) * pw + (x) * pw / w] : PatternPixel((x), (y), w, h, c->Index, FrameNumber))
+
+    if (fourcc == FOURCC('Y', 'U', 'Y', '2') && DstSize >= w * h * 2)
+    {
+        for (ULONG y = 0; y < h; y++)
+        {
+            PUCHAR d = Dst + (SIZE_T)y * w * 2;
+            for (ULONG x = 0; x + 1 < w; x += 2)
+            {
+                int y0, u0, v0, y1, u1, v1;
+                Yuv(SRC(x, y), &y0, &u0, &v0);
+                Yuv(SRC(x + 1, y), &y1, &u1, &v1);
+                d[0] = (UCHAR)y0; d[1] = (UCHAR)((u0 + u1) / 2); d[2] = (UCHAR)y1; d[3] = (UCHAR)((v0 + v1) / 2);
+                d += 4;
+            }
+        }
+    }
+    else if (fourcc == FOURCC('N', 'V', '1', '2') && DstSize >= w * h * 3 / 2)
+    {
+        PUCHAR uv = Dst + (SIZE_T)w * h;
+        for (ULONG y = 0; y < h; y++)
+        {
+            PUCHAR d = Dst + (SIZE_T)y * w;
+            for (ULONG x = 0; x < w; x++)
+            {
+                int Y, U, V;
+                Yuv(SRC(x, y), &Y, &U, &V);
+                d[x] = (UCHAR)Y;
+                if (!(y & 1) && !(x & 1))
+                {
+                    PUCHAR q = uv + (SIZE_T)(y / 2) * w + x;
+                    q[0] = (UCHAR)U;
+                    q[1] = (UCHAR)V;
+                }
+            }
+        }
+    }
+    else if (fourcc == 0 && DstSize >= w * h * 4)
+    {
+        BOOLEAN bottomUp = Info->bmiHeader.biHeight > 0;
+        for (ULONG y = 0; y < h; y++)
+        {
+            ULONG* d = (ULONG*)(Dst + (SIZE_T)(bottomUp ? h - 1 - y : y) * w * 4);
+            for (ULONG x = 0; x < w; x++) d[x] = SRC(x, y);
+        }
+    }
+    #undef SRC
+    ExReleaseFastMutex(&c->Lock);
+}

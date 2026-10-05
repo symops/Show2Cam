@@ -1,0 +1,17 @@
+# Build output
+dist/
+*.exe
+*.sys
+*.cat
+*.cer
+*.o
+*.a
+driver/mingw/out/
+driver/mingw/out-x86/
+tools/generate-cat-file/generate-cat-file
+tools/generate-cat-file/strip-pe-image
+__pycache__/
+
+# Test signing keys: created by driver/mingw/build.sh when missing; never publish them
+# (the installer trusts this root on every machine).
+driver/mingw/testcert/
