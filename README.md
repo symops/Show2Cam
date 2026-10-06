@@ -43,12 +43,19 @@ run it again, then "Install". The cameras appear as "Show2Cam Camera 1" … in e
 `s2cinstall.exe` (administrator command prompt): `status` (cameras, frames, driver log), `cameras N`,
 `size N WIDTH HEIGHT [FPS]`, `color N RRGGBB`, `bmp N FILE.bmp`, `pattern N`, `install`, `remove`.
 
+`s2cctl.exe` — what the control panel sets, from the command line (no administrator rights except `count`):
+`status`, `count N`, `name CAM "NAME"`, `source CAM text ["TEXT"] | images [FOLDER] | video [FOLDER] | stream URL |
+generator`, `audio CAM speak2mic|off|DEVICE`, `format CAM source|WxH [FPS|source]`, `pause CAM on|off`, `reset CAM`,
+`export FILE.ini`, `import FILE.ini`, `picture CAM FILE|pattern` (CAM: 1..10 or `all`). A running panel takes the
+changes at once. Exit codes: 0 ok, 1 failed, 2 bad arguments, 3 administrator rights needed, 4 Show2Cam cannot work
+here. Log: `ctl.log`.
+
 `s2ccamdiag.exe` (and `s2ccamdiag32.exe` for 32-bit programs): how programs see every camera (Show2Cam and others) —
 the Windows registration, camera privacy, DirectShow (formats, choosing 640×480 / 1280×720 / 1920×1080, a capture graph
 running for 3 s), Media Foundation (formats, frames read) and Video for Windows; `--no-run` lists only. Log:
 `camdiag-x64.log` / `camdiag-x86.log`.
 
-Logs: `C:\ProgramData\Show2Cam\logs\` — `setup.log` (installer), `install.log` (s2cinstall), `panel.log`
+Logs: `C:\ProgramData\Show2Cam\logs\` — `setup.log` (installer), `install.log` (s2cinstall), `ctl.log` (s2cctl), `panel.log`
 (control panel), `events.log` (the panel's event list), `driver.log` (written by the driver itself).
 
 ## Building (Linux)
