@@ -264,3 +264,4 @@ Zapisać zmiany ustawień kamery „%ls”?
 Kamera „%ls”: ustawienia zastosowane.
 Generator
 Generator (ruchome kształty)
+Status

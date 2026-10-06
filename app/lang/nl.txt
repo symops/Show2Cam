@@ -264,3 +264,4 @@ Wijzigingen in de instellingen van camera ‘%ls’ opslaan?
 Camera ‘%ls’: instellingen toegepast.
 Generator
 Generator (bewegende vormen)
+Status

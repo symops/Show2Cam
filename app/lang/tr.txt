@@ -264,3 +264,4 @@ belirlenemedi
 “%ls” kamerası: ayarlar uygulandı.
 Üreteç
 Üreteç (hareketli şekiller)
+Durum

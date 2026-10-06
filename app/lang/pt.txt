@@ -264,3 +264,4 @@ Salvar as alterações nas configurações da câmera “%ls”?
 Câmera “%ls”: configurações aplicadas.
 Gerador
 Gerador (formas em movimento)
+Status

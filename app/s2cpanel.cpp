@@ -558,11 +558,12 @@ static void UpdateListRow(int i)
     else if (c.status.current[0]) _snwprintf(t, 300, L"%ls: %ls", what, FileName(c.status.current));
     else _snwprintf(t, 300, L"%ls", what);
     t[299] = 0;
-    if (c.config.paused) { wcsncat(t, L" — ", 299 - wcslen(t)); wcsncat(t, TR(L"пауза"), 299 - wcslen(t)); }
-    ListSetText(i, 1, t);
+    ListSetText(i, 2, t);
+    // Status: a symbol (green: plays, grey: paused; see ListCustomDraw)
+    ListSetText(i, 1, c.config.paused ? L"\u25AE\u25AE" : L"\u25B6");
     if (c.status.deviceOpen) FormatText(t, 300, c.status.driver.Width, c.status.driver.Height, c.status.driver.Fps);
     else wcscpy(t, L"—");
-    ListSetText(i, 2, t);
+    ListSetText(i, 3, t);
     wchar_t users[300], state[320];
     UsersText(c.status, users, 300);
     if (!c.status.deviceOpen) wcscpy(state, TR(L"нет связи"));
@@ -570,7 +571,7 @@ static void UpdateListRow(int i)
     else if (users[0]) _snwprintf(state, 320, L"● %ls", users);
     else wcscpy(state, TR(L"○ не используется"));
     state[319] = 0;
-    ListSetText(i, 3, state);
+    ListSetText(i, 4, state);
 }
 
 static void FillList()
@@ -1500,8 +1501,8 @@ static void ApplyFonts()
 static void ListColumns()
 {
     HWND list = Ctl(IDC_LIST);
-    const int widths[4] = { 128, 160, 128, 124 };
-    for (int i = 0; i < 4; i++) ListView_SetColumnWidth(list, i, S(widths[i]));
+    const int widths[5] = { 134, 50, 140, 104, 112 };
+    for (int i = 0; i < 5; i++) ListView_SetColumnWidth(list, i, S(widths[i]));
 }
 
 static void Layout()
@@ -1565,11 +1566,12 @@ static void CreateControls()
     HWND list = Create(WC_LISTVIEWW, L"", LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | LVS_NOSORTHEADER | WS_TABSTOP, IDC_LIST,
                        WS_EX_CLIENTEDGE);
     ListView_SetExtendedListViewStyle(list, LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
-    const wchar_t* cols[4] = { TR(L"Камера"), TR(L"Источник"), TR(L"Формат"), TR(L"Состояние") };
-    for (int i = 0; i < 4; i++)
+    const wchar_t* cols[5] = { TR(L"Камера"), TR(L"Статус"), TR(L"Источник"), TR(L"Формат"), TR(L"Состояние") };
+    for (int i = 0; i < 5; i++)
     {
         LVCOLUMNW col = {};
-        col.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_SUBITEM;
+        col.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_SUBITEM | (i == 1 ? LVCF_FMT : 0);
+        col.fmt = i == 1 ? LVCFMT_CENTER : 0;
         col.pszText = (LPWSTR)cols[i];
         col.cx = 100;
         col.iSubItem = i;
@@ -1740,7 +1742,38 @@ static LRESULT ListCustomDraw(NMLVCUSTOMDRAW* cd)
         cd->nmcd.uItemState &= ~(CDIS_SELECTED | CDIS_FOCUS);
         cd->clrTextBk = selected ? RGB(204, 228, 247) : GetSysColor(COLOR_WINDOW);
         cd->clrText = GetSysColor(COLOR_WINDOWTEXT);
-        if (cd->iSubItem == 3 && row < g_camCount)
+        if (cd->iSubItem == 1 && row < g_camCount)
+        {
+            // Status: drawn, not a font glyph (fonts without the symbols showed boxes): a green triangle while the
+            // camera plays, two grey bars while it is paused.
+            RECT rc;
+            ListView_GetSubItemRect(cd->nmcd.hdr.hwndFrom, row, 1, LVIR_BOUNDS, &rc);
+            HDC dc = cd->nmcd.hdc;
+            HBRUSH bg = CreateSolidBrush(cd->clrTextBk);
+            FillRect(dc, &rc, bg);
+            DeleteObject(bg);
+            int h = S(10), cx = (rc.left + rc.right) / 2, cy = (rc.top + rc.bottom) / 2;
+            bool paused = g_cams[row].config.paused;
+            HBRUSH br = CreateSolidBrush(paused ? RGB(150, 150, 150) : RGB(16, 150, 60));
+            HGDIOBJ oldBrush = SelectObject(dc, br);
+            HGDIOBJ oldPen = SelectObject(dc, GetStockObject(NULL_PEN));
+            if (paused)
+            {
+                int w = S(3), gap = S(2);
+                Rectangle(dc, cx - gap - w, cy - h / 2, cx - gap + 1, cy + h / 2 + 1);
+                Rectangle(dc, cx + gap, cy - h / 2, cx + gap + w + 1, cy + h / 2 + 1);
+            }
+            else
+            {
+                POINT tri[3] = { { cx - h / 2 + 1, cy - h / 2 }, { cx - h / 2 + 1, cy + h / 2 }, { cx + h / 2, cy } };
+                Polygon(dc, tri, 3);
+            }
+            SelectObject(dc, oldPen);
+            SelectObject(dc, oldBrush);
+            DeleteObject(br);
+            return CDRF_SKIPDEFAULT;
+        }
+        if (cd->iSubItem == 4 && row < g_camCount)
         {
             const CamRunStatus& s = g_cams[row].status;
             cd->clrText = !s.deviceOpen ? RGB(190, 60, 50) : (InUse(s) ? RGB(16, 140, 56) : RGB(120, 120, 120));

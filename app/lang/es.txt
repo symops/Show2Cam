@@ -264,3 +264,4 @@ no determinado
 Cámara «%ls»: configuración aplicada.
 Generador
 Generador (figuras en movimiento)
+Estado

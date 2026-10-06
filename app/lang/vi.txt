@@ -264,3 +264,4 @@ Lưu thay đổi cài đặt của camera “%ls”?
 Camera “%ls”: đã áp dụng cài đặt.
 Trình tạo
 Trình tạo (hình chuyển động)
+Trạng thái
