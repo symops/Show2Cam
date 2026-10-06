@@ -57,6 +57,7 @@ struct S2C_CAMERA
     volatile LONG           Streaming;
     volatile LONG           PinsOpen;
     ULONG                   UserPids[S2C_MAX_USERS];   // who opened the pins (guarded by Lock)
+    PKSPIN                  Pins[S2C_MAX_USERS];       // the open pins (guarded by Lock; the status watchdog)
     WCHAR                   UserNames[S2C_MAX_USERS][32];
     BOOLEAN                 Enabled;                   // its device interfaces are on (programs see it)
     PDEVICE_OBJECT          Pdo;                       // the device (camera 1 names it, see ApplyName)

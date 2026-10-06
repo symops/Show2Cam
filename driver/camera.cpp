@@ -33,7 +33,8 @@ static const GUID kMemoryNonPaged   = { STATIC_KSMEMORY_TYPE_KERNEL_NONPAGED };
 struct S2C_PIN
 {
     S2C_CAMERA*         Camera;
-    PEX_TIMER           Timer;
+    KTIMER              Timer;          // periodic, twice per frame (classic timer + DPC: the high-resolution EX_TIMER
+    KDPC                Dpc;            //  stopped firing at times, after the run's first frame - programs then hung)
     LARGE_INTEGER       RunStart;       // QPC when the pin went to run
     LARGE_INTEGER       QpcFrequency;
     ULONGLONG           FramesDone;     // frames delivered or dropped since RunStart
@@ -48,6 +49,8 @@ struct S2C_PIN
     volatile LONG       TimerFires, ProcessCalls;
     volatile LONGLONG   LastProcess, LastFrame;    // QPC time (100 ns since RunStart)
     BOOLEAN             StallLogged;
+    BOOLEAN             KickLogged;     // the status watchdog restarted processing (logged once until frames come)
+    LONG                FiresSeen;      // TimerFires when the watchdog looked last
 };
 
 static ULONGLONG QpcNow100ns(S2C_PIN* p)
@@ -58,9 +61,11 @@ static ULONGLONG QpcNow100ns(S2C_PIN* p)
     return (ticks / f) * 10000000ULL + ((ticks % f) * 10000000ULL) / f;
 }
 
-static VOID NTAPI FrameTimer(_In_ PEX_TIMER Timer, _In_opt_ PVOID Context)
+static VOID NTAPI FrameTimer(_In_ PKDPC Dpc, _In_opt_ PVOID Context, _In_opt_ PVOID Arg1, _In_opt_ PVOID Arg2)
 {
-    UNREFERENCED_PARAMETER(Timer);
+    UNREFERENCED_PARAMETER(Dpc);
+    UNREFERENCED_PARAMETER(Arg1);
+    UNREFERENCED_PARAMETER(Arg2);
     PKSPIN pin = (PKSPIN)Context;
     S2C_PIN* p = (S2C_PIN*)pin->Context;
     if (p && p->Running)
@@ -87,12 +92,8 @@ static NTSTATUS S2C_CB PinCreate(_In_ PKSPIN Pin, _In_ PIRP Irp)
     S2C_PIN* p = (S2C_PIN*)ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(S2C_PIN), S2C_POOLTAG);
     if (!p) return STATUS_INSUFFICIENT_RESOURCES;
     p->Camera = camera;
-    p->Timer = ExAllocateTimer(FrameTimer, Pin, EX_TIMER_HIGH_RESOLUTION);
-    if (!p->Timer)
-    {
-        ExFreePoolWithTag(p, S2C_POOLTAG);
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
+    KeInitializeTimerEx(&p->Timer, NotificationTimer);
+    KeInitializeDpc(&p->Dpc, FrameTimer, Pin);
     // Video capture clients expect KS_FRAME_INFO after every stream header.
     Pin->StreamHeaderSize = sizeof(KSSTREAM_HEADER) + sizeof(KS_FRAME_INFO);
     Pin->Context = p;
@@ -123,6 +124,12 @@ static NTSTATUS S2C_CB PinCreate(_In_ PKSPIN Pin, _In_ PIRP Irp)
             RtlCopyMemory(camera->UserNames[i], exe, sizeof(exe));
             break;
         }
+    for (ULONG i = 0; i < S2C_MAX_USERS; i++)
+        if (!camera->Pins[i])
+        {
+            camera->Pins[i] = Pin;           // for the status watchdog (S2cCameraWatchdog)
+            break;
+        }
     ExReleaseFastMutex(&camera->Lock);
     S2cLog("Camera %lu: pin opened by process %lu (%ls)", camera->Index + 1, p->Pid, exe[0] ? exe : L"?");
     S2cLogFlush();
@@ -135,7 +142,13 @@ static NTSTATUS S2C_CB PinClose(_In_ PKSPIN Pin, _In_ PIRP Irp)
     S2C_PIN* p = (S2C_PIN*)Pin->Context;
     if (p)
     {
-        if (p->Timer) ExDeleteTimer(p->Timer, TRUE, TRUE, nullptr);     // cancel and wait for a running callback
+        ExAcquireFastMutex(&p->Camera->Lock);
+        for (ULONG i = 0; i < S2C_MAX_USERS; i++)
+            if (p->Camera->Pins[i] == Pin) p->Camera->Pins[i] = nullptr;
+        ExReleaseFastMutex(&p->Camera->Lock);
+        p->Running = FALSE;
+        KeCancelTimer(&p->Timer);
+        KeFlushQueuedDpcs();                // a DPC already queued has run before the context goes
         if (p->Running) InterlockedDecrement(&p->Camera->Streaming);
         InterlockedDecrement(&p->Camera->PinsOpen);
         ExAcquireFastMutex(&p->Camera->Lock);
@@ -174,11 +187,14 @@ static NTSTATUS S2C_CB PinSetDeviceState(_In_ PKSPIN Pin, _In_ KSSTATE ToState, 
         p->StallLogged = FALSE;
         p->Running = TRUE;
         InterlockedIncrement(&c->Streaming);
-        ExSetTimer(p->Timer, -period, period, nullptr);
+        LARGE_INTEGER due;
+        due.QuadPart = -period;
+        LONG ms = (LONG)(period / 20000);     // twice per frame (Process delivers only frames that are due)
+        KeSetTimerEx(&p->Timer, due, ms < 1 ? 1 : ms, &p->Dpc);
     }
     else if (ToState != KSSTATE_RUN && p->Running)
     {
-        ExCancelTimer(p->Timer, nullptr);
+        KeCancelTimer(&p->Timer);
         p->Running = FALSE;
         InterlockedDecrement(&c->Streaming);
     }
@@ -301,9 +317,9 @@ static NTSTATUS S2C_CB PinProcess(_In_ PKSPIN Pin)
     }
     p->FramesDone++;
     p->LastFrame = (LONGLONG)now;
-    if (p->StallLogged)
+    if (p->StallLogged || p->KickLogged)
     {
-        p->StallLogged = FALSE;
+        p->StallLogged = p->KickLogged = FALSE;
         S2cLog("Camera %lu: frames to process %lu again", c->Index + 1, p->Pid);
         S2cLogFlush();
     }
@@ -409,11 +425,49 @@ static NTSTATUS S2C_CB SetFrame(_In_ PIRP Irp, _In_ PKSIDENTIFIER Request, _Inou
     return STATUS_SUCCESS;
 }
 
+// Called with every status request (the panel asks twice a second): a running pin that got no frame for a while is
+// processed again (and its timer re-armed when it stopped firing), logged once with what it was waiting for.
+static void S2cCameraWatchdog(S2C_CAMERA* c)
+{
+    ExAcquireFastMutex(&c->Lock);
+    for (ULONG i = 0; i < S2C_MAX_USERS; i++)
+    {
+        PKSPIN pin = c->Pins[i];
+        S2C_PIN* p = pin ? (S2C_PIN*)pin->Context : nullptr;
+        if (!p || !p->Running) continue;
+        ULONGLONG interval = p->Interval ? p->Interval : 10000000ULL / (c->Fps ? c->Fps : 30);
+        ULONGLONG now = QpcNow100ns(p);
+        ULONGLONG quiet = 4 * interval > 10000000ULL ? 4 * interval : 10000000ULL;        // 4 frames, at least 1 s
+        if (now < quiet || now - (ULONGLONG)p->LastFrame < quiet) continue;
+        LONG fires = p->TimerFires;
+        bool timerDead = fires == p->FiresSeen;
+        p->FiresSeen = fires;
+        if (!p->KickLogged)
+        {
+            p->KickLogged = TRUE;
+            S2cLog("Camera %lu: no frame for %llu ms to process %lu (timer fired %ld%s, Process called %ld, last buffer %llu ms "
+                   "ago): processing restarted", c->Index + 1, (now - (ULONGLONG)p->LastFrame) / 10000, p->Pid, fires,
+                   timerDead ? " - stopped" : "", p->ProcessCalls, (now - p->LastBuffer) / 10000);
+            S2cLogFlush();
+        }
+        if (timerDead)
+        {
+            LARGE_INTEGER due;
+            due.QuadPart = -(LONGLONG)interval;
+            LONG ms = (LONG)(interval / 20000);
+            KeSetTimerEx(&p->Timer, due, ms < 1 ? 1 : ms, &p->Dpc);
+        }
+        KsPinAttemptProcessing(pin, TRUE);
+    }
+    ExReleaseFastMutex(&c->Lock);
+}
+
 static NTSTATUS S2C_CB GetStatus(_In_ PIRP Irp, _In_ PKSIDENTIFIER Request, _Inout_ PVOID Data)
 {
     UNREFERENCED_PARAMETER(Request);
     S2C_CAMERA* c = CameraFromIrp(Irp);
     if (!c || PropertyDataSize(Irp) < sizeof(S2C_STATUS)) return STATUS_INVALID_PARAMETER;
+    S2cCameraWatchdog(c);
     S2C_STATUS* s = (S2C_STATUS*)Data;
     RtlZeroMemory(s, sizeof(*s));
     s->Index = c->Index;
