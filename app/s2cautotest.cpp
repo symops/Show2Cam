@@ -233,6 +233,7 @@ struct Capture
     IMFSourceReader* reader = nullptr;
     UINT32 w = 0, h = 0;
     LONG   stride = 0;
+    bool   native = false;                 // read in the camera's own format (no RGB32 conversion): timing only
     ULONG* px = nullptr;                   // the last frame, top-down
     LONGLONG ts = 0;                       // its time stamp (100 ns)
 
@@ -316,6 +317,13 @@ static HRESULT CaptureOpen(const CamInfo& cam, Capture* c, UINT32 wantW = 0, UIN
         if (SUCCEEDED(hr)) rgb->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
         if (SUCCEEDED(hr)) hr = c->reader->SetCurrentMediaType(stream, nullptr, rgb);
         if (rgb) rgb->Release();
+        // A frame rate the camera offers only as a range (3 fps): Media Foundation has no converter from that type to
+        // RGB32 (0xC00D5212); the frames are read as they come (only their timing is looked at then).
+        if (FAILED(hr) && wantW && fps)
+        {
+            c->native = true;
+            hr = S_OK;
+        }
     }
     if (SUCCEEDED(hr))
     {
@@ -344,6 +352,12 @@ static HRESULT CaptureRead(Capture* c)
         IMFSample* sample = nullptr;
         HRESULT hr = c->reader->ReadSample((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, &streamIndex, &flags, &ts, &sample);
         if (FAILED(hr)) return hr;
+        if (sample && c->native)
+        {
+            c->ts = ts;
+            sample->Release();
+            return S_OK;
+        }
         if (flags & (MF_SOURCE_READERF_ERROR | MF_SOURCE_READERF_ENDOFSTREAM))
         {
             if (sample) sample->Release();
@@ -946,11 +960,13 @@ static void ActionVideos()
             if (mic.rms <= 0.003 && v.optional)
                 Warn(L"no sound on the second pass (level %.4f): this clip's sound needs a decoder from a Store extension", mic.rms);
             else
-                Check(mic.rms > 0.003, L"sound on the second pass: level %.4f (microphone muted or at 0 %% in Speak2Mic?)", mic.rms);
+                Check(mic.rms > 0.003, mic.rms > 0.003 ? L"sound on the second pass: level %.4f" :
+                  L"sound on the second pass: level %.4f (microphone muted or at 0 %% in Speak2Mic?)", mic.rms);
             if (mic.rms > 0.003)
             {
                 if (mic.tone > 0.3) Check(true, L"the clip's 1 kHz tone: %.0f %% of the sound", mic.tone * 100);
-                else Warn(L"the 1 kHz tone is only %.0f %% of the sound (something else plays into the cable?)", mic.tone * 100);
+                else Warn(L"the 1 kHz tone is only %.0f %% of the sound; strongest frequency ~%d Hz (microphone %u Hz %u ch)",
+                          mic.tone * 100, mic.peakHz, mic.rate, mic.channels);
             }
         }
     }

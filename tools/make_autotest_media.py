@@ -142,11 +142,12 @@ def make_s2c(out):
     for ext, ci in pics:
         name = 'sample.' + ext
         p = os.path.join(out, name)
-        img = picture(COLORS[ci], 256 if ext == 'ico' else W, 256 if ext == 'ico' else H)
+        img = picture(COLORS[ci], 64 if ext == 'ico' else W, 64 if ext == 'ico' else H)
         if ext == 'webp':
             img.save(p, 'WEBP', quality=90)
         elif ext == 'ico':
-            img.save(p, 'ICO', sizes=[(256, 256)])
+            # classic BMP-in-ICO sizes (a 256 px PNG entry was refused by WIC: 0x88982F60)
+            img.save(p, 'ICO', sizes=[(64, 64), (48, 48), (32, 32)])
         elif ext == 'heic':
             write_heic(img, p)
         else:
@@ -167,9 +168,9 @@ def make_s2c(out):
         ('avi-mjpeg-pcm.avi', ['-c:v', 'mjpeg', '-q:v', '8', '-pix_fmt', 'yuvj420p'], ['-c:a', 'pcm_s16le', '-ar', '22050'], 3, (W, H), 0),
         ('ts-h264-aac.ts', v264, aac, 3, (W, H), 0),
         ('m2ts-h264-ac3.m2ts', v264 + ['-mpegts_m2ts_mode', '1'], ['-c:a', 'ac3', '-b:a', '96k'], 3, (W, H), 0),
-        ('mpg-mpeg2-mp2.mpg', ['-c:v', 'mpeg2video', '-q:v', '6', '-f', 'mpeg'], ['-c:a', 'mp2', '-b:a', '96k'], 3, (W, H), 0),
-        ('mpg-mpeg1-mp2.mpg', ['-c:v', 'mpeg1video', '-q:v', '6', '-f', 'mpeg'], ['-c:a', 'mp2', '-b:a', '96k'], 3, (W, H), 0),
-        ('vob-mpeg2-ac3.vob', ['-c:v', 'mpeg2video', '-q:v', '6', '-f', 'vob'], ['-c:a', 'ac3', '-b:a', '96k'], 3, (W, H), 0),
+        ('mpg-mpeg2-mp2.mpg', ['-c:v', 'mpeg2video', '-q:v', '6', '-f', 'mpeg'], ['-c:a', 'mp2', '-b:a', '96k'], 3, (W, H), 1),        # MPEG-PS: Windows reads it only with the MPEG-2 Video Extension
+        ('mpg-mpeg1-mp2.mpg', ['-c:v', 'mpeg1video', '-q:v', '6', '-f', 'mpeg'], ['-c:a', 'mp2', '-b:a', '96k'], 3, (W, H), 1),        # MPEG-PS: Windows reads it only with the MPEG-2 Video Extension
+        ('vob-mpeg2-ac3.vob', ['-c:v', 'mpeg2video', '-q:v', '6', '-f', 'vob'], ['-c:a', 'ac3', '-b:a', '96k'], 3, (W, H), 1),        # MPEG-PS: Windows reads it only with the MPEG-2 Video Extension
         ('dv-pal.dv', ['-c:v', 'dvvideo', '-pix_fmt', 'yuv420p', '-f', 'dv'], ['-c:a', 'pcm_s16le', '-ar', '48000', '-ac', '2'], 0.6, (720, 576), 0),
         ('mp4-h264-mp3.mp4', v264, ['-c:a', 'libmp3lame', '-b:a', '64k'], 3, (W, H), 0),
         ('mp4-hevc-aac.mp4', ['-c:v', 'libx265', '-crf', '32', '-tag:v', 'hvc1', '-x265-params', 'log-level=error'], aac, 3, (W, H), 1),

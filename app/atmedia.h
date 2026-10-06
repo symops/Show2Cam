@@ -49,5 +49,5 @@ LONG  MjpegClients();
 ULONGLONG MjpegFramesSent();
 
 // Speak2Mic Microphone for `ms`: level (RMS of channel 1, 0..1) and the share of it that is the 1 kHz tone.
-struct MicResult { bool found; HRESULT hr; double rms, tone; };
+struct MicResult { bool found; HRESULT hr; double rms, tone; int peakHz; UINT32 rate, channels; };
 void MicMeasure(DWORD ms, MicResult* out);

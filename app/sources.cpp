@@ -120,7 +120,26 @@ public:
         if (due || !m_current[0])
         {
             wchar_t next[MAX_PATH];
-            if (PickRandomFile(m_folder, MediaImages, m_current, next))
+            if ((int)(now - m_badReset) >= 0)
+            {
+                m_badCount = 0;                     // files may have been replaced: tried again after a minute
+                m_badReset = now + 60000;
+            }
+            bool picked = false;
+            // A file Windows cannot decode is remembered and another one taken at once (it used to show the error
+            // screen for a second: dark frames programs drop).
+            for (int attempt = 0; attempt < 12; attempt++)
+            {
+                if (!PickRandomFile(m_folder, MediaImages, m_current, next)) break;
+                bool bad = false;
+                for (int b = 0; b < m_badCount && !bad; b++) bad = _wcsicmp(m_bad[b], next) == 0;
+                if (!bad)
+                {
+                    picked = true;
+                    break;
+                }
+            }
+            if (picked)
             {
                 UINT sw, sh;
                 if (RenderImageFile(next, px, w, h, &sw, &sh))
@@ -133,16 +152,24 @@ public:
                     m_next = now + 5000;
                     return Remaining(now);
                 }
-                AppLog(L"camera %d: cannot decode %ls", m_sink.index + 1, next);
-                _snwprintf(m_detail, 256, TR(L"Не удалось открыть «%ls» (формат не поддерживается Windows?)."), FileName(next));
-                m_detail[255] = 0;
-                if (!m_current[0])
+                AppLog(L"camera %d: cannot decode %ls (skipped for a minute)", m_sink.index + 1, next);
+                if (m_badCount < 16) wcscpy(m_bad[m_badCount++], next);
+                m_next = now;                       // another one at once (the current picture stays meanwhile)
+                return 1;
+            }
+            if (m_badCount)
+            {
+                // every picture left is one Windows cannot decode
+                if (m_state != StateError || force)
                 {
-                    RenderNoticeScreen(px, w, h, NoticeError, TR(L"Не удалось открыть изображение"), FileName(next));
+                    RenderNoticeScreen(px, w, h, NoticeError, TR(L"Не удалось открыть изображение"), FileName(m_bad[0]));
+                    _snwprintf(m_detail, 256, TR(L"Не удалось открыть «%ls» (формат не поддерживается Windows?)."), FileName(m_bad[0]));
+                    m_detail[255] = 0;
                     m_state = StateError;
+                    m_current[0] = 0;
                     *changed = true;
                 }
-                m_next = now + 1000;
+                m_next = now + 2000;
                 return Remaining(now);
             }
             // No pictures (any more).
@@ -210,6 +237,9 @@ private:
     int     m_state = StateStarting;
     DWORD   m_next = GetTickCount();
     UINT    m_nativeW = 0, m_nativeH = 0;
+    wchar_t m_bad[16][MAX_PATH];                // files Windows could not decode (skipped for a minute)
+    int     m_badCount = 0;
+    DWORD   m_badReset = GetTickCount() + 60000;
 };
 
 // ---------------------------------------------------------------------------

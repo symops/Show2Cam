@@ -373,6 +373,20 @@ static HRESULT ProbePicture(const wchar_t* path)
     HRESULT hr = CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wic));
     if (SUCCEEDED(hr)) hr = wic->CreateDecoderFromFilename(path, nullptr, GENERIC_READ, WICDecodeMetadataCacheOnDemand, &dec);
     if (SUCCEEDED(hr)) hr = dec->GetFrame(0, &frame);
+    // the pixels themselves (a HEIF decoder may describe the frame but not decode it without the HEVC extension)
+    IWICFormatConverter* conv = nullptr;
+    if (SUCCEEDED(hr)) hr = wic->CreateFormatConverter(&conv);
+    if (SUCCEEDED(hr)) hr = conv->Initialize(frame, GUID_WICPixelFormat32bppBGRA, WICBitmapDitherTypeNone, nullptr, 0.0, WICBitmapPaletteTypeCustom);
+    UINT fw = 0, fh = 0;
+    if (SUCCEEDED(hr)) hr = conv->GetSize(&fw, &fh);
+    if (SUCCEEDED(hr) && fw && fh)
+    {
+        ULONG* row = (ULONG*)malloc((size_t)fw * 4);
+        WICRect rc = { 0, (INT)(fh / 2), (INT)fw, 1 };
+        hr = row ? conv->CopyPixels(&rc, fw * 4, fw * 4, (BYTE*)row) : E_OUTOFMEMORY;
+        free(row);
+    }
+    if (conv) conv->Release();
     if (frame) frame->Release();
     if (dec) dec->Release();
     if (wic) wic->Release();
@@ -947,6 +961,29 @@ void MicMeasure(DWORD ms, MicResult* out)
             }
         }
         client->Stop();
+        // the strongest frequency 100..4000 Hz over the first 0.5 s (what is playing, when the tone is not)
+        {
+            UINT32 n = count < mix->nSamplesPerSec / 2 ? count : mix->nSamplesPerSec / 2;
+            double best = 0;
+            for (int f = 100; f <= 4000 && n; f += 20)
+            {
+                double c = 2.0 * cos(2.0 * 3.14159265358979 * f / mix->nSamplesPerSec), q1 = 0, q2 = 0;
+                for (UINT32 i = 0; i < n; i++)
+                {
+                    double q0 = samples[i] + c * q1 - q2;
+                    q2 = q1;
+                    q1 = q0;
+                }
+                double pw = q1 * q1 + q2 * q2 - c * q1 * q2;
+                if (pw > best)
+                {
+                    best = pw;
+                    out->peakHz = f;
+                }
+            }
+            out->rate = mix->nSamplesPerSec;
+            out->channels = mix->nChannels;
+        }
         // level and the 1 kHz share (Goertzel)
         double sum = 0, s1 = 0, s2 = 0, coeff = 2.0 * cos(2.0 * 3.14159265358979 * kToneHz / mix->nSamplesPerSec);
         for (UINT32 i = 0; i < count; i++)
