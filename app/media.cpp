@@ -309,17 +309,11 @@ static int DrawFitted(HDC dc, const wchar_t* text, int left, int right, int top,
     return out.bottom;
 }
 
-void RenderTextScreen(ULONG* dst, int w, int h, const wchar_t* text)
+// A gradient (colour 0 at the top left -> colour 1 at the bottom right) with texture, like a real camera's picture:
+// soft diagonal bands, a few large light spots and fine noise. Programs that check frames for a covered lens (e.g.
+// SearchInform compares a few points of every frame) take an even picture as an empty frame.
+static void TexturedBackground(ULONG* bits, int w, int h, int r0, int g0, int b0, int r1, int g1, int b1)
 {
-    Dib dib;
-    if (!dib.Create(w, h))
-    {
-        FillBlack(dst, w, h);
-        return;
-    }
-    // The Show2Cam colours (violet -> cyan, as the icon) with texture, like a real camera's picture: soft diagonal bands,
-    // a few large light spots and fine noise. Programs that check frames for a covered lens (e.g. SearchInform compares
-    // a few points of every frame) take an even background as an empty frame; the white text has a shadow.
     int band = (w + h) / 7 > 8 ? (w + h) / 7 : 8;
     struct { int x, y, r; } spots[4] = { { w / 6, h / 4, h / 3 }, { w * 4 / 5, h / 5, h / 4 }, { w * 2 / 3, h * 4 / 5, h * 2 / 5 },
                                           { w / 4, h * 5 / 6, h / 5 } };
@@ -328,7 +322,7 @@ void RenderTextScreen(ULONG* dst, int w, int h, const wchar_t* text)
         for (int x = 0; x < w; x++)
         {
             int t = (int)(((LONGLONG)y * 650 / (h > 1 ? h - 1 : 1)) + ((LONGLONG)x * 350 / (w > 1 ? w - 1 : 1)));   // 0..1000
-            int r = (108 * (1000 - t)) / 1000, g = (59 * (1000 - t) + 194 * t) / 1000, b = 255;
+            int r = (r0 * (1000 - t) + r1 * t) / 1000, g = (g0 * (1000 - t) + g1 * t) / 1000, b = (b0 * (1000 - t) + b1 * t) / 1000;
             // bands: brightness 60..100 % (triangle wave along the diagonal)
             int phase = (x + y) % (2 * band);
             int k = 600 + 400 * (phase < band ? phase : 2 * band - phase) / band;      // 600..1000
@@ -345,8 +339,19 @@ void RenderTextScreen(ULONG* dst, int w, int h, const wchar_t* text)
             R = R < 0 ? 0 : (R > 255 ? 255 : R);
             G = G < 0 ? 0 : (G > 255 ? 255 : G);
             B = B < 0 ? 0 : (B > 255 ? 255 : B);
-            dib.bits[(SIZE_T)y * w + x] = (ULONG)(R << 16 | G << 8 | B);
+            bits[(SIZE_T)y * w + x] = (ULONG)(R << 16 | G << 8 | B);
         }
+}
+
+void RenderTextScreen(ULONG* dst, int w, int h, const wchar_t* text)
+{
+    Dib dib;
+    if (!dib.Create(w, h))
+    {
+        FillBlack(dst, w, h);
+        return;
+    }
+    TexturedBackground(dib.bits, w, h, 108, 59, 255, 0, 194, 255);
     DrawFitted(dib.dc, text, w / 20, w - w / 20, h / 10, h - h / 5, h * 28 / 100, FW_SEMIBOLD, RGB(255, 255, 255), true);
     GdiFlush();
     for (SIZE_T i = 0, n = (SIZE_T)w * h; i < n; i++) dst[i] = dib.bits[i] | 0xFF000000;

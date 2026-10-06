@@ -23,6 +23,8 @@ sizes (1920×1080 … 320×240) at 1–60 fps; the device is in the Image class,
       pictures the camera shows "No signal" (in the interface language) and reconnects every 3 seconds.
   * **Resolution and frame rate** — "as the source" (default) or chosen. They change while no program has the
     camera open; otherwise as soon as it is closed.
+  * **Apply** puts the camera's settings (source, text / folder / address, sound, size, frame rate, self-view) into
+    effect; switching to another camera or closing the panel with unsaved changes asks whether to keep them.
   * **Check** — a live preview window of that camera (several cameras' windows may be open at once); **Play / Pause**.
   * **Self-view** — the panel itself uses the camera like any webcam program (Media Foundation, through the Windows
     camera stack): for Windows the camera is really in use (the "camera in use" indicator, Settings → Privacy →

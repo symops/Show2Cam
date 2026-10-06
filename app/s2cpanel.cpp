@@ -30,11 +30,11 @@ enum
     IDC_RESET_ALL = 100, IDC_L_LANG, IDC_LANG,
     IDC_GROUP1, IDC_LIST, IDC_L_COUNT, IDC_COUNT, IDC_COUNT_APPLY,
     IDC_GROUP2, IDC_L_NAME, IDC_NAME, IDC_RENAME, IDC_L_SOURCE, IDC_SOURCE, IDC_L_PARAM, IDC_PARAM, IDC_BROWSE, IDC_OPENFOLDER,
-    IDC_L_AUDIO, IDC_AUDIO, IDC_L_RES, IDC_RES, IDC_L_FPS, IDC_FPS, IDC_CAM_STATUS, IDC_TEST, IDC_PLAY, IDC_SELFVIEW,
+    IDC_L_AUDIO, IDC_AUDIO, IDC_L_RES, IDC_RES, IDC_L_FPS, IDC_FPS, IDC_CAM_STATUS, IDC_TEST, IDC_PLAY, IDC_SELFVIEW, IDC_CAM_APPLY,
     IDC_EVENTS, IDC_CLEARLOG, IDC_AUTOSTART, IDC_EXPORT, IDC_IMPORT,
 };
 
-enum { TIMER_STATUS = 1, TIMER_PARAM = 2, TIMER_RESCAN = 3 };
+enum { TIMER_STATUS = 1, TIMER_RESCAN = 3 };
 #define WM_APP_CAMEVENT (WM_APP + 30)
 #define WM_APP_TRAY     (WM_APP + 31)
 enum { IDM_TRAY_OPEN = 40001, IDM_TRAY_EXIT };
@@ -63,6 +63,10 @@ struct Cam
 static Cam  g_cams[S2C_MAX_CAMERAS_UI];
 static int  g_camCount;
 static int  g_sel = -1;                   // selected camera (index into g_cams)
+// The selected camera's settings form edits this copy; "Apply" puts it into effect (see OnCamApply).
+static CamConfig g_edit;
+static int       g_editCam = -1;          // camera number (info.index) g_edit belongs to
+static void UpdateCamApply();
 static RenderDevice g_audioDevs[64];
 static int  g_audioDevCount;
 
@@ -514,7 +518,7 @@ static void ApplyConfig(int i)
 
 static void CloseAllPreviews();
 static void ClosePreview(int i);
-static void ShowSelected();
+static void ShowSelected(bool keepEdits = false);
 static void FillList();
 static void PreviewTitle(int i);
 
@@ -806,11 +810,12 @@ static void ShowCamStatus()
     SetText(IDC_CAM_STATUS, all);
 }
 
-static void ShowSelected()
+static void ShowSelected(bool keepEdits)
 {
     bool ok = g_sel >= 0 && g_sel < g_camCount;
     const int ids[] = { IDC_NAME, IDC_SOURCE, IDC_PARAM, IDC_BROWSE, IDC_OPENFOLDER, IDC_AUDIO, IDC_RES, IDC_FPS, IDC_SELFVIEW };
     for (int id : ids) EnableWindow(Ctl(id), ok);
+    if (!ok) EnableWindow(Ctl(IDC_CAM_APPLY), FALSE);
     wchar_t title[200];
     if (ok) _snwprintf(title, 200, TR(L"Камера %d: %ls"), g_cams[g_sel].info.index + 1, g_cams[g_sel].info.name);
     else wcscpy(title, TR(L"Камера"));
@@ -823,7 +828,9 @@ static void ShowSelected()
         ShowCamStatus();
         return;
     }
-    const CamConfig& c = g_cams[g_sel].config;
+    if (!keepEdits || g_editCam != g_cams[g_sel].info.index) g_edit = g_cams[g_sel].config;
+    g_editCam = g_cams[g_sel].info.index;
+    const CamConfig& c = g_edit;
     g_updating = true;
     SetWindowTextW(Ctl(IDC_NAME), g_cams[g_sel].info.name);
     SendMessageW(Ctl(IDC_SELFVIEW), BM_SETCHECK, c.selfView ? BST_CHECKED : BST_UNCHECKED, 0);
@@ -854,66 +861,123 @@ static void ShowSelected()
     g_updating = false;
     UpdatePlayButton();
     UpdateRenameButton();
+    UpdateCamApply();
     ShowCamStatus();
 }
 
-// The parameter box was edited: applied after a short pause in typing.
-static void ApplyParam()
+// The selected camera's settings are edited in a copy (g_edit) and take effect with "Apply"; switching to another
+// camera (or closing the panel) with unsaved changes asks whether to keep them.
+
+static bool EditDirty()
+{
+    if (g_sel < 0 || g_sel >= g_camCount || g_editCam != g_cams[g_sel].info.index) return false;
+    const CamConfig& a = g_edit;
+    const CamConfig& b = g_cams[g_sel].config;
+    return a.kind != b.kind || wcscmp(a.text, b.text) || wcscmp(a.imageFolder, b.imageFolder) || wcscmp(a.videoFolder, b.videoFolder) ||
+           wcscmp(a.url, b.url) || a.audioMode != b.audioMode || (a.audioMode == AudioDevice && wcscmp(a.audioDevice, b.audioDevice)) ||
+           a.width != b.width || a.height != b.height || a.fps != b.fps || a.selfView != b.selfView;
+}
+
+static void UpdateCamApply()
+{
+    EnableWindow(Ctl(IDC_CAM_APPLY), EditDirty());
+}
+
+// The parameter box into the copy (text, address or folder, by the source chosen in the form).
+static void ReadParamToEdit()
 {
     if (g_sel < 0) return;
-    CamConfig& c = g_cams[g_sel].config;
+    CamConfig& c = g_edit;
     wchar_t text[MAX_PATH];
     GetWindowTextW(Ctl(IDC_PARAM), text, MAX_PATH);
     if (c.kind == SourceText)
     {
-        if (!wcscmp(c.text, text)) return;
         wcsncpy(c.text, text, 255);
         c.text[255] = 0;
     }
     else if (c.kind == SourceStream)
     {
-        // trimmed
         wchar_t* b = text;
         while (*b == L' ') b++;
         size_t n = wcslen(b);
         while (n && b[n - 1] == L' ') b[--n] = 0;
-        if (!wcscmp(c.url, b)) return;
         wcsncpy(c.url, b, 511);
         c.url[511] = 0;
-        AddEventF(TR(L"Камера «%ls»: MJPEG-поток %ls."), g_cams[g_sel].info.name, c.url);
     }
     else
     {
         wchar_t def[MAX_PATH];
         DefaultMediaFolder(c.kind == SourceImages ? MediaImages : MediaVideo, def);
         wchar_t* folder = c.kind == SourceImages ? c.imageFolder : c.videoFolder;
-        const wchar_t* want = _wcsicmp(text, def) == 0 ? L"" : text;
-        if (!wcscmp(folder, want)) return;
-        wcscpy(folder, want);
+        wcscpy(folder, _wcsicmp(text, def) == 0 ? L"" : text);
     }
+    UpdateCamApply();
+}
+
+// The parameter row and the sound list for the source chosen in the form.
+static void ShowEditParam()
+{
+    const CamConfig& c = g_edit;
+    g_updating = true;
+    LayoutParamRow(c.kind);
+    wchar_t param[MAX_PATH];
+    if (c.kind == SourceText) wcscpy(param, c.text);
+    else if (c.kind == SourceStream) wcscpy(param, c.url);
+    else FolderOf(c, param);
+    SetWindowTextW(Ctl(IDC_PARAM), param);
+    if (c.kind == SourceVideo) FillAudioCombo(c);
+    g_updating = false;
+}
+
+static void OnCamApply()
+{
+    if (!EditDirty()) return;
+    Cam& cam = g_cams[g_sel];
+    CamConfig old = cam.config;
+    CamConfig now = g_edit;
+    now.paused = old.paused;                          // Play / Pause works at once, not through the form
+    cam.config = now;
     ApplyConfig(g_sel);
+    const wchar_t* name = cam.info.name;
+    if (now.kind != old.kind) AddEventF(TR(L"Камера «%ls»: источник — %ls."), name, SourceName(now.kind));
+    if (now.kind == SourceStream && wcscmp(now.url, old.url)) AddEventF(TR(L"Камера «%ls»: MJPEG-поток %ls."), name, now.url);
+    if (old.selfView && !now.selfView) AddEventF(TR(L"Камера «%ls»: самотрансляция выключена."), name);
+    AddEventF(TR(L"Камера «%ls»: настройки применены."), name);
     UpdateListRow(g_sel);
+    ShowCamStatus();
+    UpdateCamApply();
+}
+
+// Unsaved changes of the selected camera: keep them (Yes), drop them (No) or stay (Cancel: returns false).
+static bool AskSaveEdits()
+{
+    if (!EditDirty()) return true;
+    wchar_t q[300];
+    _snwprintf(q, 300, TR(L"Сохранить изменения настроек камеры «%ls»?"), g_cams[g_sel].info.name);
+    q[299] = 0;
+    int r = MessageBoxW(g_wnd, q, L"Show2Cam", MB_YESNOCANCEL | MB_ICONQUESTION);
+    if (r == IDCANCEL) return false;
+    if (r == IDYES) OnCamApply();
+    else g_edit = g_cams[g_sel].config;            // dropped
+    return true;
 }
 
 static void OnSourceChanged()
 {
     if (g_sel < 0) return;
     int kind = (int)ComboData(IDC_SOURCE);
-    if (kind < 0 || kind == g_cams[g_sel].config.kind) return;
-    KillTimer(g_wnd, TIMER_PARAM);
-    ApplyParam();                                   // what was typed for the old source
-    g_cams[g_sel].config.kind = kind;
-    if (kind == SourceStream && !g_cams[g_sel].config.url[0]) wcscpy(g_cams[g_sel].config.url, L"http://127.0.0.1:8080");
-    ApplyConfig(g_sel);
-    AddEventF(TR(L"Камера «%ls»: источник — %ls."), g_cams[g_sel].info.name, SourceName(kind));
-    ShowSelected();
-    UpdateListRow(g_sel);
+    if (kind < 0 || kind == g_edit.kind) return;
+    ReadParamToEdit();                              // what was typed for the old source
+    g_edit.kind = kind;
+    if (kind == SourceStream && !g_edit.url[0]) wcscpy(g_edit.url, L"http://127.0.0.1:8080");
+    ShowEditParam();
+    UpdateCamApply();
 }
 
 static void OnAudioChanged()
 {
     if (g_sel < 0) return;
-    CamConfig& c = g_cams[g_sel].config;
+    CamConfig& c = g_edit;
     LPARAM d = ComboData(IDC_AUDIO);
     if (d == -3) return;
     if (d == -1) c.audioMode = AudioSpeak2Mic;
@@ -923,29 +987,26 @@ static void OnAudioChanged()
         c.audioMode = AudioDevice;
         wcscpy(c.audioDevice, g_audioDevs[d].id);
     }
-    ApplyConfig(g_sel);
+    UpdateCamApply();
 }
 
 static void OnFormatChanged()
 {
     if (g_sel < 0) return;
-    CamConfig& c = g_cams[g_sel].config;
+    CamConfig& c = g_edit;
     LPARAM size = ComboData(IDC_RES), fps = ComboData(IDC_FPS);
     c.width = size > 0 ? (ULONG)(size >> 16) : 0;
     c.height = size > 0 ? (ULONG)(size & 0xFFFF) : 0;
     c.fps = fps > 0 ? (ULONG)fps : 0;
-    ApplyConfig(g_sel);
+    UpdateCamApply();
 }
 
 // Self-view: the panel uses the camera itself, like any webcam program (see selfview.h).
 static void OnSelfView()
 {
     if (g_sel < 0) return;
-    CamConfig& c = g_cams[g_sel].config;
-    c.selfView = SendMessageW(Ctl(IDC_SELFVIEW), BM_GETCHECK, 0, 0) == BST_CHECKED;
-    ApplyConfig(g_sel);
-    if (!c.selfView) AddEventF(TR(L"Камера «%ls»: самотрансляция выключена."), g_cams[g_sel].info.name);
-    UpdateListRow(g_sel);
+    g_edit.selfView = SendMessageW(Ctl(IDC_SELFVIEW), BM_GETCHECK, 0, 0) == BST_CHECKED;
+    UpdateCamApply();
 }
 
 static void OnPlay()
@@ -984,7 +1045,7 @@ static void OnRename()
         UpdateListRow(i);
         PreviewTitle(i);
     }
-    ShowSelected();
+    ShowSelected(true);                              // unsaved settings of the camera stay in the form
 }
 
 static void OnBrowse()
@@ -1009,10 +1070,7 @@ static void OnBrowse()
         PWSTR path = nullptr;
         if (SUCCEEDED(dlg->GetResult(&item)) && SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &path)))
         {
-            SetWindowTextW(Ctl(IDC_PARAM), path);       // EN_CHANGE -> applied
-            KillTimer(g_wnd, TIMER_PARAM);
-            ApplyParam();
-            AddEventF(TR(L"Камера «%ls»: папка %ls."), g_cams[g_sel].info.name, path);
+            SetWindowTextW(Ctl(IDC_PARAM), path);       // EN_CHANGE -> the form's copy ("Apply" applies it)
             CoTaskMemFree(path);
         }
         if (item) item->Release();
@@ -1566,8 +1624,9 @@ static void Layout()
     Place(IDC_L_RES, 24, 432, 100, 20);    Place(IDC_RES, 130, 428, 170, 300);
     Place(IDC_L_FPS, 304, 432, 140, 20);   Place(IDC_FPS, 450, 428, 122, 300);
     Place(IDC_CAM_STATUS, 24, 460, 548, 52);
-    Place(IDC_TEST, 24, 516, 160, 28);     Place(IDC_PLAY, 192, 516, 120, 28);
-    Place(IDC_SELFVIEW, 330, 518, 242, 24);
+    Place(IDC_TEST, 24, 516, 150, 28);     Place(IDC_PLAY, 180, 516, 110, 28);
+    Place(IDC_SELFVIEW, 300, 518, 150, 24);
+    Place(IDC_CAM_APPLY, 452, 516, 120, 28);
     if (g_sel >= 0) LayoutParamRow(g_cams[g_sel].config.kind);
 
     Place(IDC_EVENTS, 24, 562, 512, 300);
@@ -1668,6 +1727,7 @@ static void CreateControls()
     Create(L"BUTTON", TR(L"Проверка"), BS_PUSHBUTTON | WS_TABSTOP, IDC_TEST);
     Create(L"BUTTON", TR(L"Пауза"), BS_PUSHBUTTON | WS_TABSTOP, IDC_PLAY);
     Create(L"BUTTON", TR(L"Самотрансляция"), BS_AUTOCHECKBOX | WS_TABSTOP, IDC_SELFVIEW);
+    Create(L"BUTTON", TR(L"Применить"), BS_PUSHBUTTON | WS_TABSTOP, IDC_CAM_APPLY);
 
     Create(WC_COMBOBOXW, L"", CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, IDC_EVENTS);
     Create(L"BUTTON", TR(L"Очистить журнал событий"), BS_PUSHBUTTON | BS_ICON | WS_TABSTOP, IDC_CLEARLOG);
@@ -1833,6 +1893,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             FillList();
             ShowSelected();
         }
+        if (GetEnvironmentVariableW(L"S2C_TEST_EDIT", nullptr, 0))
+        {
+            // change the source in the form (as the user would), then select another camera after a while
+            ComboSelectData(IDC_SOURCE, SourceStream);
+            PostMessageW(hwnd, WM_COMMAND, MAKEWPARAM(IDC_SOURCE, CBN_SELCHANGE), (LPARAM)Ctl(IDC_SOURCE));
+            SetTimer(hwnd, 99, 5000, nullptr);
+        }
         wchar_t io[MAX_PATH];
         if (GetEnvironmentVariableW(L"S2C_TEST_EXPORT", io, MAX_PATH)) ExportTo(io);
         if (GetEnvironmentVariableW(L"S2C_TEST_IMPORT", io, MAX_PATH)) ImportFrom(io);
@@ -1878,11 +1945,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             static int tick;
             if (++tick % 6 == 0) ScanCameras(true);
         }
-        else if (wp == TIMER_PARAM)
+#ifdef S2C_UI_TEST
+        else if (wp == 99)
         {
-            KillTimer(hwnd, TIMER_PARAM);
-            ApplyParam();
+            KillTimer(hwnd, 99);
+            ListView_SetItemState(Ctl(IDC_LIST), g_sel == 0 ? 1 : 0, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
         }
+#endif
         else if (wp == TIMER_RESCAN)
         {
             KillTimer(hwnd, TIMER_RESCAN);
@@ -1923,8 +1992,14 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             NMLISTVIEW* nm = (NMLISTVIEW*)lp;
             if ((nm->uNewState & LVIS_SELECTED) && nm->iItem >= 0 && nm->iItem != g_sel)
             {
-                KillTimer(hwnd, TIMER_PARAM);
-                ApplyParam();
+                if (!AskSaveEdits())
+                {
+                    // Cancel: the previous camera stays selected
+                    g_updating = true;
+                    ListView_SetItemState(Ctl(IDC_LIST), g_sel, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+                    g_updating = false;
+                    return 0;
+                }
                 g_sel = nm->iItem;
                 ShowSelected();
             }
@@ -1955,16 +2030,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             FillAudioCombo(g_cams[g_sel].config);          // devices may have come and gone
             g_updating = false;
         }
-        else if (code == EN_CHANGE && id == IDC_PARAM)
-        {
-            SetTimer(hwnd, TIMER_PARAM, g_sel >= 0 && g_cams[g_sel].config.kind == SourceText ? 400 : 1200, nullptr);
-        }
+        else if (code == EN_CHANGE && id == IDC_PARAM) ReadParamToEdit();
         else if (code == EN_CHANGE && id == IDC_NAME) UpdateRenameButton();
-        else if (code == EN_KILLFOCUS && id == IDC_PARAM)
-        {
-            KillTimer(hwnd, TIMER_PARAM);
-            ApplyParam();
-        }
         else if (code == BN_CLICKED)
         {
             if (id == IDC_RENAME) OnRename();
@@ -1973,6 +2040,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             else if (id == IDC_TEST) OnTest();
             else if (id == IDC_PLAY) OnPlay();
             else if (id == IDC_SELFVIEW) OnSelfView();
+            else if (id == IDC_CAM_APPLY) OnCamApply();
             else if (id == IDC_COUNT_APPLY) OnCountApply();
             else if (id == IDC_RESET_ALL) OnResetAll();
             else if (id == IDC_EXPORT) OnExport();
@@ -1992,11 +2060,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     }
 
     case WM_CLOSE:
+        if (g_inTray) FromTray();                // (from the tray menu: the question needs the window)
+        if (!AskSaveEdits()) return 0;           // Cancel: the panel stays open
         if (g_inTray) TrayIcon(NIM_DELETE);
         g_inTray = false;
         KillTimer(hwnd, TIMER_STATUS);
-        KillTimer(hwnd, TIMER_PARAM);
-        ApplyParam();
         StopRunners();                       // the cameras go back to the test pattern
         AppLog(L"panel closed");
         DestroyWindow(hwnd);
