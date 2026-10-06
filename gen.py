@@ -52,8 +52,10 @@ def gen_inf():
     a('')
     a('[Version]')
     a('Signature="$WINDOWS NT$"')
-    a('Class=Camera')
-    a('ClassGuid={ca3e7ab9-b4c3-4ae6-8251-579ef933890f}')
+    # "Image" (as e2eSoft VCam, ManyCam and the classic webcam drivers), not the newer "Camera" class (Windows 10
+    # 1709+): programs written before it (e.g. SearchInform DLP) look for webcams in the Image class only.
+    a('Class=Image')
+    a('ClassGuid={6bdd1fc6-810f-11d0-bec7-08002be2092f}')
     a('Provider=%ProviderName%')
     a(f'DriverVer={DRIVER_DATE},{VERSION_STR}')
     a('CatalogFile=Show2Cam.cat')

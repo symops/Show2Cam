@@ -1,13 +1,15 @@
 # Show2Cam — virtual webcams for Windows 10/11
 
 Show2Cam adds up to 10 virtual cameras ("Show2Cam Camera 1" … "Show2Cam Camera 10") for every program that uses a
-webcam. What each camera shows is chosen in the control panel. A sister project of
+webcam. What each camera shows is chosen in the control panel. Every camera offers its own size plus the usual webcam
+sizes (1920×1080 … 320×240) at 1–60 fps; the device is in the Image class, as classic webcams and e2eSoft VCam / ManyCam
+(older programs, e.g. DLP agents, look for webcams there only). A sister project of
 [Speak2Mic](https://github.com/symops/Speak2Mic) (virtual audio cable).
 
 ## Control panel (Show2Cam.exe)
 
-* **Cameras** — the list of the cameras with their source, format and an "in use" indicator (a program has the camera
-  open); the number of cameras (1–10; a device restart, asks for administrator rights).
+* **Cameras** — the list of the cameras with their source, format and who uses each one right now ("self-view", the
+  program's name, or "in use" when Windows does not tell); the number of cameras (1–10; a device restart, asks for administrator rights).
 * **The selected camera**
   * **Name** — the name programs show; renaming needs no administrator rights (the driver keeps it).
   * **Source**

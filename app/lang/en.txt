@@ -250,6 +250,8 @@ Camera “%ls”: self-view is denied access to the camera — allow desktop app
 Camera “%ls”: self-view cannot open the camera (0x%08lX).
 Self-view
 The panel itself uses the camera like an ordinary program: Windows shows the camera as on
+in use
+in use: %ls
 [driver] the driver log is empty: the driver has never started
 [driver] ---- driver log (DriverLog) ----
 [setupapi] cannot open %ls (%lu)

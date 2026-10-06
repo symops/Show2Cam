@@ -29,6 +29,9 @@ int CamList(CamInfo* out, int max)
         if (!g_fake[i].Width) { g_fake[i].Index = i; g_fake[i].Width = 1280; g_fake[i].Height = 720; g_fake[i].Fps = 30; }
     }
     g_fake[1].Streaming = 1;
+    DWORD explorer = 0;
+    GetWindowThreadProcessId(FindWindowW(L"Shell_TrayWnd", nullptr), &explorer);
+    g_fake[1].UserPids[0] = explorer;
     return max < 3 ? max : 3;
 #endif
     HDEVINFO set = SetupDiGetClassDevsW(&kCategoryVideo, nullptr, nullptr, DIGCF_DEVICEINTERFACE | DIGCF_PRESENT);

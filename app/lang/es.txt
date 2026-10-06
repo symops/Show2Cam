@@ -250,3 +250,5 @@ Cámara «%ls»: la autotransmisión no tiene acceso a la cámara — permita a 
 Cámara «%ls»: la autotransmisión no puede abrir la cámara (0x%08lX).
 Autotransmisión
 El panel usa la cámara él mismo, como un programa normal: Windows muestra la cámara encendida
+en uso
+en uso: %ls

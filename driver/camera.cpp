@@ -37,6 +37,8 @@ struct S2C_PIN
     LARGE_INTEGER       RunStart;       // QPC when the pin went to run
     LARGE_INTEGER       QpcFrequency;
     ULONGLONG           FramesDone;     // frames delivered or dropped since RunStart
+    ULONGLONG           Interval;       // frame interval the program chose (100-ns units)
+    ULONG               Pid;            // the process that opened the pin
     BOOLEAN             Running;
 };
 
@@ -56,7 +58,6 @@ static VOID NTAPI FrameTimer(_In_ PEX_TIMER Timer, _In_opt_ PVOID Context)
 
 static NTSTATUS S2C_CB PinCreate(_In_ PKSPIN Pin, _In_ PIRP Irp)
 {
-    UNREFERENCED_PARAMETER(Irp);
     S2C_CAMERA* camera = S2cCameraFromPin(Pin);
     if (!camera) return STATUS_INVALID_DEVICE_STATE;
     S2C_PIN* p = (S2C_PIN*)ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(S2C_PIN), S2C_POOLTAG);
@@ -72,7 +73,16 @@ static NTSTATUS S2C_CB PinCreate(_In_ PKSPIN Pin, _In_ PIRP Irp)
     Pin->StreamHeaderSize = sizeof(KSSTREAM_HEADER) + sizeof(KS_FRAME_INFO);
     Pin->Context = p;
     InterlockedIncrement(&camera->PinsOpen);
-    S2cLog("Camera %lu: pin opened", camera->Index + 1);
+    p->Pid = IoGetRequestorProcessId(Irp);
+    ExAcquireFastMutex(&camera->Lock);
+    for (ULONG i = 0; i < S2C_MAX_USERS; i++)
+        if (!camera->UserPids[i])
+        {
+            camera->UserPids[i] = p->Pid;
+            break;
+        }
+    ExReleaseFastMutex(&camera->Lock);
+    S2cLog("Camera %lu: pin opened by process %lu", camera->Index + 1, p->Pid);
     S2cLogFlush();
     return STATUS_SUCCESS;
 }
@@ -86,6 +96,14 @@ static NTSTATUS S2C_CB PinClose(_In_ PKSPIN Pin, _In_ PIRP Irp)
         if (p->Timer) ExDeleteTimer(p->Timer, TRUE, TRUE, nullptr);     // cancel and wait for a running callback
         if (p->Running) InterlockedDecrement(&p->Camera->Streaming);
         InterlockedDecrement(&p->Camera->PinsOpen);
+        ExAcquireFastMutex(&p->Camera->Lock);
+        for (ULONG i = 0; i < S2C_MAX_USERS; i++)
+            if (p->Camera->UserPids[i] == p->Pid)
+            {
+                p->Camera->UserPids[i] = 0;
+                break;
+            }
+        ExReleaseFastMutex(&p->Camera->Lock);
         S2cLog("Camera %lu: pin closed", p->Camera->Index + 1);
         ExFreePoolWithTag(p, S2C_POOLTAG);
         Pin->Context = nullptr;
@@ -101,11 +119,15 @@ static NTSTATUS S2C_CB PinSetDeviceState(_In_ PKSPIN Pin, _In_ KSSTATE ToState, 
     S2C_CAMERA* c = p->Camera;
     if (ToState == KSSTATE_RUN && !p->Running)
     {
+        // The frame rate the program chose (within what the camera offers), else the camera's own.
+        const KS_VIDEOINFOHEADER* vih = &((const KS_DATAFORMAT_VIDEOINFOHEADER*)Pin->ConnectionFormat)->VideoInfoHeader;
+        LONGLONG period = vih->AvgTimePerFrame;
+        if (period < S2C_MIN_INTERVAL || period > S2C_MAX_INTERVAL) period = 10000000LL / (c->Fps ? c->Fps : 30);
+        p->Interval = (ULONGLONG)period;
         p->RunStart = KeQueryPerformanceCounter(&p->QpcFrequency);
         p->FramesDone = 0;
         p->Running = TRUE;
         InterlockedIncrement(&c->Streaming);
-        LONGLONG period = 10000000LL / (c->Fps ? c->Fps : 30);         // 100 ns units
         ExSetTimer(p->Timer, -period, period, nullptr);
     }
     else if (ToState != KSSTATE_RUN && p->Running)
@@ -128,16 +150,28 @@ static NTSTATUS S2C_CB PinSetDataFormat(_In_ PKSPIN Pin, _In_opt_ PKSDATAFORMAT 
     const KSDATAFORMAT* f = Pin->ConnectionFormat;
     if (!f || f->FormatSize < sizeof(KS_DATAFORMAT_VIDEOINFOHEADER) || !IsEqualGUID(f->Specifier, kSpecVideoInfo))
         return STATUS_NO_MATCH;
+    UNREFERENCED_PARAMETER(DataRange);
     const KS_VIDEOINFOHEADER* vih = &((const KS_DATAFORMAT_VIDEOINFOHEADER*)f)->VideoInfoHeader;
-    const KS_VIDEOINFOHEADER* ours = &((const KS_DATARANGE_VIDEO*)DataRange)->VideoInfoHeader;
     LONG h = vih->bmiHeader.biHeight < 0 ? -vih->bmiHeader.biHeight : vih->bmiHeader.biHeight;
-    // biSizeImage may be 0 (uncompressed formats): the frame size is computed from width, height and format.
-    if (!IsEqualGUID(f->SubFormat, DataRange->SubFormat) || vih->bmiHeader.biWidth != ours->bmiHeader.biWidth ||
-        h != ours->bmiHeader.biHeight || vih->bmiHeader.biCompression != ours->bmiHeader.biCompression)
-        return STATUS_NO_MATCH;
     S2C_CAMERA* c = S2cCameraFromPin(Pin);
-    S2cLog("Camera %lu: format %lux%lu %.4s", c ? c->Index + 1 : 0, (ULONG)vih->bmiHeader.biWidth, (ULONG)h,
-           vih->bmiHeader.biCompression ? (const char*)&vih->bmiHeader.biCompression : "RGB");
+    if (!c) return STATUS_NO_MATCH;
+    // One of our formats (any of the sizes: the framework hands over the first range of the subtype only);
+    // biSizeImage may be 0 (uncompressed formats): the frame size is computed from width, height and format.
+    BOOLEAN found = FALSE;
+    for (ULONG i = 0; i < c->RangeCount && !found; i++)
+    {
+        const KS_DATARANGE_VIDEO* r = &c->Ranges[i];
+        found = IsEqualGUID(f->SubFormat, r->DataRange.SubFormat) && vih->bmiHeader.biWidth == r->VideoInfoHeader.bmiHeader.biWidth &&
+                h == r->VideoInfoHeader.bmiHeader.biHeight && vih->bmiHeader.biCompression == r->VideoInfoHeader.bmiHeader.biCompression;
+    }
+    if (!found || (vih->AvgTimePerFrame && (vih->AvgTimePerFrame < S2C_MIN_INTERVAL || vih->AvgTimePerFrame > S2C_MAX_INTERVAL)))
+    {
+        S2cLog("Camera %lu: format %ldx%ld refused (not offered)", c->Index + 1, vih->bmiHeader.biWidth, h);
+        return STATUS_NO_MATCH;
+    }
+    S2cLog("Camera %lu: format %lux%lu %.4s %lu fps", c->Index + 1, (ULONG)vih->bmiHeader.biWidth, (ULONG)h,
+           vih->bmiHeader.biCompression ? (const char*)&vih->bmiHeader.biCompression : "RGB",
+           vih->AvgTimePerFrame ? (ULONG)(10000000LL / vih->AvgTimePerFrame) : c->Fps);
     return STATUS_SUCCESS;
 }
 
@@ -147,7 +181,7 @@ static NTSTATUS S2C_CB PinProcess(_In_ PKSPIN Pin)
     S2C_PIN* p = (S2C_PIN*)Pin->Context;
     if (!p || !p->Running) return STATUS_SUCCESS;
     S2C_CAMERA* c = p->Camera;
-    ULONGLONG interval = 10000000ULL / (c->Fps ? c->Fps : 30);
+    ULONGLONG interval = p->Interval ? p->Interval : 10000000ULL / (c->Fps ? c->Fps : 30);
     ULONGLONG now = QpcNow100ns(p);
     ULONGLONG due = now / interval + 1;                             // frames that should exist by now
     if (p->FramesDone >= due) return STATUS_SUCCESS;
@@ -197,10 +231,26 @@ static NTSTATUS S2C_CB PinIntersect(_In_ PVOID Context, _In_ PIRP Irp, _In_ PKSP
     UNREFERENCED_PARAMETER(Context);
     UNREFERENCED_PARAMETER(Irp);
     UNREFERENCED_PARAMETER(PinInstance);
-    // The caller's range may be a KS_DATARANGE_VIDEO or a plain KSDATARANGE/format: only its GUIDs are used (the
-    // framework already matched them); every camera offers one size, which is what we return.
+    // The caller's range may be a KS_DATARANGE_VIDEO, a KS_DATAFORMAT_VIDEOINFOHEADER (a program asking for one
+    // format, e.g. DirectShow SetFormat) or a plain KSDATARANGE (GUIDs only, the framework already matched them).
+    // A size that is not this range's is refused (a camera that "accepts" a size it cannot deliver gives programs no
+    // picture); a frame rate within 1..60 fps is taken.
     if (!IsEqualGUID(CallerRange->Specifier, kSpecVideoInfo)) return STATUS_NO_MATCH;
     const KS_DATARANGE_VIDEO* ours = (const KS_DATARANGE_VIDEO*)OurRange;
+    const KS_VIDEOINFOHEADER* want = nullptr;
+    if (CallerRange->FormatSize >= sizeof(KS_DATARANGE_VIDEO))
+        want = &((const KS_DATARANGE_VIDEO*)CallerRange)->VideoInfoHeader;
+    else if (CallerRange->FormatSize >= sizeof(KS_DATAFORMAT_VIDEOINFOHEADER))
+        want = &((const KS_DATAFORMAT_VIDEOINFOHEADER*)CallerRange)->VideoInfoHeader;
+    LONGLONG interval = ours->VideoInfoHeader.AvgTimePerFrame;
+    if (want)
+    {
+        LONG wh = want->bmiHeader.biHeight < 0 ? -want->bmiHeader.biHeight : want->bmiHeader.biHeight;
+        if (want->bmiHeader.biWidth && (want->bmiHeader.biWidth != ours->VideoInfoHeader.bmiHeader.biWidth ||
+                                         wh != ours->VideoInfoHeader.bmiHeader.biHeight))
+            return STATUS_NO_MATCH;
+        if (want->AvgTimePerFrame >= S2C_MIN_INTERVAL && want->AvgTimePerFrame <= S2C_MAX_INTERVAL) interval = want->AvgTimePerFrame;
+    }
     ULONG size = sizeof(KS_DATAFORMAT_VIDEOINFOHEADER);
     if (BufferSize == 0)
     {
@@ -213,6 +263,7 @@ static NTSTATUS S2C_CB PinIntersect(_In_ PVOID Context, _In_ PIRP Irp, _In_ PKSP
     f->DataFormat.FormatSize = size;
     f->DataFormat.SampleSize = ours->VideoInfoHeader.bmiHeader.biSizeImage;
     RtlCopyMemory(&f->VideoInfoHeader, &ours->VideoInfoHeader, sizeof(KS_VIDEOINFOHEADER));
+    f->VideoInfoHeader.AvgTimePerFrame = interval;
     *DataSize = size;
     return STATUS_SUCCESS;
 }
@@ -285,6 +336,9 @@ static NTSTATUS S2C_CB GetStatus(_In_ PIRP Irp, _In_ PKSIDENTIFIER Request, _Ino
     s->SourceWidth = c->PictureWidth;
     s->SourceHeight = c->PictureHeight;
     s->PinsOpen = (ULONG)c->PinsOpen;
+    ExAcquireFastMutex(&c->Lock);
+    RtlCopyMemory(s->UserPids, c->UserPids, sizeof(s->UserPids));
+    ExReleaseFastMutex(&c->Lock);
     s->FramesDelivered = (ULONGLONG)c->FramesDelivered;
     s->FramesDropped = (ULONGLONG)c->FramesDropped;
     s->PicturesReceived = (ULONGLONG)c->PicturesReceived;
@@ -407,8 +461,8 @@ static void InitRange(KS_DATARANGE_VIDEO* r, const GUID& sub, ULONG fourcc, USHO
     cc->MinOutputSize = cc->InputSize;
     cc->MaxOutputSize = cc->InputSize;
     cc->OutputGranularityX = cc->OutputGranularityY = 1;
-    cc->MinFrameInterval = interval;
-    cc->MaxFrameInterval = interval;
+    cc->MinFrameInterval = S2C_MIN_INTERVAL;       // programs may choose 1..60 fps
+    cc->MaxFrameInterval = S2C_MAX_INTERVAL;
     cc->MinBitsPerSecond = (LONG)((ULONGLONG)size * 8 * fps > 0x7fffffff ? 0x7fffffff : (ULONGLONG)size * 8 * fps);
     cc->MaxBitsPerSecond = cc->MinBitsPerSecond;
 
@@ -432,11 +486,36 @@ static void SetRanges(S2C_CAMERA* c, ULONG Width, ULONG Height, ULONG Fps)
     c->Width = Width;
     c->Height = Height;
     c->Fps = Fps;
-    InitRange(&c->Ranges[0], kSubYUY2, FOURCC('Y', 'U', 'Y', '2'), 16, Width, Height, Fps);
-    InitRange(&c->Ranges[1], kSubNV12, FOURCC('N', 'V', '1', '2'), 12, Width, Height, Fps);
-    InitRange(&c->Ranges[2], kSubRGB32, 0, 32, Width, Height, Fps);
+    // The camera's own size first (the default of programs), then the usual webcam sizes: programs often ask for one
+    // of those (640x480 above all) and skip a camera without it. The picture is scaled to the size chosen.
+    static const ULONG kUsual[][2] = { { 1920, 1080 }, { 1280, 720 }, { 960, 540 }, { 800, 600 }, { 640, 480 }, { 640, 360 }, { 320, 240 } };
+    ULONG sizes[S2C_MAX_SIZES][2];
+    ULONG n = 0;
+    sizes[n][0] = Width;
+    sizes[n][1] = Height;
+    n++;
+    for (ULONG i = 0; i < sizeof(kUsual) / sizeof(kUsual[0]) && n < S2C_MAX_SIZES; i++)
+    {
+        if (kUsual[i][0] == Width && kUsual[i][1] == Height) continue;
+        sizes[n][0] = kUsual[i][0];
+        sizes[n][1] = kUsual[i][1];
+        n++;
+    }
+    ULONG maxPixels = 0, minPixels = 0xFFFFFFFF, k = 0;
+    for (ULONG i = 0; i < n; i++)
+    {
+        ULONG w = sizes[i][0], h = sizes[i][1];
+        InitRange(&c->Ranges[k++], kSubYUY2, FOURCC('Y', 'U', 'Y', '2'), 16, w, h, Fps);
+        InitRange(&c->Ranges[k++], kSubNV12, FOURCC('N', 'V', '1', '2'), 12, w, h, Fps);
+        InitRange(&c->Ranges[k++], kSubRGB32, 0, 32, w, h, Fps);
+        if (w * h > maxPixels) maxPixels = w * h;
+        if (w * h < minPixels) minPixels = w * h;
+    }
+    c->RangeCount = k;
+    for (ULONG i = 0; i < k; i++) c->RangePointers[i] = &c->Ranges[i].DataRange;
+    c->PinDescriptor.PinDescriptor.DataRangesCount = k;
 
-    // One frame buffer per sample, system memory, up to the largest format (RGB32).
+    // One frame buffer per sample, system memory, up to the largest format (RGB32 of the largest size).
     KSALLOCATOR_FRAMING_EX* f = &c->Framing;
     RtlZeroMemory(f, sizeof(*f));
     f->CountItems = 1;
@@ -448,8 +527,8 @@ static void SetRanges(S2C_CAMERA* c, ULONG Width, ULONG Height, ULONG Fps)
     f->FramingItem[0].FileAlignment = FILE_LONG_ALIGNMENT;
     f->FramingItem[0].PhysicalRange.MaxFrameSize = (ULONG)-1;
     f->FramingItem[0].PhysicalRange.Stepping = 1;
-    f->FramingItem[0].FramingRange.Range.MinFrameSize = Width * Height * 3 / 2;
-    f->FramingItem[0].FramingRange.Range.MaxFrameSize = Width * Height * 4;
+    f->FramingItem[0].FramingRange.Range.MinFrameSize = minPixels * 3 / 2;
+    f->FramingItem[0].FramingRange.Range.MaxFrameSize = maxPixels * 4;
     f->FramingItem[0].FramingRange.Range.Stepping = 1;
 }
 
@@ -513,12 +592,11 @@ NTSTATUS S2cCameraCreate(_In_ ULONG Index, _In_ ULONG Width, _In_ ULONG Height, 
     ExInitializeFastMutex(&c->Lock);
 
     SetRanges(c, Width, Height, Fps);
-    for (ULONG i = 0; i < S2C_FORMATS; i++) c->RangePointers[i] = &c->Ranges[i].DataRange;
 
     KSPIN_DESCRIPTOR_EX* pd = &c->PinDescriptor;
     pd->Dispatch = &kPinDispatch;
     pd->AutomationTable = nullptr;
-    pd->PinDescriptor.DataRangesCount = S2C_FORMATS;
+    pd->PinDescriptor.DataRangesCount = c->RangeCount;
     pd->PinDescriptor.DataRanges = c->RangePointers;
     pd->PinDescriptor.DataFlow = KSPIN_DATAFLOW_OUT;
     pd->PinDescriptor.Communication = KSPIN_COMMUNICATION_BOTH;
@@ -606,8 +684,21 @@ void S2cRenderFrame(_In_ S2C_CAMERA* c, _In_ const KS_VIDEOINFOHEADER* Info, _Ou
     ExAcquireFastMutex(&c->Lock);
     const ULONG* pic = c->Picture;
     ULONG pw = c->PictureWidth, ph = c->PictureHeight;
-    // Nearest-neighbour scaling of the picture to the output size (the program normally sends the exact size).
-    #define SRC(x, y) (pic ? pic[(SIZE_T)((y) * ph / h) * pw + (x) * pw / w] : PatternPixel((x), (y), w, h, c->Index, FrameNumber))
+    // Nearest-neighbour scaling of the picture into the output size (the program sends the camera's own size; a
+    // program may have chosen another one): fitted with black bars when the aspect ratio differs.
+    ULONG rx = 0, ry = 0, rw = w, rh = h;
+    if (pic && pw && ph)
+    {
+        if ((ULONGLONG)pw * h > (ULONGLONG)ph * w) rh = (ULONG)((ULONGLONG)ph * w / pw);
+        else rw = (ULONG)((ULONGLONG)pw * h / ph);
+        if (!rw) rw = 1;
+        if (!rh) rh = 1;
+        rx = (w - rw) / 2;
+        ry = (h - rh) / 2;
+    }
+    #define SRC(x, y) (pic ? (((x) >= rx && (x) < rx + rw && (y) >= ry && (y) < ry + rh) \
+                              ? pic[(SIZE_T)(((y) - ry) * ph / rh) * pw + ((x) - rx) * pw / rw] : 0xFF000000) \
+                           : PatternPixel((x), (y), w, h, c->Index, FrameNumber))
 
     if (fourcc == FOURCC('Y', 'U', 'Y', '2') && DstSize >= w * h * 2)
     {

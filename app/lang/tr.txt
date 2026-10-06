@@ -250,3 +250,5 @@ kendi yayını: hata 0x%08lX
 “%ls” kamerası: kendi yayını kamerayı açamıyor (0x%08lX).
 Kendi yayını
 Panel kamerayı sıradan bir program gibi kendisi kullanır: Windows kamerayı açık gösterir
+kullanımda
+kullanımda: %ls

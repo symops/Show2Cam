@@ -250,3 +250,5 @@ Camera ‘%ls’: de zelfuitzending krijgt geen toegang tot de camera — sta bu
 Camera ‘%ls’: de zelfuitzending kan de camera niet openen (0x%08lX).
 Zelfuitzending
 Het paneel gebruikt de camera zelf zoals een gewoon programma: Windows toont de camera als ingeschakeld
+in gebruik
+in gebruik: %ls

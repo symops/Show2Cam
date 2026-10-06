@@ -250,3 +250,5 @@ Kamera „%ls”: autotransmisja nie ma dostępu do kamery — zezwól aplikacjo
 Kamera „%ls”: autotransmisja nie może otworzyć kamery (0x%08lX).
 Autotransmisja
 Panel sam używa kamery jak zwykły program: Windows pokazuje kamerę jako włączoną
+w użyciu
+w użyciu: %ls

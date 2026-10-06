@@ -250,3 +250,5 @@ Telecamera «%ls»: all’autotrasmissione è negato l’accesso alla telecamera
 Telecamera «%ls»: l’autotrasmissione non può aprire la telecamera (0x%08lX).
 Autotrasmissione
 Il pannello usa da sé la telecamera come un normale programma: Windows mostra la telecamera accesa
+in uso
+in uso: %ls

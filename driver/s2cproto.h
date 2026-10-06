@@ -18,6 +18,7 @@ enum { S2C_PROPERTY_FRAME = 0, S2C_PROPERTY_STATUS = 1, S2C_PROPERTY_FORMAT = 2,
 #define S2C_MAX_WIDTH  3840
 #define S2C_MAX_HEIGHT 2160
 #define S2C_MAX_FPS    60
+#define S2C_MAX_USERS  8
 #define S2C_FRAME_MAGIC 0x4D415246      // 'FRAM'
 #define S2C_MAX_FRAME_PIXELS (3840u * 2160u)
 
@@ -39,6 +40,8 @@ struct S2C_STATUS
     ULONGLONG FramesDelivered;
     ULONGLONG FramesDropped;
     ULONGLONG PicturesReceived;
+    ULONG UserPids[S2C_MAX_USERS];      // processes that have the camera open (0 = free slot): the program itself
+                                        // (DirectShow) or the Windows Frame Server (Media Foundation programs)
 };
 
 struct S2C_FORMAT

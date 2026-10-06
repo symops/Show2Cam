@@ -250,3 +250,5 @@ Kamera “%ls”: siaran mandiri ditolak aksesnya ke kamera — izinkan aplikasi
 Kamera “%ls”: siaran mandiri tidak dapat membuka kamera (0x%08lX).
 Siaran mandiri
 Panel sendiri memakai kamera seperti program biasa: Windows menampilkan kamera sebagai menyala
+sedang dipakai
+dipakai oleh: %ls

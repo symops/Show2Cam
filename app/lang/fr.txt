@@ -250,3 +250,5 @@ Caméra « %ls » : l’accès à la caméra est refusé à l’auto-diffusion �
 Caméra « %ls » : l’auto-diffusion ne peut pas ouvrir la caméra (0x%08lX).
 Auto-diffusion
 Le panneau utilise lui-même la caméra comme un programme ordinaire : Windows affiche la caméra comme allumée
+utilisée
+utilisée par : %ls

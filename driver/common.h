@@ -15,7 +15,11 @@
 
 #define S2C_POOLTAG      'C2hS'
 #define S2C_MAX_CAMERAS  10
-#define S2C_FORMATS      3              // YUY2, NV12, RGB32 for every camera
+#define S2C_FORMATS      3              // YUY2, NV12, RGB32 for every size
+#define S2C_MAX_SIZES    8              // the camera's own size + the usual webcam sizes (programs ask for those)
+#define S2C_MAX_RANGES   (S2C_FORMATS * S2C_MAX_SIZES)
+#define S2C_MIN_INTERVAL (10000000LL / S2C_MAX_FPS)    // frame interval limits offered (100-ns units): 60..1 fps
+#define S2C_MAX_INTERVAL 10000000LL
 
 // AVStream calls its dispatch routines with the WDK's default calling convention: __stdcall on x86 (the MinGW
 // typedefs carry none, so the routines are declared with it explicitly and cast in the tables), plain on x64.
@@ -39,8 +43,9 @@ struct S2C_CAMERA
     // AVStream descriptors of this camera (its resolution is in the data ranges)
     KSFILTER_DESCRIPTOR     FilterDescriptor;
     KSPIN_DESCRIPTOR_EX     PinDescriptor;
-    KS_DATARANGE_VIDEO      Ranges[S2C_FORMATS];
-    PKSDATARANGE            RangePointers[S2C_FORMATS];
+    KS_DATARANGE_VIDEO      Ranges[S2C_MAX_RANGES];
+    PKSDATARANGE            RangePointers[S2C_MAX_RANGES];
+    ULONG                   RangeCount;
     KSALLOCATOR_FRAMING_EX  Framing;
     PKSFILTERFACTORY        Factory;
 
@@ -51,6 +56,7 @@ struct S2C_CAMERA
 
     volatile LONG           Streaming;
     volatile LONG           PinsOpen;
+    ULONG                   UserPids[S2C_MAX_USERS];   // who opened the pins (guarded by Lock)
     volatile LONGLONG       FramesDelivered, FramesDropped, PicturesReceived;
 };
 #define S2C_CAMERA_SIGNATURE 0x324D4143

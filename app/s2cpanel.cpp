@@ -393,6 +393,114 @@ static bool InUse(const CamRunStatus& s)
 }
 
 // ---------------------------------------------------------------------------
+// Who uses a camera. The driver tells which processes opened it: a DirectShow program itself, or the Windows Frame
+// Server for Media Foundation programs (Teams, browsers, the Camera app, our self-view). For the latter the program is
+// what Windows' camera privacy records as using a camera right now (LastUsedTimeStop = 0; per user, not per camera).
+
+static wchar_t g_appsNow[16][64];
+static int     g_appsNowCount;
+
+static void CameraAppsNow()
+{
+    g_appsNowCount = 0;
+    const wchar_t* base = L"Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\webcam";
+    auto scan = [](HKEY parent, bool nonPackaged) {
+        wchar_t sub[512];
+        for (DWORD i = 0; g_appsNowCount < 16; i++)
+        {
+            DWORD len = 512;
+            if (RegEnumKeyExW(parent, i, sub, &len, nullptr, nullptr, nullptr, nullptr) != ERROR_SUCCESS) break;
+            if (!nonPackaged && !_wcsicmp(sub, L"NonPackaged")) continue;
+            ULONGLONG start = 0, stop = 0;
+            DWORD sz = sizeof(start);
+            RegGetValueW(parent, sub, L"LastUsedTimeStart", RRF_RT_REG_QWORD, nullptr, &start, &sz);
+            sz = sizeof(stop);
+            RegGetValueW(parent, sub, L"LastUsedTimeStop", RRF_RT_REG_QWORD, nullptr, &stop, &sz);
+            if (!start || stop) continue;
+            // "C:#Program Files#App#app.exe" -> "app.exe"; "Microsoft.WindowsCamera_8wekyb3d8bbwe" -> "Microsoft.WindowsCamera"
+            const wchar_t* name = nonPackaged ? wcsrchr(sub, L'#') : nullptr;
+            name = name ? name + 1 : sub;
+            wchar_t* out = g_appsNow[g_appsNowCount];
+            wcsncpy(out, name, 63);
+            out[63] = 0;
+            if (!nonPackaged)
+            {
+                wchar_t* u = wcschr(out, L'_');
+                if (u) *u = 0;
+            }
+            g_appsNowCount++;
+        }
+    };
+    HKEY k;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, base, 0, KEY_READ, &k) == ERROR_SUCCESS)
+    {
+        scan(k, false);
+        HKEY np;
+        if (RegOpenKeyExW(k, L"NonPackaged", 0, KEY_READ, &np) == ERROR_SUCCESS)
+        {
+            scan(np, true);
+            RegCloseKey(np);
+        }
+        RegCloseKey(k);
+    }
+}
+
+static void ProcessName(DWORD pid, wchar_t* out, size_t len)
+{
+    out[0] = 0;
+    HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!h) return;
+    wchar_t path[MAX_PATH];
+    DWORD n = MAX_PATH;
+    if (QueryFullProcessImageNameW(h, 0, path, &n))
+    {
+        const wchar_t* f = wcsrchr(path, L'\\');
+        wcsncpy(out, f ? f + 1 : path, len - 1);
+        out[len - 1] = 0;
+    }
+    CloseHandle(h);
+}
+
+static void AddName(wchar_t* list, size_t len, const wchar_t* name)
+{
+    if (!name[0]) return;
+    // no duplicates
+    size_t n = wcslen(name);
+    for (const wchar_t* p = wcsstr(list, name); p; p = wcsstr(p + 1, name))
+        if ((p == list || p[-1] == L' ') && (p[n] == 0 || p[n] == L','))
+            return;
+    if (list[0]) wcsncat(list, L", ", len - wcslen(list) - 1);
+    wcsncat(list, name, len - wcslen(list) - 1);
+}
+
+// "самотрансляция, Teams.exe" / "" when not in use.
+static void UsersText(const CamRunStatus& s, wchar_t* out, size_t len)
+{
+    out[0] = 0;
+    if (!InUse(s)) return;
+    bool self = s.selfView && s.self.open;
+    if (self) AddName(out, len, TR(L"самотрансляция"));
+    int frameServer = 0;
+    for (ULONG i = 0; i < S2C_MAX_USERS; i++)
+    {
+        DWORD pid = s.driver.UserPids[i];
+        if (!pid) continue;
+        wchar_t name[MAX_PATH];
+        ProcessName(pid, name, MAX_PATH);
+        if (!name[0] || !_wcsicmp(name, L"svchost.exe")) frameServer++;      // Frame Server (or not readable)
+        else if (pid != GetCurrentProcessId()) AddName(out, len, name);
+    }
+    // The Frame Server's clients: Windows' current camera users, but only when this camera's Frame Server stream is not
+    // just our self-view (the record is for all cameras).
+    if (self) frameServer--;
+    if (frameServer > 0)
+        for (int i = 0; i < g_appsNowCount; i++)
+            if (_wcsicmp(g_appsNow[i], L"Show2Cam.exe") != 0) AddName(out, len, g_appsNow[i]);
+    if (!out[0]) wcsncpy(out, TR(L"используется"), len - 1);
+    out[len - 1] = 0;
+}
+
+// ---------------------------------------------------------------------------
 // Cameras: the runners follow the cameras the driver offers
 
 static void ApplyConfig(int i)
@@ -478,7 +586,13 @@ static void UpdateListRow(int i)
     if (c.status.deviceOpen) FormatText(t, 300, c.status.driver.Width, c.status.driver.Height, c.status.driver.Fps);
     else wcscpy(t, L"—");
     ListSetText(i, 2, t);
-    ListSetText(i, 3, !c.status.deviceOpen ? TR(L"нет связи") : (InUse(c.status) ? TR(L"● используется") : TR(L"○ не используется")));
+    wchar_t users[300], state[320];
+    UsersText(c.status, users, 300);
+    if (!c.status.deviceOpen) wcscpy(state, TR(L"нет связи"));
+    else if (users[0]) _snwprintf(state, 320, L"● %ls", users);
+    else wcscpy(state, TR(L"○ не используется"));
+    state[319] = 0;
+    ListSetText(i, 3, state);
 }
 
 static void FillList()
@@ -594,7 +708,12 @@ static void ShowCamStatus()
     else
     {
         FormatText(fmt, 80, s.driver.Width, s.driver.Height, s.driver.Fps);
-        _snwprintf(line1, 400, L"%ls: %ls · %ls", TR(L"Камера"), fmt, InUse(s) ? TR(L"используется программой") : TR(L"не используется"));
+        wchar_t users[300], inUse[340];
+        UsersText(s, users, 300);
+        if (users[0]) _snwprintf(inUse, 340, TR(L"используется: %ls"), users);
+        else wcscpy(inUse, TR(L"не используется"));
+        inUse[339] = 0;
+        _snwprintf(line1, 400, L"%ls: %ls · %ls", TR(L"Камера"), fmt, inUse);
         if (s.formatWaiting)
         {
             wchar_t want[80];
@@ -1520,6 +1639,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     case WM_TIMER:
         if (wp == TIMER_STATUS)
         {
+            CameraAppsNow();
             for (int i = 0; i < g_camCount; i++)
             {
                 RunnerGetStatus(g_cams[i].runner, &g_cams[i].status);

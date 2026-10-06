@@ -250,3 +250,5 @@ Camera “%ls”: tự phát bị từ chối quyền truy cập camera — hãy
 Camera “%ls”: tự phát không mở được camera (0x%08lX).
 Tự phát
 Bảng điều khiển tự dùng camera như một chương trình thông thường: Windows hiển thị camera đang bật
+đang dùng
+đang dùng: %ls

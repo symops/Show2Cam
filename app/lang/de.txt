@@ -250,3 +250,5 @@ Kamera „%ls“: Der Eigenübertragung wird der Kamerazugriff verweigert — er
 Kamera „%ls“: Die Eigenübertragung kann die Kamera nicht öffnen (0x%08lX).
 Eigenübertragung
 Die Systemsteuerung verwendet die Kamera selbst wie ein normales Programm: Windows zeigt die Kamera als eingeschaltet
+in Verwendung
+in Verwendung: %ls
