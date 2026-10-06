@@ -255,7 +255,10 @@ static NTSTATUS S2C_CB PinProcess(_In_ PKSPIN Pin)
     ULONGLONG now = QpcNow100ns(p);
     InterlockedIncrement(&p->ProcessCalls);
     p->LastProcess = (LONGLONG)now;
-    ULONGLONG due = now / interval + 1;                             // frames that should exist by now
+    // Frames that should exist by now. The first one is due one frame interval after the run started, not at the RUN
+    // transition itself: every hang of a program (SearchInform's sihost64, a DirectShow graph) followed a first frame
+    // delivered 0-10 ms after RUN, while the graph was still starting; the ones that worked got it after ~60 ms.
+    ULONGLONG due = now / interval;
     if (p->FramesDone >= due) return STATUS_SUCCESS;
 
     PKSSTREAM_POINTER leading = KsPinGetLeadingEdgeStreamPointer(Pin, KSSTREAM_POINTER_STATE_LOCKED);
@@ -317,6 +320,14 @@ static NTSTATUS S2C_CB PinProcess(_In_ PKSPIN Pin)
     }
     p->FramesDone++;
     p->LastFrame = (LONGLONG)now;
+    // a sign of life every 10 s (the program may hang although the frames go out: the log tells which)
+    ULONGLONG every = 100000000ULL / interval;
+    if (every && p->FramesDone % every == 0)
+    {
+        S2cLog("Camera %lu: %llu frames to process %lu (%llu dropped by the camera, timer fired %ld)", c->Index + 1, p->FramesDone,
+               p->Pid, (ULONGLONG)c->FramesDropped, p->TimerFires);
+        S2cLogFlush();
+    }
     if (p->StallLogged || p->KickLogged)
     {
         p->StallLogged = p->KickLogged = FALSE;
