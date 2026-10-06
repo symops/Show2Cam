@@ -201,7 +201,8 @@ bool SetupSetCameraCount(int count, bool installDriver, bool* rebootNeeded, Setu
 {
     *rebootNeeded = false;
     if (count < 1 || count > 10) return false;
-    HDEVINFO set = SetupDiGetClassDevsW(nullptr, nullptr, nullptr, DIGCF_ALLCLASSES);
+    // Present devices only: leftovers of earlier installations (not present) do not hold a camera number.
+    HDEVINFO set = SetupDiGetClassDevsW(nullptr, nullptr, nullptr, DIGCF_ALLCLASSES | DIGCF_PRESENT);
     if (set == INVALID_HANDLE_VALUE) return false;
     // The existing devices and their cameras; a device without one (installed before one device per camera, or a
     // duplicate) gets the lowest free number.
@@ -227,25 +228,43 @@ bool SetupSetCameraCount(int count, bool installDriver, bool* rebootNeeded, Setu
         SetDeviceCameraIndex(set, &d, cam);
         AppLog(L"camera devices: existing device -> camera %d", cam + 1);
     }
-    bool ok = true;
-    // Too many: the devices of the cameras above the count are removed.
-    for (int j = 0; j < devCount; j++)
-    {
-        SP_DEVINFO_DATA d = { sizeof(d) };
-        if (!SetupDiEnumDeviceInfo(set, (DWORD)devIndex[j], &d)) continue;
-        int cam = DeviceCameraIndex(set, &d);
-        if (cam < count) continue;
-        if (!SetupDiCallClassInstaller(DIF_REMOVE, set, &d))
-        {
-            LogError(log, ctx, TR(L"не удалось удалить устройство"), GetLastError());
-            ok = false;
-        }
-        SP_DEVINSTALL_PARAMS_W dip = { sizeof(dip) };
-        if (SetupDiGetDeviceInstallParamsW(set, &d, &dip) && (dip.Flags & (DI_NEEDREBOOT | DI_NEEDRESTART))) *rebootNeeded = true;
-        AppLog(L"camera devices: camera %d removed", cam + 1);
-        used[cam] = false;
-    }
     SetupDiDestroyDeviceInfoList(set);
+    bool ok = true;
+    // Too many: the devices of the cameras above the count are removed, one at a time on a fresh list (removing a
+    // device may change the positions in a device list).
+    wchar_t done[16][200];          // devices already removed (one Windows keeps until a restart stays in the list)
+    int doneCount = 0;
+    for (int guard = 0; guard < 16; guard++)
+    {
+        HDEVINFO rs = SetupDiGetClassDevsW(nullptr, nullptr, nullptr, DIGCF_ALLCLASSES | DIGCF_PRESENT);
+        if (rs == INVALID_HANDLE_VALUE) break;
+        bool removed = false;
+        SP_DEVINFO_DATA d = { sizeof(d) };
+        for (DWORD i = 0; !removed && SetupDiEnumDeviceInfo(rs, i, &d); i++)
+        {
+            if (!HasHardwareId(rs, &d)) continue;
+            int cam = DeviceCameraIndex(rs, &d);
+            if (cam < count) continue;
+            wchar_t id[200] = L"";
+            SetupDiGetDeviceInstanceIdW(rs, &d, id, 200, nullptr);
+            bool already = false;
+            for (int k = 0; k < doneCount && !already; k++) already = !_wcsicmp(done[k], id);
+            if (already) continue;
+            if (doneCount < 16) wcscpy(done[doneCount++], id);
+            removed = true;
+            if (!SetupDiCallClassInstaller(DIF_REMOVE, rs, &d))
+            {
+                LogError(log, ctx, TR(L"не удалось удалить устройство"), GetLastError());
+                ok = false;
+            }
+            SP_DEVINSTALL_PARAMS_W dip = { sizeof(dip) };
+            if (SetupDiGetDeviceInstallParamsW(rs, &d, &dip) && (dip.Flags & (DI_NEEDREBOOT | DI_NEEDRESTART))) *rebootNeeded = true;
+            AppLog(L"camera devices: camera %d removed", cam + 1);
+            if (cam >= 0 && cam < 10) used[cam] = false;
+        }
+        SetupDiDestroyDeviceInfoList(rs);
+        if (!removed || !ok) break;
+    }
     // Missing: a new device per camera (with the driver from the driver store when asked).
     for (int cam = 0; cam < count; cam++)
     {

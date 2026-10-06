@@ -557,6 +557,9 @@ static int ScanCameras(bool log)
            wcscmp(found[keep].path, g_cams[keep].info.path) == 0)
     {
         wcscpy(g_cams[keep].info.name, found[keep].name);
+        // a camera that stays but lost its worker (its removal was asked for and Windows kept it): a new one
+        if (!g_cams[keep].runner)
+            g_cams[keep].runner = RunnerStart(keep, g_cams[keep].info.path, g_cams[keep].config, g_wnd, WM_APP_CAMEVENT);
         keep++;
     }
     for (int i = keep; i < g_camCount; i++)

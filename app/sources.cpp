@@ -1582,6 +1582,7 @@ CameraRunner* RunnerStart(int index, const wchar_t* path, const CamConfig& confi
 
 void RunnerConfigure(CameraRunner* r, const CamConfig& config)
 {
+    if (!r) return;
     EnterCriticalSection(&r->cs);
     r->config = config;
     r->configChanged = true;
@@ -1606,6 +1607,11 @@ void RunnerStop(CameraRunner* r)
 
 void RunnerGetStatus(CameraRunner* r, CamRunStatus* status)
 {
+    if (!r)
+    {
+        ZeroMemory(status, sizeof(*status));     // a camera being removed: no worker any more
+        return;
+    }
     EnterCriticalSection(&r->cs);
     *status = r->status;
     LeaveCriticalSection(&r->cs);
@@ -1613,6 +1619,7 @@ void RunnerGetStatus(CameraRunner* r, CamRunStatus* status)
 
 void RunnerSetPreview(CameraRunner* r, bool on)
 {
+    if (!r) return;
     EnterCriticalSection(&r->cs);
     r->previewWanted = on;
     if (!on)
@@ -1626,6 +1633,7 @@ void RunnerSetPreview(CameraRunner* r, bool on)
 
 bool RunnerGetPreviewFrame(CameraRunner* r, Picture* out)
 {
+    if (!r) return false;
     EnterCriticalSection(&r->cs);
     bool ok = r->previewValid && out->Alloc(r->previewPic.w, r->previewPic.h);
     if (ok) memcpy(out->px, r->previewPic.px, (SIZE_T)r->previewPic.w * r->previewPic.h * 4);
