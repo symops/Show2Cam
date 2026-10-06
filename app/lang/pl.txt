@@ -240,3 +240,4 @@ serwer nie odpowiada (%lu)
 strumień nie wygląda na MJPEG
 połączenie zostało przerwane (%lu)
 serwer zamknął połączenie
+Łączenie…

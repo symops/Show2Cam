@@ -240,3 +240,4 @@ de server reageert niet (%lu)
 de stream lijkt geen MJPEG
 de verbinding is verbroken (%lu)
 de server heeft de verbinding gesloten
+Verbinden…

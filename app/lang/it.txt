@@ -240,3 +240,4 @@ il server non risponde (%lu)
 il flusso non sembra MJPEG
 connessione interrotta (%lu)
 il server ha chiuso la connessione
+Connessione…

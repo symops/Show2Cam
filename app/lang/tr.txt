@@ -240,3 +240,4 @@ sunucu yanıt vermiyor (%lu)
 akış MJPEG'e benzemiyor
 bağlantı koptu (%lu)
 sunucu bağlantıyı kapattı
+Bağlanılıyor…

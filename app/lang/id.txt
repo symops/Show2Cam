@@ -240,3 +240,4 @@ server tidak merespons (%lu)
 aliran tidak tampak seperti MJPEG
 koneksi terputus (%lu)
 server menutup koneksi
+Menghubungkan…

@@ -240,3 +240,4 @@ máy chủ không phản hồi (%lu)
 luồng không giống MJPEG
 mất kết nối (%lu)
 máy chủ đã đóng kết nối
+Đang kết nối…

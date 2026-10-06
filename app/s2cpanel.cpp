@@ -1390,15 +1390,21 @@ static LRESULT ListCustomDraw(NMLVCUSTOMDRAW* cd)
     case CDDS_PREPAINT:
         return CDRF_NOTIFYITEMDRAW;
     case CDDS_ITEMPREPAINT:
+        // The selection is drawn here (light blue, normal text): the system's selection colours (blue, or grey
+        // without focus) would replace the green / red of the state column.
+        cd->nmcd.uItemState &= ~(CDIS_SELECTED | CDIS_FOCUS);
         return CDRF_NOTIFYSUBITEMDRAW;
     case CDDS_ITEMPREPAINT | CDDS_SUBITEM:
     {
         int row = (int)cd->nmcd.dwItemSpec;
+        bool selected = ListView_GetItemState(cd->nmcd.hdr.hwndFrom, row, LVIS_SELECTED) != 0;
+        cd->nmcd.uItemState &= ~(CDIS_SELECTED | CDIS_FOCUS);
+        cd->clrTextBk = selected ? RGB(204, 228, 247) : GetSysColor(COLOR_WINDOW);
         cd->clrText = GetSysColor(COLOR_WINDOWTEXT);
         if (cd->iSubItem == 3 && row < g_camCount)
         {
             const CamRunStatus& s = g_cams[row].status;
-            cd->clrText = !s.deviceOpen ? RGB(190, 60, 50) : (InUse(s) ? RGB(20, 150, 60) : RGB(120, 120, 120));
+            cd->clrText = !s.deviceOpen ? RGB(190, 60, 50) : (InUse(s) ? RGB(16, 140, 56) : RGB(120, 120, 120));
         }
         return CDRF_DODEFAULT;
     }
@@ -1448,11 +1454,16 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         }
         wchar_t pv[8] = L"";
         if (GetEnvironmentVariableW(L"S2C_TEST_PREVIEW", pv, 8) && !wcscmp(pv, L"all"))
+        {
+            int keep = g_sel;
             for (int i = 0; i < g_camCount; i++)
             {
                 g_sel = i;
                 OnTest();
             }
+            g_sel = keep;
+            UpdatePlayButton();
+        }
         else if (pv[0]) PostMessageW(hwnd, WM_COMMAND, MAKEWPARAM(IDC_TEST, BN_CLICKED), 0);
 #endif
         return 0;

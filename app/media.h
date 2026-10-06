@@ -29,7 +29,7 @@ void FitPixels(const BYTE* src, int sw, int sh, LONG stride, ULONG* dst, int dw,
 void RenderTextScreen(ULONG* dst, int w, int h, const wchar_t* text);
 
 // A notice screen (no signal, empty folder, ...): an icon, a title and a smaller detail line.
-enum NoticeIcon { NoticeNoSignal, NoticeEmptyFolder, NoticeError };
+enum NoticeIcon { NoticeNoSignal, NoticeEmptyFolder, NoticeError, NoticeConnecting };
 void RenderNoticeScreen(ULONG* dst, int w, int h, NoticeIcon icon, const wchar_t* title, const wchar_t* detail);
 
 // Media files of a folder.

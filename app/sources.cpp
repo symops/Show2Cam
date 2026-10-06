@@ -655,8 +655,9 @@ private:
 };
 
 // ---------------------------------------------------------------------------
-// MJPEG stream over HTTP(S): a reader thread receives and decodes the pictures; without pictures for 3 s the
-// camera shows "No signal" and the reader reconnects every 3 s.
+// MJPEG stream over HTTP(S): a reader thread receives and decodes the pictures; without pictures for 10 s the
+// camera shows "No signal" (the last picture stays until then); the reader reconnects 3 s after a failure.
+static const DWORD kNoSignalMs = 10000;
 
 class StreamSource : public Source
 {
@@ -690,7 +691,7 @@ public:
     {
         DWORD now = GetTickCount();
         EnterCriticalSection(&m_cs);
-        bool fresh = m_seq && (now - m_frameTick) < 3000;
+        bool fresh = m_seq && (now - m_frameTick) < kNoSignalMs;
         if (fresh && (force || (!paused && m_seq != m_shownSeq) || m_noticeShown))
         {
             FitPixels((const BYTE*)m_latest.px, m_latest.w, m_latest.h, m_latest.w * 4, px, w, h);
@@ -702,7 +703,14 @@ public:
         wchar_t error[160];
         wcscpy(error, m_error);
         LeaveCriticalSection(&m_cs);
-        if (!fresh && (!m_noticeShown || force) && (int)(now - m_started) > 1500)
+        if (!m_seq && !m_noticeShown && (!m_connectingShown || force))
+        {
+            // Before the first picture (and before "No signal" after 10 s): "Connecting…" instead of a black screen.
+            RenderNoticeScreen(px, w, h, NoticeConnecting, TR(L"Подключение…"), m_url);
+            *changed = true;
+            m_connectingShown = true;
+        }
+        if (!fresh && (!m_noticeShown || force) && (int)(now - m_started) >= (int)kNoSignalMs)
         {
             wchar_t detail[700];
             if (error[0]) _snwprintf(detail, 700, L"%ls\n%ls · %ls", m_url, error, TR(L"переподключение…"));
@@ -1017,7 +1025,7 @@ private:
     ULONGLONG m_seq = 0, m_shownSeq = 0;
     DWORD   m_frameTick = 0, m_started = GetTickCount();
     wchar_t m_error[160] = L"";
-    bool    m_noticeShown = false, m_logged = false;
+    bool    m_noticeShown = false, m_logged = false, m_connectingShown = false;
 };
 
 // ---------------------------------------------------------------------------
@@ -1163,11 +1171,22 @@ static DWORD WINAPI RunnerThread(LPVOID p)
                         AppLog(L"camera %d: format %lux%lu %lu fps (was %lux%lu %lu fps)", r->index + 1, w, h, fps, st.Width, st.Height, st.Fps);
                         CamGetStatus(cam, &st);
                         waiting = false;
+                        EnterCriticalSection(&r->cs);
+                        r->status.driver = st;              // the panel reads the new format with the event
+                        LeaveCriticalSection(&r->cs);
                         r->sink.Post(EvFormatChanged);
                     }
                     else if (err == ERROR_BUSY)
                     {
-                        if (!waiting || w != lastWantW || h != lastWantH || fps != lastWantFps) r->sink.Post(EvFormatWaiting);
+                        if (!waiting || w != lastWantW || h != lastWantH || fps != lastWantFps)
+                        {
+                            EnterCriticalSection(&r->cs);
+                            r->status.wantW = w;
+                            r->status.wantH = h;
+                            r->status.wantFps = fps;
+                            LeaveCriticalSection(&r->cs);
+                            r->sink.Post(EvFormatWaiting);
+                        }
                         waiting = true;
                         nextFormat = now + 1000;
                     }

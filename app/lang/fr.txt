@@ -240,3 +240,4 @@ le serveur ne répond pas (%lu)
 le flux ne ressemble pas à du MJPEG
 la connexion a été interrompue (%lu)
 le serveur a fermé la connexion
+Connexion…

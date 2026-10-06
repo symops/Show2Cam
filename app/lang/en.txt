@@ -240,6 +240,7 @@ the server does not respond (%lu)
 the stream does not look like MJPEG
 the connection was lost (%lu)
 the server closed the connection
+Connecting…
 [driver] the driver log is empty: the driver has never started
 [driver] ---- driver log (DriverLog) ----
 [setupapi] cannot open %ls (%lu)

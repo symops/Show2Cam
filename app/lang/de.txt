@@ -240,3 +240,4 @@ der Server antwortet nicht (%lu)
 der Stream sieht nicht nach MJPEG aus
 die Verbindung wurde unterbrochen (%lu)
 der Server hat die Verbindung geschlossen
+Verbindung wird hergestellt…

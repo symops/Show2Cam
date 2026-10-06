@@ -349,13 +349,16 @@ void RenderNoticeScreen(ULONG* dst, int w, int h, NoticeIcon icon, const wchar_t
     HPEN light = ExtCreatePen(PS_GEOMETRIC | PS_SOLID | PS_ENDCAP_ROUND | PS_JOIN_ROUND, (DWORD)pen, &lb, 0, nullptr);
     HGDIOBJ oldPen = SelectObject(dc, light);
     HGDIOBJ oldBrush = SelectObject(dc, GetStockObject(NULL_BRUSH));
-    if (icon == NoticeNoSignal)
+    if (icon == NoticeNoSignal || icon == NoticeConnecting)
     {
-        // A video camera (body + lens wedge), struck through in red.
+        // A video camera (body + lens wedge); struck through in red for "no signal".
         int bl = cx - s / 2, bt = top + s / 4, br = cx + s / 6, bb = top + s * 3 / 4;
         RoundRect(dc, bl, bt, br, bb, s / 6, s / 6);
         POINT wedge[3] = { { br + s / 16, (bt + bb) / 2 }, { cx + s / 2, bt + s / 12 }, { cx + s / 2, bb - s / 12 } };
         Polygon(dc, wedge, 3);
+    }
+    if (icon == NoticeNoSignal)
+    {
         LOGBRUSH red = { BS_SOLID, RGB(235, 70, 60), 0 };
         HPEN slash = ExtCreatePen(PS_GEOMETRIC | PS_SOLID | PS_ENDCAP_ROUND, (DWORD)(pen * 3 / 2), &red, 0, nullptr);
         SelectObject(dc, slash);
@@ -373,7 +376,7 @@ void RenderNoticeScreen(ULONG* dst, int w, int h, NoticeIcon icon, const wchar_t
         MoveToEx(dc, l, t + s / 5, nullptr);
         LineTo(dc, r, t + s / 5);
     }
-    else
+    else if (icon == NoticeError)
     {
         // A circle with "!".
         Ellipse(dc, cx - s / 2 + pen, top + pen, cx + s / 2 - pen, top + s - pen);
