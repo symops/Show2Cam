@@ -176,6 +176,10 @@ extern "C" NTSTATUS NTAPI DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUN
 {
     S2cLogInit();
     S2cLog("DriverEntry: Show2Cam %s", S2C_VER_STR);
+    // The running version for the installer (the log's DriverEntry line may have rotated out of the saved log).
+    static const WCHAR kVersion[] = L"" S2C_VER_STR;
+    RtlWriteRegistryValue(RTL_REGISTRY_SERVICES, L"Show2Cam\\Parameters", L"RunningVersion", REG_SZ, (PVOID)kVersion,
+                          sizeof(kVersion));
     NTSTATUS status = KsInitializeDriver(DriverObject, RegistryPath, &kDeviceDescriptor);
     S2cLog("KsInitializeDriver -> 0x%08lX", (ULONG)status);
     S2cLogFlushNow();
