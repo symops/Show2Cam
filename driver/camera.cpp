@@ -249,7 +249,11 @@ static NTSTATUS S2C_CB PinSetDataFormat(_In_ PKSPIN Pin, _In_opt_ PKSDATAFORMAT 
 static NTSTATUS S2C_CB PinProcess(_In_ PKSPIN Pin)
 {
     S2C_PIN* p = (S2C_PIN*)Pin->Context;
-    if (!p || !p->Running) return STATUS_SUCCESS;
+    // STATUS_PENDING everywhere: AVStream then waits for the next KsPinAttemptProcessing (the frame timer, twice per
+    // frame). STATUS_SUCCESS made it call Process again at once while buffers were queued - a busy loop on a worker
+    // thread until the next frame was due (seen: 400 000 calls before the first frame), starving the program's own
+    // threads (SearchInform's camera open took seconds or hung).
+    if (!p || !p->Running) return STATUS_PENDING;
     S2C_CAMERA* c = p->Camera;
     ULONGLONG interval = p->Interval ? p->Interval : 10000000ULL / (c->Fps ? c->Fps : 30);
     ULONGLONG now = QpcNow100ns(p);
@@ -259,7 +263,7 @@ static NTSTATUS S2C_CB PinProcess(_In_ PKSPIN Pin)
     // transition itself: every hang of a program (SearchInform's sihost64, a DirectShow graph) followed a first frame
     // delivered 0-10 ms after RUN, while the graph was still starting; the ones that worked got it after ~60 ms.
     ULONGLONG due = now / interval;
-    if (p->FramesDone >= due) return STATUS_SUCCESS;
+    if (p->FramesDone >= due) return STATUS_PENDING;
 
     PKSSTREAM_POINTER leading = KsPinGetLeadingEdgeStreamPointer(Pin, KSSTREAM_POINTER_STATE_LOCKED);
     if (!leading)
@@ -271,7 +275,7 @@ static NTSTATUS S2C_CB PinProcess(_In_ PKSPIN Pin)
             S2cLog("Camera %lu: no buffer from process %lu for 5 s (frames due: %llu)", c->Index + 1, p->Pid, due);
             S2cLogFlush();
         }
-        return STATUS_SUCCESS;
+        return STATUS_PENDING;
     }
     p->LastBuffer = now;
 
@@ -324,8 +328,8 @@ static NTSTATUS S2C_CB PinProcess(_In_ PKSPIN Pin)
     ULONGLONG every = 100000000ULL / interval;
     if (every && p->FramesDone % every == 0)
     {
-        S2cLog("Camera %lu: %llu frames to process %lu (%llu dropped by the camera, timer fired %ld)", c->Index + 1, p->FramesDone,
-               p->Pid, (ULONGLONG)c->FramesDropped, p->TimerFires);
+        S2cLog("Camera %lu: %llu frames to process %lu (%llu dropped by the camera, timer fired %ld, Process called %ld)",
+               c->Index + 1, p->FramesDone, p->Pid, (ULONGLONG)c->FramesDropped, p->TimerFires, p->ProcessCalls);
         S2cLogFlush();
     }
     if (p->StallLogged || p->KickLogged)
@@ -336,7 +340,7 @@ static NTSTATUS S2C_CB PinProcess(_In_ PKSPIN Pin)
     }
     S2C_ADD64(c->FramesDelivered, 1);
     KsStreamPointerAdvanceOffsetsAndUnlock(leading, 0, used, TRUE);  // TRUE: hand the buffer back with this frame
-    return STATUS_SUCCESS;
+    return STATUS_PENDING;
 }
 
 // Format negotiation: the caller's range against one of ours -> our exact KS_DATAFORMAT_VIDEOINFOHEADER.
