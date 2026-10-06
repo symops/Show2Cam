@@ -58,6 +58,7 @@ struct S2C_CAMERA
     volatile LONG           PinsOpen;
     ULONG                   UserPids[S2C_MAX_USERS];   // who opened the pins (guarded by Lock)
     BOOLEAN                 Enabled;                   // its device interfaces are on (programs see it)
+    PDEVICE_OBJECT          Pdo;                       // the device (camera 1 names it, see ApplyName)
     volatile LONGLONG       FramesDelivered, FramesDropped, PicturesReceived;
 };
 #define S2C_CAMERA_SIGNATURE 0x324D4143

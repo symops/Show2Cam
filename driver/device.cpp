@@ -88,6 +88,7 @@ static NTSTATUS EnableCamera(PKSDEVICE Device, S2C_DEVICE* d, ULONG i, BOOLEAN o
         status = KsCreateFilterFactory(Device->FunctionalDeviceObject, &c->FilterDescriptor, c->RefString, nullptr, 0, nullptr,
                                        nullptr, &c->Factory);
         S2cLog("Camera %lu: %lux%lu %lu fps -> 0x%08lX", i + 1, w, h, fps, (ULONG)status);
+        c->Pdo = Device->PhysicalDeviceObject;
         if (!NT_SUCCESS(status))
         {
             S2cCameraFree(c);

@@ -578,6 +578,7 @@ static void SetRanges(S2C_CAMERA* c, ULONG Width, ULONG Height, ULONG Fps)
 
 // The name on the camera's device interfaces (one per category: video, capture, camera): the "FriendlyName" value
 // of each interface's registry key (what the INF set, read by programs listing cameras) and the matching property.
+static const DEVPROPKEY kDeviceFriendlyName = { { 0xa45c254e, 0xdf1c, 0x4efd, { 0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0 } }, 14 };
 static const DEVPROPKEY kInterfaceFriendlyName = { { 0x026e516e, 0xb814, 0x414b, { 0x83, 0xcd, 0x85, 0x6d, 0x6f, 0xef, 0x48, 0x22 } }, 2 };
 
 static void ApplyName(S2C_CAMERA* c, PCWSTR Name)
@@ -607,6 +608,14 @@ static void ApplyName(S2C_CAMERA* c, PCWSTR Name)
         IoSetDeviceInterfacePropertyData(&alias, &kInterfaceFriendlyName, 0, 0, DEVPROP_TYPE_STRING, bytes, (PVOID)Name);
         RtlFreeUnicodeString(&alias);
     }
+    // The device itself is named after camera 1: some programs (e.g. SearchInform's camera module) take a DirectShow
+    // camera only when its name is also the name of a device (as with one-camera drivers such as e2eSoft VCam).
+    if (c->Index == 0 && c->Pdo)
+    {
+        NTSTATUS ds = IoSetDevicePropertyData(c->Pdo, &kDeviceFriendlyName, 0, PLUGPLAY_PROPERTY_PERSISTENT, DEVPROP_TYPE_STRING,
+                                              bytes, (PVOID)Name);
+        S2cLog("Device name \"%ls\" -> 0x%08lX", Name, (ULONG)ds);
+    }
     S2cLog("Camera %lu: name \"%ls\" (%lu of 3 interfaces)", c->Index + 1, Name, done);
 }
 
@@ -623,6 +632,8 @@ void S2cCameraApplySavedName(_In_ S2C_CAMERA* Camera)
     q[0].DefaultType = REG_SZ << RTL_QUERY_REGISTRY_TYPECHECK_SHIFT;
     if (NT_SUCCESS(RtlQueryRegistryValues(RTL_REGISTRY_SERVICES, L"Show2Cam\\Parameters", q, nullptr, nullptr)) && buffer[0])
         ApplyName(Camera, buffer);
+    else if (Camera->Index == 0)
+        ApplyName(Camera, nullptr);         // the default name, also as the device's name
 }
 
 NTSTATUS S2cCameraCreate(_In_ ULONG Index, _In_ ULONG Width, _In_ ULONG Height, _In_ ULONG Fps, _Out_ S2C_CAMERA** Camera)
