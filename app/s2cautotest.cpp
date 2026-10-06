@@ -730,6 +730,7 @@ static bool      g_haveMedia, g_mjOk;
 static USHORT    g_mjPort;
 
 static void MediaLog(const wchar_t* line) { Out(L"%ls", line); }
+static void MediaWarn(const wchar_t* line) { Warn(L"%ls", line); }
 
 // The average colour of a 9x9 patch (compression noise).
 static ULONG AvgColor(const Capture& c, double fx, double fy)
@@ -935,14 +936,17 @@ static void ActionVideos()
     if (v.sound) MicMeasure(1500, &mic);
     sample((DWORD)(kClipSeconds * 2000) + 1500);
     Check(samples >= 10 && matched * 10 >= samples * 8, L"clip colours shown: %d of %d samples", matched, samples);
-    Check(distinct >= 3, L"the picture moves (%d of 4 colour fields seen)", distinct);
+    Check(distinct >= v.minColors, L"the picture moves (%d of 4 colour fields seen, %d wanted)", distinct, v.minColors);
     if (v.sound)
     {
         if (!mic.found) Warn(L"Speak2Mic Microphone not found: the clip's sound not checked");
         else if (FAILED(mic.hr)) Warn(L"Speak2Mic Microphone cannot be recorded (0x%08lX)", (unsigned long)mic.hr);
         else
         {
-            Check(mic.rms > 0.003, L"sound on the second pass: level %.4f (microphone muted or at 0 %% in Speak2Mic?)", mic.rms);
+            if (mic.rms <= 0.003 && v.optional)
+                Warn(L"no sound on the second pass (level %.4f): this clip's sound needs a decoder from a Store extension", mic.rms);
+            else
+                Check(mic.rms > 0.003, L"sound on the second pass: level %.4f (microphone muted or at 0 %% in Speak2Mic?)", mic.rms);
             if (mic.rms > 0.003)
             {
                 if (mic.tone > 0.3) Check(true, L"the clip's 1 kHz tone: %.0f %% of the sound", mic.tone * 100);
@@ -1284,7 +1288,7 @@ int wmain(int argc, wchar_t** argv)
     Snapshot snap;
     TakeSnapshot(&snap);
     // the test media: made now, removed at the end
-    g_haveMedia = TestMediaCreate(&g_media, MediaLog);
+    g_haveMedia = TestMediaCreate(&g_media, MediaLog, MediaWarn);
     g_mjPort = 0;
     g_mjOk = MjpegStart(&g_mjPort, false);
     if (g_mjOk) Out(L"MJPEG test server: http://127.0.0.1:%u/", g_mjPort);

@@ -12,22 +12,32 @@ const int    kTestW = 640, kTestH = 480;     // size of the pictures and clips
 const double kClipSeconds = 3.0;             // clip length; its colour field changes every 0.5 s (kTestColors[0..3])
 const double kToneHz = 1000.0;               // the clips' sound
 
-struct TestImage { wchar_t folder[MAX_PATH]; const wchar_t* format; ULONG color; };
-struct TestVideo { wchar_t folder[MAX_PATH]; wchar_t name[64]; bool sound; UINT32 channels; };
+struct TestImage { wchar_t folder[MAX_PATH]; wchar_t format[40]; ULONG color; };
+struct TestVideo
+{
+    wchar_t folder[MAX_PATH];
+    wchar_t name[64];
+    bool    sound;
+    UINT32  channels;
+    int     minColors = 3;               // colour fields the clip must show (shorter samples: fewer)
+    bool    optional = false;            // needs a decoder Windows has only with an extension: missing -> WARN
+};
 
 struct TestMedia
 {
     wchar_t   root[MAX_PATH];
-    TestImage images[8];                     // one folder per format, one picture each
+    TestImage images[16];                    // one folder per format, one picture each
     int       imageCount;
     wchar_t   allImages[MAX_PATH];           // every picture + a broken one + a text file
-    TestVideo videos[16];                    // one folder per clip
+    TestVideo videos[48];                    // one folder per clip
     int       videoCount;
 };
 
 typedef void (*TestLog)(const wchar_t* line);
-// Creates the media (each failure is logged and skipped); false: nothing at all could be made.
-bool TestMediaCreate(TestMedia* m, TestLog log);
+// Creates the media (each failure is logged and skipped); false: nothing at all could be made. Then adds the samples of
+// the formats Windows does not write (built into the program, tools/make_autotest_media.py); a sample Windows cannot
+// decode without an extension goes to `warn` and is left out.
+bool TestMediaCreate(TestMedia* m, TestLog log, TestLog warn);
 void TestMediaDelete(TestMedia* m);
 ULONG TestClipColorAt(double seconds);       // the colour field of a clip at that time
 

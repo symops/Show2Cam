@@ -15,3 +15,7 @@ __pycache__/
 # Test signing keys: created by driver/mingw/build.sh when missing; never publish them
 # (the installer trusts this root on every machine).
 driver/mingw/testcert/
+
+# autotest samples, generated on every build (tools/make_autotest_media.py)
+app/autotest-media/
+app/autotest_media.rc

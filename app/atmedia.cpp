@@ -347,7 +347,172 @@ static void Join(wchar_t* out, const wchar_t* a, const wchar_t* b)
     out[MAX_PATH - 1] = 0;
 }
 
-bool TestMediaCreate(TestMedia* m, TestLog log)
+// ---------------------------------------------------------------------------
+// Samples built in as resources (RCDATA 500 = manifest, 501.. = the files in its order)
+
+static bool ResourceToFile(int id, const wchar_t* path)
+{
+    HRSRC r = FindResourceW(nullptr, MAKEINTRESOURCEW(id), (LPCWSTR)RT_RCDATA);
+    HGLOBAL g = r ? LoadResource(nullptr, r) : nullptr;
+    const void* p = g ? LockResource(g) : nullptr;
+    DWORD size = r ? SizeofResource(nullptr, r) : 0;
+    if (!p || !size) return false;
+    HANDLE f = CreateFileW(path, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, 0, nullptr);
+    if (f == INVALID_HANDLE_VALUE) return false;
+    DWORD n = 0;
+    bool ok = WriteFile(f, p, size, &n, nullptr) && n == size;
+    CloseHandle(f);
+    return ok;
+}
+
+static HRESULT ProbePicture(const wchar_t* path)
+{
+    IWICImagingFactory* wic = nullptr;
+    IWICBitmapDecoder* dec = nullptr;
+    IWICBitmapFrameDecode* frame = nullptr;
+    HRESULT hr = CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wic));
+    if (SUCCEEDED(hr)) hr = wic->CreateDecoderFromFilename(path, nullptr, GENERIC_READ, WICDecodeMetadataCacheOnDemand, &dec);
+    if (SUCCEEDED(hr)) hr = dec->GetFrame(0, &frame);
+    if (frame) frame->Release();
+    if (dec) dec->Release();
+    if (wic) wic->Release();
+    return hr;
+}
+
+// One picture decoded by Media Foundation (as the camera's video source does).
+static HRESULT ProbeVideo(const wchar_t* path)
+{
+    IMFAttributes* a = nullptr;
+    IMFSourceReader* r = nullptr;
+    HRESULT hr = MFCreateAttributes(&a, 1);
+    if (SUCCEEDED(hr)) a->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, TRUE);
+    if (SUCCEEDED(hr)) hr = MFCreateSourceReaderFromURL(path, a, &r);
+    if (a) a->Release();
+    IMFMediaType* t = nullptr;
+    if (SUCCEEDED(hr)) hr = MFCreateMediaType(&t);
+    if (SUCCEEDED(hr)) t->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+    if (SUCCEEDED(hr)) t->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
+    if (SUCCEEDED(hr)) hr = r->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, nullptr, t);
+    if (t) t->Release();
+    for (int i = 0; SUCCEEDED(hr) && i < 20; i++)
+    {
+        DWORD s = 0, flags = 0;
+        LONGLONG ts = 0;
+        IMFSample* sample = nullptr;
+        hr = r->ReadSample((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, &s, &flags, &ts, &sample);
+        if (SUCCEEDED(hr) && (flags & (MF_SOURCE_READERF_ERROR | MF_SOURCE_READERF_ENDOFSTREAM))) hr = MF_E_INVALID_STREAM_DATA;
+        if (sample)
+        {
+            sample->Release();
+            break;
+        }
+    }
+    if (r) r->Release();
+    return hr;
+}
+
+static void AddSamples(TestMedia* m, TestLog log, TestLog warn)
+{
+    HRSRC r = FindResourceW(nullptr, MAKEINTRESOURCEW(500), (LPCWSTR)RT_RCDATA);
+    HGLOBAL g = r ? LoadResource(nullptr, r) : nullptr;
+    const char* text = g ? (const char*)LockResource(g) : nullptr;
+    DWORD size = r ? SizeofResource(nullptr, r) : 0;
+    if (!text || !size)
+    {
+        LogF(log, L"  no built-in samples");
+        return;
+    }
+    int images = 0, videos = 0, missing = 0;
+    const char* p = text;
+    const char* end = text + size;
+    for (int id = 501; p < end; id++)
+    {
+        const char* eol = p;
+        while (eol < end && *eol != '\n') eol++;
+        char line[300];
+        size_t len = (size_t)(eol - p) < sizeof(line) - 1 ? (size_t)(eol - p) : sizeof(line) - 1;
+        memcpy(line, p, len);
+        line[len] = 0;
+        p = eol + 1;
+        if (len && line[len - 1] == '\r') line[--len] = 0;
+        if (!len)
+        {
+            id--;
+            continue;
+        }
+        char kind[16] = "", file[128] = "";
+        unsigned a1 = 0, a2 = 0, a3 = 0;
+        char* f1 = strchr(line, '|');
+        char* f2 = f1 ? strchr(f1 + 1, '|') : nullptr;
+        if (!f1 || !f2) continue;
+        *f1 = *f2 = 0;
+        strncpy(kind, line, 15);
+        strncpy(file, f1 + 1, 127);
+        wchar_t wfile[128], folder[MAX_PATH], path[MAX_PATH], sub[160];
+        MultiByteToWideChar(CP_UTF8, 0, file, -1, wfile, 128);
+        _snwprintf(sub, 160, L"sample-%ls", wfile);
+        for (wchar_t* q = sub; *q; q++)
+            if (*q == L'.') *q = L'-';
+        Join(folder, m->root, sub);
+        CreateDirectoryW(folder, nullptr);
+        Join(path, folder, wfile);
+        if (!ResourceToFile(id, path))
+        {
+            LogF(log, L"  sample %ls not written", wfile);
+            continue;
+        }
+        if (!strcmp(kind, "image") && m->imageCount < 16)
+        {
+            sscanf(f2 + 1, "%x", &a1);
+            HRESULT hr = ProbePicture(path);
+            if (FAILED(hr))
+            {
+                wchar_t t[300];
+                _snwprintf(t, 300, L"sample picture %ls: Windows cannot decode it (0x%08lX; its codec comes with a Store "
+                           L"extension): skipped", wfile, (unsigned long)hr);
+                t[299] = 0;
+                if (warn) warn(t);
+                missing++;
+                continue;
+            }
+            TestImage& img = m->images[m->imageCount++];
+            wcscpy(img.folder, folder);
+            _snwprintf(img.format, 40, L"%ls (sample)", wcsrchr(wfile, L'.') ? wcsrchr(wfile, L'.') + 1 : wfile);
+            img.color = a1;
+            images++;
+        }
+        else if (!strcmp(kind, "video") && m->videoCount < 48)
+        {
+            sscanf(f2 + 1, "%u|%u|%u", &a1, &a2, &a3);
+            if (a3)
+            {
+                HRESULT hr = ProbeVideo(path);
+                if (FAILED(hr))
+                {
+                    wchar_t t[300];
+                    _snwprintf(t, 300, L"sample clip %ls: Windows cannot decode it (0x%08lX; its codec comes with a Store "
+                               L"extension): skipped", wfile, (unsigned long)hr);
+                    t[299] = 0;
+                    if (warn) warn(t);
+                    missing++;
+                    continue;
+                }
+            }
+            TestVideo& v = m->videos[m->videoCount++];
+            wcscpy(v.folder, folder);
+            wcsncpy(v.name, wfile, 63);
+            v.name[63] = 0;
+            v.minColors = (int)a1;
+            v.sound = a2 != 0;
+            v.channels = 2;
+            v.optional = a3 != 0;
+            videos++;
+        }
+    }
+    LogF(log, L"  built-in samples: %d picture(s), %d clip(s)%ls", images, videos, missing ? L" (some skipped, see WARN)" : L"");
+}
+
+bool TestMediaCreate(TestMedia* m, TestLog log, TestLog warn)
 {
     ZeroMemory(m, sizeof(*m));
     wchar_t tmp[MAX_PATH];
@@ -384,7 +549,7 @@ bool TestMediaCreate(TestMedia* m, TestLog log)
         _snwprintf(name, 40, L"picture.%ls", kFormats[i].ext);
         Join(file, img.folder, name);
         img.color = kTestColors[i % 8];
-        img.format = kFormats[i].name;
+        wcsncpy(img.format, kFormats[i].name, 39);
         HRESULT hr = WritePictureFile(wic, file, img.color, kFormats[i].container);
         if (FAILED(hr))
         {
@@ -490,7 +655,8 @@ bool TestMediaCreate(TestMedia* m, TestLog log)
         }
     }
     LogF(log, L"  %d video clip(s)", m->videoCount);
-    return made > 0;
+    AddSamples(m, log, warn);
+    return made > 0 || m->imageCount || m->videoCount;
 }
 
 void TestMediaDelete(TestMedia* m)

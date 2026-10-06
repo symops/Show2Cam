@@ -60,7 +60,11 @@ the panel's sources (text, generator), open/close stress and `s2cctl` commands; 
 `%TEMP%\s2cautotest-<pid>` (removed at the end): random texts, pictures in every format Windows encodes (PNG, JPEG,
 BMP, GIF, TIFF, JPEG XR; plus a broken one), video clips (MP4 H.264 + AAC stereo / 5.1 / silent, 3GP, WMV + WMA, the MP4
 as .mov / .m4v / .divx, a broken file) whose 1 kHz tone is measured on Speak2Mic Microphone on the second pass, and a
-local MJPEG server (colour change, outage and reconnect, Basic authentication). It closes the control panel, restores
+local MJPEG server (colour change, outage and reconnect, Basic authentication). The formats Windows does not write are
+built into the autotest as samples, made anew on every build by `tools/make_autotest_media.py` (ffmpeg, libheif, PIL):
+WebP / HEIC / AVIF / ICO pictures, MKV (H.264 + AC-3 / Vorbis), WebM (VP9 + Opus, VP8 + Vorbis), AVI (Xvid + MP3, MJPEG +
+PCM), MPEG-TS, M2TS, MPEG-1/2 PS, VOB, DV, MP4 with MP3 sound / HEVC / AV1, MOV with ALAC, WMV8 + WMA2 and a portrait
+clip; a sample that needs a decoder from a Store extension Windows does not have is a WARN, not a failure. It closes the control panel, restores
 everything at the end (also after Ctrl+C) and starts the panel again. PASS / FAIL / WARN in `autotest.log`; exit code
 1 if anything failed.
 

@@ -11,6 +11,9 @@ ARCH=${ARCH:-x64}
 if [ "$ARCH" = x86 ]; then TRIPLE=i686-w64-mingw32; TARGET=i686-w64-windows-gnu; O=x86
 else TRIPLE=x86_64-w64-mingw32; TARGET=x86_64-w64-windows-gnu; O=.; fi
 mkdir -p "$O"
+# A new full set of the autotest's sample files (formats Windows does not write) on every build: generated with the x64
+# build (the x86 build of the same run reuses it), built into the autotest as resources.
+if [ "$ARCH" != x86 ] || [ ! -f autotest_media.rc ]; then python3 ../tools/make_autotest_media.py || exit 1; fi
 T=${TMPDIR:-/tmp}/s2capp.$$
 mkdir -p "$T"
 CXX="clang++ --target=$TARGET -std=c++17 -O2 -fno-exceptions -fno-rtti -municode
