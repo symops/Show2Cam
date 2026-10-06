@@ -139,6 +139,11 @@ bool CamSetName(HANDLE cam, const wchar_t* name)
     return CamProperty(cam, S2C_PROPERTY_NAME, KSPROPERTY_TYPE_SET, &n, sizeof(n), nullptr);
 }
 
+bool CamSetCount(HANDLE cam, ULONG count)
+{
+    return CamProperty(cam, S2C_PROPERTY_COUNT, KSPROPERTY_TYPE_SET, &count, sizeof(count), nullptr);
+}
+
 CamFrame::~CamFrame()
 {
     if (buffer) VirtualFree(buffer, 0, MEM_RELEASE);

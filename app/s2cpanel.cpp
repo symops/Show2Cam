@@ -511,6 +511,7 @@ static void ApplyConfig(int i)
 }
 
 static void CloseAllPreviews();
+static void ClosePreview(int i);
 static void ShowSelected();
 static void FillList();
 static void PreviewTitle(int i);
@@ -539,10 +540,26 @@ static int ScanCameras(bool log)
         return n;
     }
     int keepSel = g_sel >= 0 && g_sel < g_camCount ? g_cams[g_sel].info.index : 0;
-    StopRunners();
+    // The cameras that stay keep running (their source, preview and self-view are not interrupted); usually only the
+    // last ones come or go (the number of cameras changed).
+    int keep = 0;
+    while (keep < n && keep < g_camCount && found[keep].index == g_cams[keep].info.index &&
+           wcscmp(found[keep].path, g_cams[keep].info.path) == 0)
+    {
+        wcscpy(g_cams[keep].info.name, found[keep].name);
+        keep++;
+    }
+    for (int i = keep; i < g_camCount; i++)
+    {
+        ClosePreview(i);
+        RunnerStop(g_cams[i].runner);
+        g_cams[i].runner = nullptr;
+    }
     g_camCount = n;
     g_sel = -1;
-    for (int i = 0; i < n; i++)
+    for (int i = 0; i < keep; i++)
+        if (g_cams[i].info.index == keepSel) g_sel = i;
+    for (int i = keep; i < n; i++)
     {
         Cam& c = g_cams[i];
         c.info = found[i];
@@ -1172,6 +1189,21 @@ static void OnCountApply()
 {
     int want = (int)ComboData(IDC_COUNT);
     if (want < 1) return;
+    // The driver changes the number of cameras at once (no device restart, no administrator rights): the cameras that
+    // stay keep running.
+    HANDLE h = g_camCount ? CamOpen(g_cams[0].info.path) : INVALID_HANDLE_VALUE;
+    ULONG count = (ULONG)want;
+    bool ok = h != INVALID_HANDLE_VALUE && CamSetCount(h, count);
+    DWORD err = ok ? 0 : GetLastError();
+    if (h != INVALID_HANDLE_VALUE) CloseHandle(h);
+    AppLog(L"camera count %d through the driver: %ls (%lu)", want, ok ? L"ok" : L"not possible", err);
+    if (ok)
+    {
+        AddEventF(TR(L"Количество камер: %d."), want);
+        SetTimer(g_wnd, TIMER_RESCAN, 800, nullptr);
+        return;
+    }
+    // An older driver: setting + device restart (administrator rights).
     // The panel's own camera handles would keep the device from restarting.
     StopRunners();
     g_camCount = 0;
@@ -1403,7 +1435,6 @@ static void CreateControls()
         ComboAdd(IDC_COUNT, t, n);
     }
     Create(L"BUTTON", TR(L"Применить"), BS_PUSHBUTTON | WS_TABSTOP, IDC_COUNT_APPLY);
-    if (!g_elevated) SendMessageW(Ctl(IDC_COUNT_APPLY), BCM_SETSHIELD, 0, TRUE);
 
     Create(L"BUTTON", TR(L"Камера"), BS_GROUPBOX, IDC_GROUP2);
     Create(L"STATIC", TR(L"Имя:"), 0, IDC_L_NAME);

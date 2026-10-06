@@ -403,6 +403,48 @@ static NTSTATUS S2C_CB SetName(_In_ PIRP Irp, _In_ PKSIDENTIFIER Request, _Inout
     return STATUS_SUCCESS;
 }
 
+// The number of cameras: done on a system worker thread (it takes the device mutex, which a property handler holding
+// the filter's control mutex must not wait for).
+struct S2C_COUNT_WORK
+{
+    PKSDEVICE    Device;
+    PIO_WORKITEM Item;
+    ULONG        Count;
+};
+
+static VOID NTAPI CountWork(_In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PVOID Context)
+{
+    UNREFERENCED_PARAMETER(DeviceObject);
+    S2C_COUNT_WORK* w = (S2C_COUNT_WORK*)Context;
+    NTSTATUS status = S2cDeviceSetCount(w->Device, w->Count);
+    S2cLog("Camera count %lu -> 0x%08lX", w->Count, (ULONG)status);
+    S2cLogFlush();
+    IoFreeWorkItem(w->Item);
+    ExFreePoolWithTag(w, S2C_POOLTAG);
+}
+
+static NTSTATUS S2C_CB SetCount(_In_ PIRP Irp, _In_ PKSIDENTIFIER Request, _Inout_ PVOID Data)
+{
+    UNREFERENCED_PARAMETER(Request);
+    PKSFILTER filter = KsGetFilterFromIrp(Irp);
+    if (!filter || PropertyDataSize(Irp) < sizeof(ULONG)) return STATUS_INVALID_PARAMETER;
+    ULONG count = *(const ULONG*)Data;
+    if (count < 1 || count > S2C_MAX_CAMERAS) return STATUS_INVALID_PARAMETER;
+    PKSDEVICE device = KsFilterGetDevice(filter);
+    S2C_COUNT_WORK* w = (S2C_COUNT_WORK*)ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(S2C_COUNT_WORK), S2C_POOLTAG);
+    if (!w) return STATUS_INSUFFICIENT_RESOURCES;
+    w->Device = device;
+    w->Count = count;
+    w->Item = IoAllocateWorkItem(device->FunctionalDeviceObject);
+    if (!w->Item)
+    {
+        ExFreePoolWithTag(w, S2C_POOLTAG);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    IoQueueWorkItem(w->Item, (PIO_WORKITEM_ROUTINE)CountWork, DelayedWorkQueue, w);
+    return STATUS_SUCCESS;
+}
+
 static const KSPROPERTY_ITEM kProperties[] = {
     { S2C_PROPERTY_FRAME, { nullptr }, sizeof(KSPROPERTY), sizeof(S2C_FRAME_HEADER), { (PFNKSHANDLER)SetFrame },
       nullptr, 0, nullptr, nullptr, 0 },
@@ -411,6 +453,8 @@ static const KSPROPERTY_ITEM kProperties[] = {
     { S2C_PROPERTY_FORMAT, { nullptr }, sizeof(KSPROPERTY), sizeof(S2C_FORMAT), { (PFNKSHANDLER)SetFormat },
       nullptr, 0, nullptr, nullptr, 0 },
     { S2C_PROPERTY_NAME, { nullptr }, sizeof(KSPROPERTY), sizeof(S2C_NAME), { (PFNKSHANDLER)SetName },
+      nullptr, 0, nullptr, nullptr, 0 },
+    { S2C_PROPERTY_COUNT, { nullptr }, sizeof(KSPROPERTY), sizeof(ULONG), { (PFNKSHANDLER)SetCount },
       nullptr, 0, nullptr, nullptr, 0 },
 };
 static const KSPROPERTY_SET kPropertySets[] = {

@@ -57,6 +57,7 @@ struct S2C_CAMERA
     volatile LONG           Streaming;
     volatile LONG           PinsOpen;
     ULONG                   UserPids[S2C_MAX_USERS];   // who opened the pins (guarded by Lock)
+    BOOLEAN                 Enabled;                   // its device interfaces are on (programs see it)
     volatile LONGLONG       FramesDelivered, FramesDropped, PicturesReceived;
 };
 #define S2C_CAMERA_SIGNATURE 0x324D4143
@@ -67,6 +68,9 @@ struct S2C_DEVICE
     BOOLEAN     FactoriesCreated;
     S2C_CAMERA* Cameras[S2C_MAX_CAMERAS];
 };
+
+// device.cpp: turns cameras 1..Count on (creating them if needed) and the others off. Takes the device mutex.
+NTSTATUS S2cDeviceSetCount(_In_ PKSDEVICE Device, _In_ ULONG Count);
 
 // camera.cpp
 NTSTATUS S2cCameraCreate(_In_ ULONG Index, _In_ ULONG Width, _In_ ULONG Height, _In_ ULONG Fps, _Out_ S2C_CAMERA** Camera);

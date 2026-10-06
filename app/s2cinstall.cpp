@@ -488,7 +488,16 @@ int wmain(int argc, wchar_t** argv)
     {
         int n = _wtoi(argv[2]);
         if (n < 1 || n > 10) Out(L"error: 1..10");
-        else rc = SetParam(L"CameraCount", (DWORD)n) && RestartDevice() ? 0 : 1;
+        else
+        {
+            // The driver changes it at once (no device restart); an older driver: setting + restart.
+            HANDLE cam = OpenCamera(1);
+            ULONG count = (ULONG)n;
+            bool now = cam != INVALID_HANDLE_VALUE && Property(cam, S2C_PROPERTY_COUNT, KSPROPERTY_TYPE_SET, &count, sizeof(count), nullptr);
+            if (cam != INVALID_HANDLE_VALUE) CloseHandle(cam);
+            if (now) Out(L"cameras: %d (changed by the driver, no restart)", n);
+            rc = now ? 0 : (SetParam(L"CameraCount", (DWORD)n) && RestartDevice() ? 0 : 1);
+        }
     }
     else if (!_wcsicmp(cmd, L"size") && (argc == 5 || argc == 6))
     {
