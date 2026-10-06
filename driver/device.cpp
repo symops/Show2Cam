@@ -89,6 +89,7 @@ static NTSTATUS S2C_CB DeviceStart(_In_ PKSDEVICE Device, _In_ PIRP Irp, _In_opt
     S2cLog("StartDevice: camera %lu -> 0x%08lX", index + 1, (ULONG)status);
     S2cLogSetValue(L"StartStatus", (ULONG)status);
     S2cLogSetValue(L"CamerasCreated", created);
+    S2cLogSetDevice(Device->FunctionalDeviceObject, TRUE);
     S2cLogFlush();
     return status;
 }
@@ -147,7 +148,8 @@ static void S2C_CB DeviceRemove(_In_ PKSDEVICE Device, _In_ PIRP Irp)
     UNREFERENCED_PARAMETER(Irp);
     S2C_DEVICE* d = (S2C_DEVICE*)Device->Context;
     S2cLog("RemoveDevice");
-    S2cLogFlush();
+    S2cLogSetDevice(Device->FunctionalDeviceObject, FALSE);
+    S2cLogFlushNow();
     if (d)
     {
         // The filter factories belong to the device object and go with it; the cameras they point to stay valid
@@ -178,6 +180,6 @@ extern "C" NTSTATUS NTAPI DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUN
     S2cLog("DriverEntry: Show2Cam %s", S2C_VER_STR);
     NTSTATUS status = KsInitializeDriver(DriverObject, RegistryPath, &kDeviceDescriptor);
     S2cLog("KsInitializeDriver -> 0x%08lX", (ULONG)status);
-    S2cLogFlush();
+    S2cLogFlushNow();
     return status;
 }

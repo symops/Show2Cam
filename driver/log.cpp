@@ -11,6 +11,13 @@ static ULONG      g_logLen;
 static BOOLEAN    g_logDirty;
 static KEVENT     g_fileLock;          // serialises the file writes (a KEVENT keeps us at PASSIVE_LEVEL)
 
+// Flushes run on a system worker thread, never in the thread of the program that opens / runs a camera: writing the
+// registry value and the file there made DLP agents (SearchInform's sihost64.exe, whose file / registry filter watches
+// such writes) wait for themselves - a camera open took minutes. A work item needs a device object: one of ours.
+static KSPIN_LOCK     g_devLock;
+static PDEVICE_OBJECT g_devices[S2C_MAX_CAMERAS + 2];
+static volatile LONG  g_flushQueued;
+
 // The log file: Parameters\LogFile (NT path, written by the installer), else the default below.
 #ifndef RTL_QUERY_REGISTRY_TYPECHECK
 #define RTL_QUERY_REGISTRY_TYPECHECK       0x00000100
@@ -53,6 +60,7 @@ void S2cLogInit()
 {
     KeInitializeSpinLock(&g_logLock);
     KeInitializeEvent(&g_fileLock, SynchronizationEvent, TRUE);
+    KeInitializeSpinLock(&g_devLock);
     g_logLen = 0;
     g_log[0] = 0;
 }
@@ -103,7 +111,52 @@ void S2cLog(_In_z_ _Printf_format_string_ const char* Format, ...)
     KeReleaseSpinLock(&g_logLock, irql);
 }
 
+static void FlushNow();
+
+static VOID NTAPI FlushWork(_In_ PDEVICE_OBJECT Device, _In_opt_ PVOID Context)
+{
+    UNREFERENCED_PARAMETER(Device);
+    InterlockedExchange(&g_flushQueued, 0);         // lines logged from now on queue another flush
+    FlushNow();
+    IoFreeWorkItem((PIO_WORKITEM)Context);
+}
+
 void S2cLogFlush()
+{
+    if (!g_logDirty || InterlockedCompareExchange(&g_flushQueued, 1, 0) != 0) return;     // one queued at a time
+    PIO_WORKITEM item = nullptr;
+    KIRQL irql;
+    KeAcquireSpinLock(&g_devLock, &irql);
+    for (ULONG i = 0; i < sizeof(g_devices) / sizeof(g_devices[0]) && !item; i++)
+        if (g_devices[i]) item = IoAllocateWorkItem(g_devices[i]);
+    if (item) IoQueueWorkItem(item, FlushWork, DelayedWorkQueue, item);    // keeps the device object until it ran
+    KeReleaseSpinLock(&g_devLock, irql);
+    if (!item) InterlockedExchange(&g_flushQueued, 0);     // no device (yet): the lines go with the next flush
+}
+
+void S2cLogFlushNow()
+{
+    FlushNow();
+}
+
+void S2cLogSetDevice(_In_ PDEVICE_OBJECT Device, _In_ BOOLEAN Present)
+{
+    KIRQL irql;
+    KeAcquireSpinLock(&g_devLock, &irql);
+    ULONG n = sizeof(g_devices) / sizeof(g_devices[0]);
+    for (ULONG i = 0; i < n; i++)
+        if (g_devices[i] == Device) g_devices[i] = nullptr;
+    if (Present)
+        for (ULONG i = 0; i < n; i++)
+            if (!g_devices[i])
+            {
+                g_devices[i] = Device;
+                break;
+            }
+    KeReleaseSpinLock(&g_devLock, irql);
+}
+
+static void FlushNow()
 {
     if (KeGetCurrentIrql() != PASSIVE_LEVEL || !g_logDirty)
     {
