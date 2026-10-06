@@ -9,6 +9,8 @@
 #include <mferror.h>
 #include <winhttp.h>
 #include <wincrypt.h>
+#include <bcrypt.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <wchar.h>
@@ -1059,6 +1061,224 @@ private:
 };
 
 // ---------------------------------------------------------------------------
+// Generator: an animated picture made up on the fly - a gradient slowly changing its colours and geometric shapes
+// (circles, squares, triangles, rings) moving, bouncing off the edges and turning. Random at every start; always a
+// lively picture (programs that check for a covered lens take it as a real one).
+
+static ULONG RandomULong()
+{
+    ULONG r = 0;
+    if (BCryptGenRandom(nullptr, (PUCHAR)&r, sizeof(r), BCRYPT_USE_SYSTEM_PREFERRED_RNG) == 0) return r;
+    LARGE_INTEGER q;
+    QueryPerformanceCounter(&q);
+    return (ULONG)(q.QuadPart * 2654435761u) ^ GetCurrentThreadId();
+}
+
+class GeneratorSource : public Source
+{
+public:
+    explicit GeneratorSource(const EventSink& sink) : Source(sink)
+    {
+        m_seed = RandomULong() | 1;
+        m_hue = (int)(Next() % 360);
+        for (int i = 0; i < kShapes; i++)
+        {
+            Shape& s = m_shapes[i];
+            s.kind = (int)(Next() % 4);
+            s.x = (Next() % 1000) / 1000.0;
+            s.y = (Next() % 1000) / 1000.0;
+            s.vx = ((int)(Next() % 200) - 100) / 25000.0;     // up to 0.004 of the width per frame
+            s.vy = ((int)(Next() % 200) - 100) / 25000.0;
+            s.size = 0.05 + (Next() % 1000) / 1000.0 * 0.13;   // of the height
+            s.angle = (Next() % 360) * 3.14159265 / 180;
+            s.spin = ((int)(Next() % 100) - 50) / 1500.0;
+            s.color = HueRgb((int)(Next() % 360), 70 + (int)(Next() % 30), 90);
+        }
+    }
+    ~GeneratorSource() override { FreeDib(); }
+
+    DWORD Tick(ULONG* px, int w, int h, bool force, bool paused, bool* changed) override
+    {
+        DWORD now = GetTickCount();
+        if (paused && !force) return 100;
+        if (!force && (int)(now - m_next) < 0) return (DWORD)(m_next - now) < 50 ? (DWORD)(m_next - now) : 50;
+        m_next = now + 33;                                   // ~30 pictures a second (the camera repeats as needed)
+        if (!paused) Step();
+        if (!Draw(px, w, h)) return 100;
+        *changed = true;
+        return 33;
+    }
+    bool Native(ULONG* w, ULONG* h, ULONG* fps) override
+    {
+        *w = 1280;
+        *h = 720;
+        *fps = 30;
+        return true;
+    }
+    void Describe(CamRunStatus* s) override
+    {
+        s->state = StateOk;
+        s->current[0] = 0;
+    }
+
+private:
+    static const int kShapes = 14;
+    struct Shape { int kind; double x, y, vx, vy, size, angle, spin; COLORREF color; };
+
+    ULONG Next()
+    {
+        m_seed ^= m_seed << 13;
+        m_seed ^= m_seed >> 17;
+        m_seed ^= m_seed << 5;
+        return m_seed;
+    }
+
+    // hue 0..359, saturation / value 0..100 -> RGB
+    static COLORREF HueRgb(int hue, int sat, int val)
+    {
+        double hh = (hue % 360) / 60.0, s = sat / 100.0, v = val / 100.0;
+        int i = (int)hh;
+        double f = hh - i, p = v * (1 - s), q = v * (1 - s * f), t = v * (1 - s * (1 - f)), r, g, b;
+        switch (i)
+        {
+        case 0:  r = v; g = t; b = p; break;
+        case 1:  r = q; g = v; b = p; break;
+        case 2:  r = p; g = v; b = t; break;
+        case 3:  r = p; g = q; b = v; break;
+        case 4:  r = t; g = p; b = v; break;
+        default: r = v; g = p; b = q; break;
+        }
+        return RGB((int)(r * 255), (int)(g * 255), (int)(b * 255));
+    }
+
+    void Step()
+    {
+        m_frame++;
+        if (m_frame % 6 == 0) m_hue = (m_hue + 1) % 360;     // the background turns through the colours (~1 min)
+        for (Shape& s : m_shapes)
+        {
+            s.x += s.vx;
+            s.y += s.vy;
+            if (s.x < 0) { s.x = 0; s.vx = -s.vx; }
+            if (s.x > 1) { s.x = 1; s.vx = -s.vx; }
+            if (s.y < 0) { s.y = 0; s.vy = -s.vy; }
+            if (s.y > 1) { s.y = 1; s.vy = -s.vy; }
+            s.angle += s.spin;
+        }
+    }
+
+    bool MakeDib(int w, int h)
+    {
+        if (m_dc && m_w == w && m_h == h) return true;
+        FreeDib();
+        BITMAPINFO bi = {};
+        bi.bmiHeader.biSize = sizeof(bi.bmiHeader);
+        bi.bmiHeader.biWidth = w;
+        bi.bmiHeader.biHeight = -h;
+        bi.bmiHeader.biPlanes = 1;
+        bi.bmiHeader.biBitCount = 32;
+        m_dc = CreateCompatibleDC(nullptr);
+        m_bmp = m_dc ? CreateDIBSection(m_dc, &bi, DIB_RGB_COLORS, (void**)&m_bits, nullptr, 0) : nullptr;
+        if (!m_bmp)
+        {
+            FreeDib();
+            return false;
+        }
+        m_old = SelectObject(m_dc, m_bmp);
+        m_w = w;
+        m_h = h;
+        return true;
+    }
+
+    void FreeDib()
+    {
+        if (m_dc && m_old) SelectObject(m_dc, m_old);
+        if (m_bmp) DeleteObject(m_bmp);
+        if (m_dc) DeleteDC(m_dc);
+        m_dc = nullptr;
+        m_bmp = nullptr;
+        m_old = nullptr;
+        m_bits = nullptr;
+        m_w = m_h = 0;
+    }
+
+    bool Draw(ULONG* px, int w, int h)
+    {
+        if (!MakeDib(w, h)) return false;
+        // background: two colours a third of the colour wheel apart, diagonal, with fine noise
+        COLORREF c0 = HueRgb(m_hue, 65, 85), c1 = HueRgb(m_hue + 120, 65, 70);
+        int r0 = GetRValue(c0), g0 = GetGValue(c0), b0 = GetBValue(c0), r1 = GetRValue(c1), g1 = GetGValue(c1), b1 = GetBValue(c1);
+        ULONG seed = 0x9E3779B9u ^ m_frame;
+        for (int y = 0; y < h; y++)
+        {
+            ULONG* row = m_bits + (SIZE_T)y * w;
+            for (int x = 0; x < w; x++)
+            {
+                int t = (int)(((LONGLONG)y * 600 / (h > 1 ? h - 1 : 1)) + ((LONGLONG)x * 400 / (w > 1 ? w - 1 : 1)));
+                seed = seed * 1664525u + 1013904223u;
+                int n = (int)((seed >> 24) % 13) - 6;
+                int r = (r0 * (1000 - t) + r1 * t) / 1000 + n, g = (g0 * (1000 - t) + g1 * t) / 1000 + n, b = (b0 * (1000 - t) + b1 * t) / 1000 + n;
+                r = r < 0 ? 0 : (r > 255 ? 255 : r);
+                g = g < 0 ? 0 : (g > 255 ? 255 : g);
+                b = b < 0 ? 0 : (b > 255 ? 255 : b);
+                row[x] = (ULONG)(r << 16 | g << 8 | b);
+            }
+        }
+        // shapes
+        HPEN outline = CreatePen(PS_SOLID, h / 240 > 1 ? h / 240 : 1, RGB(255, 255, 255));
+        HGDIOBJ oldPen = SelectObject(m_dc, outline);
+        for (const Shape& s : m_shapes)
+        {
+            int cx = (int)(s.x * w), cy = (int)(s.y * h), r = (int)(s.size * h);
+            HBRUSH brush = CreateSolidBrush(s.color);
+            HGDIOBJ oldBrush = SelectObject(m_dc, brush);
+            if (s.kind == 0)
+                Ellipse(m_dc, cx - r, cy - r, cx + r, cy + r);
+            else if (s.kind == 3)
+            {
+                // ring
+                Ellipse(m_dc, cx - r, cy - r, cx + r, cy + r);
+                HBRUSH hole = CreateSolidBrush(HueRgb(m_hue, 65, 80));
+                SelectObject(m_dc, hole);
+                Ellipse(m_dc, cx - r / 2, cy - r / 2, cx + r / 2, cy + r / 2);
+                SelectObject(m_dc, brush);
+                DeleteObject(hole);
+            }
+            else
+            {
+                int corners = s.kind == 1 ? 4 : 3;               // square, triangle
+                POINT pt[4];
+                for (int k = 0; k < corners; k++)
+                {
+                    double a = s.angle + k * 2 * 3.14159265 / corners;
+                    pt[k].x = cx + (LONG)(r * cos(a));
+                    pt[k].y = cy + (LONG)(r * sin(a));
+                }
+                Polygon(m_dc, pt, corners);
+            }
+            SelectObject(m_dc, oldBrush);
+            DeleteObject(brush);
+        }
+        SelectObject(m_dc, oldPen);
+        DeleteObject(outline);
+        GdiFlush();
+        for (SIZE_T i = 0, n = (SIZE_T)w * h; i < n; i++) px[i] = m_bits[i] | 0xFF000000;
+        return true;
+    }
+
+    ULONG    m_seed = 1;
+    int      m_hue = 0;
+    ULONG    m_frame = 0;
+    DWORD    m_next = 0;
+    Shape    m_shapes[kShapes];
+    HDC      m_dc = nullptr;
+    HBITMAP  m_bmp = nullptr;
+    HGDIOBJ  m_old = nullptr;
+    ULONG*   m_bits = nullptr;
+    int      m_w = 0, m_h = 0;
+};
+
+// ---------------------------------------------------------------------------
 // The camera's worker
 
 class CameraRunner
@@ -1087,6 +1307,7 @@ static Source* CreateSource(const CamConfig& c, const EventSink& sink)
     switch (cfg.kind)
     {
     case SourceImages: return new ImageSource(sink, cfg.imageFolder);
+    case SourceGenerator: return new GeneratorSource(sink);
     case SourceVideo:  return new VideoSource(sink, cfg);
     case SourceStream: return new StreamSource(sink, cfg.url);
     default:           return new TextSource(sink, cfg.text);

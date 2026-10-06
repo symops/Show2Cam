@@ -19,6 +19,7 @@ sizes (1920×1080 … 320×240) at 1–60 fps; the device is in the Image class,
     * *Videos from a folder* — MP4, MOV, M4V, WMV, AVI, MKV, WebM, … (Media Foundation), random files by the same
       rule. Their sound plays in step with the picture on **Speak2Mic Speaker** (found by its adapter, so a renamed
       one is found too), on another playback device, or not at all;
+    * *Generator* — an animated picture made up on the fly: a slowly changing gradient with moving, turning shapes;
     * *MJPEG stream* over HTTP/HTTPS (e.g. `http://10.0.28.101:8001`, `http://user:password@host/…`). Without
       pictures the camera shows "No signal" (in the interface language) and reconnects every 3 seconds.
   * **Resolution and frame rate** — "as the source" (default) or chosen. They change while no program has the

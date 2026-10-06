@@ -262,3 +262,5 @@ Importa impostazioni…
 non determinato
 Salvare le modifiche alle impostazioni della telecamera «%ls»?
 Telecamera «%ls»: impostazioni applicate.
+Generatore
+Generatore (forme in movimento)

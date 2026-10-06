@@ -262,6 +262,8 @@ Import settings…
 not determined
 Save the changes to the settings of camera “%ls”?
 Camera “%ls”: settings applied.
+Generator
+Generator (moving shapes)
 [driver] the driver log is empty: the driver has never started
 [driver] ---- driver log (DriverLog) ----
 [setupapi] cannot open %ls (%lu)

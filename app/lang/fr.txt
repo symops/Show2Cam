@@ -262,3 +262,5 @@ Importer les réglages…
 non déterminé
 Enregistrer les modifications des réglages de la caméra « %ls » ?
 Caméra « %ls » : réglages appliqués.
+Générateur
+Générateur (formes en mouvement)

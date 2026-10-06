@@ -262,3 +262,5 @@ Impor pengaturan…
 tidak diketahui
 Simpan perubahan pengaturan kamera “%ls”?
 Kamera “%ls”: pengaturan diterapkan.
+Generator
+Generator (bentuk bergerak)

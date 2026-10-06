@@ -382,6 +382,7 @@ static const wchar_t* SourceName(int kind)
     case SourceImages: return TR(L"Изображения");
     case SourceVideo:  return TR(L"Видео");
     case SourceStream: return TR(L"MJPEG-поток");
+    case SourceGenerator: return TR(L"Генератор");
     default:           return TR(L"Текст");
     }
 }
@@ -703,6 +704,9 @@ static void FillAudioCombo(const CamConfig& c)
 static void LayoutParamRow(int kind)
 {
     bool folder = kind == SourceImages || kind == SourceVideo;
+    // the generator has nothing to set here
+    ShowWindow(Ctl(IDC_L_PARAM), kind == SourceGenerator ? SW_HIDE : SW_SHOW);
+    ShowWindow(Ctl(IDC_PARAM), kind == SourceGenerator ? SW_HIDE : SW_SHOW);
     ShowWindow(Ctl(IDC_BROWSE), folder ? SW_SHOW : SW_HIDE);
     ShowWindow(Ctl(IDC_OPENFOLDER), folder ? SW_SHOW : SW_HIDE);
     SetWindowPos(Ctl(IDC_PARAM), nullptr, S(130), S(360), S(folder ? 282 : 442), S(23), SWP_NOZORDER | SWP_NOACTIVATE);
@@ -839,6 +843,7 @@ static void ShowSelected(bool keepEdits)
     wchar_t param[MAX_PATH];
     if (c.kind == SourceText) wcscpy(param, c.text);
     else if (c.kind == SourceStream) wcscpy(param, c.url);
+    else if (c.kind == SourceGenerator) param[0] = 0;
     else FolderOf(c, param);
     SetWindowTextW(Ctl(IDC_PARAM), param);
     if (c.kind == SourceVideo) FillAudioCombo(c);
@@ -888,6 +893,7 @@ static void ReadParamToEdit()
 {
     if (g_sel < 0) return;
     CamConfig& c = g_edit;
+    if (c.kind == SourceGenerator) return;              // no parameter
     wchar_t text[MAX_PATH];
     GetWindowTextW(Ctl(IDC_PARAM), text, MAX_PATH);
     if (c.kind == SourceText)
@@ -923,6 +929,7 @@ static void ShowEditParam()
     wchar_t param[MAX_PATH];
     if (c.kind == SourceText) wcscpy(param, c.text);
     else if (c.kind == SourceStream) wcscpy(param, c.url);
+    else if (c.kind == SourceGenerator) param[0] = 0;
     else FolderOf(c, param);
     SetWindowTextW(Ctl(IDC_PARAM), param);
     if (c.kind == SourceVideo) FillAudioCombo(c);
@@ -1698,6 +1705,7 @@ static void CreateControls()
     ComboAdd(IDC_SOURCE, TR(L"Изображения из папки (смена каждые 5 с)"), SourceImages);
     ComboAdd(IDC_SOURCE, TR(L"Видео из папки"), SourceVideo);
     ComboAdd(IDC_SOURCE, TR(L"MJPEG-поток по сети"), SourceStream);
+    ComboAdd(IDC_SOURCE, TR(L"Генератор (движущиеся фигуры)"), SourceGenerator);
     Create(L"STATIC", L"", 0, IDC_L_PARAM);
     Create(L"EDIT", L"", ES_AUTOHSCROLL | WS_TABSTOP, IDC_PARAM, WS_EX_CLIENTEDGE);
     SendMessageW(Ctl(IDC_PARAM), EM_LIMITTEXT, MAX_PATH - 1, 0);

@@ -262,3 +262,5 @@ Ayarları içe aktar…
 belirlenemedi
 “%ls” kamerasının ayar değişiklikleri kaydedilsin mi?
 “%ls” kamerası: ayarlar uygulandı.
+Üreteç
+Üreteç (hareketli şekiller)

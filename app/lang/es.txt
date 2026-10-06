@@ -262,3 +262,5 @@ Importar ajustes…
 no determinado
 ¿Guardar los cambios de la configuración de la cámara «%ls»?
 Cámara «%ls»: configuración aplicada.
+Generador
+Generador (figuras en movimiento)

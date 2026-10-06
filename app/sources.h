@@ -9,7 +9,7 @@
 #include "media.h"
 #include "selfview.h"
 
-enum SourceKind { SourceText = 0, SourceImages, SourceVideo, SourceStream, SourceKindCount };
+enum SourceKind { SourceText = 0, SourceImages, SourceVideo, SourceStream, SourceGenerator, SourceKindCount };
 enum AudioMode { AudioSpeak2Mic = 0, AudioOff, AudioDevice };
 
 struct CamConfig
