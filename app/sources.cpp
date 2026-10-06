@@ -784,9 +784,14 @@ private:
         Picture pic;
         if (!DecodeImageMemory(data, size, &pic))
         {
+            if (m_decodeErrors++ < 3)
+                AppLog(L"camera %d: stream picture not decoded (%zu bytes, starts %02X %02X %02X %02X, ends %02X %02X)", m_sink.index + 1,
+                       size, data[0], size > 1 ? data[1] : 0, size > 2 ? data[2] : 0, size > 3 ? data[3] : 0,
+                       size > 1 ? data[size - 2] : 0, data[size - 1]);
             SetError(TR(L"не удалось декодировать кадр"), 0);
             return;
         }
+        if (!m_seq) AppLog(L"camera %d: stream first picture %dx%d (%zu bytes)", m_sink.index + 1, pic.w, pic.h, size);
         EnterCriticalSection(&m_cs);
         // swap the decoded picture in
         ULONG* px = m_latest.px;
@@ -856,7 +861,9 @@ private:
 
     int Receive(HINTERNET req, const wchar_t* user, const wchar_t* pass)
     {
-        WinHttpSetTimeouts(req, 5000, 5000, 5000, 5000);
+        // Receive: longer than the "No signal" time (10 s): some cameras / servers send a picture only every few
+        // seconds (e.g. every 5 s, byte by byte); a shorter wait would cut a working stream and reconnect.
+        WinHttpSetTimeouts(req, 5000, 5000, 5000, 20000);
         if (user)
         {
             // Basic authentication from "http://user:password@host/...".
@@ -916,12 +923,15 @@ private:
         return (size_t)-1;
     }
 
+    // The part's Content-Length: the last one before the picture's start.
     static size_t ContentLength(const BYTE* data, size_t len)
     {
-        for (size_t i = 0; i + 15 < len; i++)
-            if (_strnicmp((const char*)data + i, "content-length:", 15) == 0)
+        for (size_t i = len >= 16 ? len - 16 : 0; ; i--)
+        {
+            if (i + 15 < len && _strnicmp((const char*)data + i, "content-length:", 15) == 0)
                 return (size_t)strtoul((const char*)data + i + 15, nullptr, 10);
-        return 0;
+            if (i == 0) return 0;
+        }
     }
 
     // Reads JPEG pictures out of the response: whole body (single picture), parts with Content-Length, or the data
@@ -955,8 +965,17 @@ private:
                 buf = bigger;
                 cap *= 2;
             }
-            DWORD got = 0;
-            if (!WinHttpReadData(req, buf + len, (DWORD)(cap - len), &got))
+            // Wait for data, then read what has arrived (a large read could wait to fill the whole buffer: a slow
+            // stream would show nothing for minutes).
+            DWORD avail = 0, got = 0;
+            if (!WinHttpQueryDataAvailable(req, &avail))
+            {
+                SetError(TR(L"связь прервалась (%lu)"), GetLastError());
+                break;
+            }
+            DWORD want = avail ? avail : 1;
+            if (want > cap - len) want = (DWORD)(cap - len);
+            if (avail && !WinHttpReadData(req, buf + len, want, &got))
             {
                 SetError(TR(L"связь прервалась (%lu)"), GetLastError());
                 break;
@@ -982,7 +1001,8 @@ private:
                 size_t soi = Find(buf, len, "\xFF\xD8\xFF", 3, 0);
                 if (soi == (size_t)-1)
                 {
-                    if (len > 2) { memmove(buf, buf + len - 2, 2); len = 2; }
+                    // No picture started yet: keep the tail (the part's headers with its Content-Length may be in it).
+                    if (len > 4096) { memmove(buf, buf + len - 4096, 4096); len = 4096; }
                     break;
                 }
                 size_t end = (size_t)-1, next = (size_t)-1;
@@ -1026,6 +1046,7 @@ private:
     DWORD   m_frameTick = 0, m_started = GetTickCount();
     wchar_t m_error[160] = L"";
     bool    m_noticeShown = false, m_logged = false, m_connectingShown = false;
+    int     m_decodeErrors = 0;
 };
 
 // ---------------------------------------------------------------------------
