@@ -486,6 +486,14 @@ static void AddSamples(TestMedia* m, TestLog log, TestLog warn)
             LogF(log, L"  sample %ls not written", wfile);
             continue;
         }
+        // A "broken" file Windows can still decode (a cut PNG is drawn as far as it goes) is not broken for this
+        // system: left out, the sources have to skip only what Windows refuses.
+        if ((brokenImage && SUCCEEDED(ProbePicture(path))) || (brokenVideo && SUCCEEDED(ProbeVideo(path))))
+        {
+            LogF(log, L"  broken sample %ls: Windows decodes it anyway - left out", wfile);
+            DeleteFileW(path);
+            continue;
+        }
         if (brokenImage)
         {
             brokenPictures++;

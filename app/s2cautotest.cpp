@@ -287,13 +287,57 @@ static HRESULT CaptureOpen(const CamInfo& cam, Capture* c, UINT32 wantW = 0, UIN
     c->Close();
     HRESULT hr = ActivateCamera(cam, &c->source);
     if (FAILED(hr)) return hr;
+    bool typeSet = false;
+    if (wantW && fps)
+    {
+        // A frame rate within the camera's range (not one of its listed types, e.g. 3 fps) is set on the device source
+        // itself, as capture programs do; the reader then only converts the frames to RGB32 (setting it through the
+        // reader made it look for a frame rate converter: 0xC00D5212).
+        IMFPresentationDescriptor* pd = nullptr;
+        IMFStreamDescriptor* sd = nullptr;
+        IMFMediaTypeHandler* th = nullptr;
+        BOOL selected = FALSE;
+        HRESULT th_hr = c->source->CreatePresentationDescriptor(&pd);
+        if (SUCCEEDED(th_hr)) th_hr = pd->GetStreamDescriptorByIndex(0, &selected, &sd);
+        if (SUCCEEDED(th_hr)) th_hr = sd->GetMediaTypeHandler(&th);
+        DWORD n = 0;
+        if (SUCCEEDED(th_hr)) th->GetMediaTypeCount(&n);
+        th_hr = MF_E_INVALIDMEDIATYPE;
+        for (DWORD i = 0; i < n && FAILED(th_hr); i++)
+        {
+            IMFMediaType* t = nullptr;
+            if (FAILED(th->GetMediaTypeByIndex(i, &t))) continue;
+            UINT32 w = 0, h = 0;
+            MFGetAttributeSize(t, MF_MT_FRAME_SIZE, &w, &h);
+            if (w == wantW && h == wantH)
+            {
+                IMFMediaType* copy = nullptr;
+                if (SUCCEEDED(MFCreateMediaType(&copy)) && SUCCEEDED(t->CopyAllItems(copy)))
+                {
+                    MFSetAttributeRatio(copy, MF_MT_FRAME_RATE, fps, 1);
+                    th_hr = th->SetCurrentMediaType(copy);
+                }
+                if (copy) copy->Release();
+            }
+            t->Release();
+        }
+        typeSet = SUCCEEDED(th_hr);
+        if (th) th->Release();
+        if (sd) sd->Release();
+        if (pd) pd->Release();
+        if (!typeSet)
+        {
+            c->Close();
+            return th_hr;
+        }
+    }
     IMFAttributes* attr = nullptr;
     hr = MFCreateAttributes(&attr, 1);
     if (SUCCEEDED(hr)) attr->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, TRUE);
     if (SUCCEEDED(hr)) hr = MFCreateSourceReaderFromMediaSource(c->source, attr, &c->reader);
     if (attr) attr->Release();
     const DWORD stream = (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM;
-    if (SUCCEEDED(hr) && wantW)
+    if (SUCCEEDED(hr) && wantW && !typeSet)
     {
         hr = MF_E_INVALIDMEDIATYPE;
         IMFMediaType* t = nullptr;

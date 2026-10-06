@@ -171,7 +171,8 @@ def make_s2c(out):
         ('mpg-mpeg2-mp2.mpg', ['-c:v', 'mpeg2video', '-q:v', '6', '-f', 'mpeg'], ['-c:a', 'mp2', '-b:a', '96k'], 3, (W, H), 1),        # MPEG-PS: Windows reads it only with the MPEG-2 Video Extension
         ('mpg-mpeg1-mp2.mpg', ['-c:v', 'mpeg1video', '-q:v', '6', '-f', 'mpeg'], ['-c:a', 'mp2', '-b:a', '96k'], 3, (W, H), 1),        # MPEG-PS: Windows reads it only with the MPEG-2 Video Extension
         ('vob-mpeg2-ac3.vob', ['-c:v', 'mpeg2video', '-q:v', '6', '-f', 'vob'], ['-c:a', 'ac3', '-b:a', '96k'], 3, (W, H), 1),        # MPEG-PS: Windows reads it only with the MPEG-2 Video Extension
-        ('dv-pal.dv', ['-c:v', 'dvvideo', '-pix_fmt', 'yuv420p', '-f', 'dv'], ['-c:a', 'pcm_s16le', '-ar', '48000', '-ac', '2'], 0.6, (720, 576), 0),
+        # DV in AVI (Media Foundation does not open a raw .dv stream: 0xC00D36C4)
+        ('dv-pal.avi', ['-c:v', 'dvvideo', '-pix_fmt', 'yuv420p'], ['-c:a', 'pcm_s16le', '-ar', '48000', '-ac', '2'], 0.6, (720, 576), 0),
         ('mp4-h264-mp3.mp4', v264, ['-c:a', 'libmp3lame', '-b:a', '64k'], 3, (W, H), 0),
         ('mp4-hevc-aac.mp4', ['-c:v', 'libx265', '-crf', '32', '-tag:v', 'hvc1', '-x265-params', 'log-level=error'], aac, 3, (W, H), 1),
         ('mp4-av1-aac.mp4', ['-c:v', 'libaom-av1', '-crf', '45', '-cpu-used', '8'], aac, 3, (W, H), 1),
