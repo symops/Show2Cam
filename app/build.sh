@@ -3,6 +3,7 @@
 #   Show2Cam.exe        control panel             Show2Cam-Setup.exe  graphical installer
 #   s2cinstall.exe      console installer and test tool
 #   s2cctl.exe          command line control (what the panel sets)
+#   s2cautotest.exe     randomized end-to-end test (administrator)
 #   s2clauncher.exe     (x86 only) the package's root Show2Cam-Setup.exe: starts x64\ or x86\Show2Cam-Setup.exe
 set -e
 cd "$(dirname "$0")"
@@ -15,8 +16,8 @@ mkdir -p "$T"
 CXX="clang++ --target=$TARGET -std=c++17 -O2 -fno-exceptions -fno-rtti -municode
      -D_WIN32_WINNT=0x0A00 -DWINVER=0x0A00 -DUNICODE -D_UNICODE -Wall -Wextra -Wno-unused-parameter
      -Wno-missing-field-initializers -isystem /usr/$TRIPLE/include"
-for f in applog lang setupcore setupfiles devctl diag s2csetup s2cinstall camdev media audioout sources camcfg s2cpanel cxxrt s2ccamdiag s2cctl; do $CXX -c $f.cpp -o "$T/$f.o"; done
-for r in s2csetup s2cinstall s2cpanel s2ccamdiag s2cctl; do $TRIPLE-windres $r.rc -O coff -o "$T/$r.res.o"; done
+for f in applog lang setupcore setupfiles devctl diag s2csetup s2cinstall camdev media audioout sources camcfg s2cpanel cxxrt s2ccamdiag s2cctl s2cautotest; do $CXX -c $f.cpp -o "$T/$f.o"; done
+for r in s2csetup s2cinstall s2cpanel s2ccamdiag s2cctl s2cautotest; do $TRIPLE-windres $r.rc -O coff -o "$T/$r.res.o"; done
 $TRIPLE-gcc -municode -mwindows -static -s -o "$O/Show2Cam-Setup.exe" "$T/s2csetup.o" "$T/devctl.o" "$T/setupcore.o" \
     "$T/setupfiles.o" "$T/diag.o" "$T/applog.o" "$T/lang.o" "$T/s2csetup.res.o" \
     -lsetupapi -lnewdev -lcfgmgr32 -lcrypt32 -lcomctl32 -lshell32 -lgdi32 -ladvapi32 -luser32 -lole32 -lwevtapi -luuid
@@ -30,6 +31,10 @@ $TRIPLE-gcc -municode -static -s -o "$O/s2cctl.exe" "$T/s2cctl.o" "$T/camcfg.o" 
     "$T/cxxrt.o" "$T/devctl.o" "$T/setupcore.o" "$T/applog.o" "$T/lang.o" "$T/s2cctl.res.o" \
     -lwindowscodecs -lsetupapi -lnewdev -lcfgmgr32 -lcrypt32 -lgdi32 -lshell32 -ladvapi32 -luser32 -lole32 -loleaut32 -luuid \
     -lpropsys -lmfplat -lmfuuid -lbcrypt
+$TRIPLE-gcc -municode -static -s -o "$O/s2cautotest.exe" "$T/s2cautotest.o" "$T/sources.o" "$T/camcfg.o" "$T/media.o" "$T/audioout.o" \
+    "$T/camdev.o" "$T/cxxrt.o" "$T/devctl.o" "$T/setupcore.o" "$T/applog.o" "$T/lang.o" "$T/s2cautotest.res.o" \
+    -lmf -lmfplat -lmfreadwrite -lmfuuid -lwindowscodecs -lwinhttp -lcrypt32 -lbcrypt -lsetupapi -lnewdev -lcfgmgr32 \
+    -lshell32 -lgdi32 -ladvapi32 -luser32 -lole32 -loleaut32 -luuid -lpropsys
 $TRIPLE-gcc -municode -static -s -o "$O/s2cinstall.exe" "$T/s2cinstall.o" "$T/setupcore.o" "$T/devctl.o" "$T/applog.o" "$T/lang.o" "$T/s2cinstall.res.o" \
     -lsetupapi -lnewdev -lcfgmgr32 -lcrypt32 -lshell32 -ladvapi32 -lole32
 if [ "$ARCH" = x86 ]; then

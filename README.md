@@ -50,12 +50,20 @@ generator`, `audio CAM speak2mic|off|DEVICE`, `format CAM source|WxH [FPS|source
 changes at once. Exit codes: 0 ok, 1 failed, 2 bad arguments, 3 administrator rights needed, 4 Show2Cam cannot work
 here. Log: `ctl.log`.
 
+`s2cautotest.exe [minutes] [--seed N]` (administrator; default 10 minutes): randomized end-to-end test as programs
+see the cameras (Media Foundation) — a picture of four coloured quarters read back (colours, orientation, size, in use
+while open), the test pattern not "empty", random formats (set, offered first, invalid ones refused), the usual webcam
+sizes and 640×480 at 3 fps, random names (camera, device FriendlyName), random camera counts (one device per camera),
+the panel's sources (text, generator), open/close stress and `s2cctl` commands. It closes the control panel, restores
+everything at the end (also after Ctrl+C) and starts the panel again. PASS / FAIL / WARN in `autotest.log`; exit code
+1 if anything failed.
+
 `s2ccamdiag.exe` (and `s2ccamdiag32.exe` for 32-bit programs): how programs see every camera (Show2Cam and others) —
 the Windows registration, camera privacy, DirectShow (formats, choosing 640×480 / 1280×720 / 1920×1080, a capture graph
 running for 3 s), Media Foundation (formats, frames read) and Video for Windows; `--no-run` lists only. Log:
 `camdiag-x64.log` / `camdiag-x86.log`.
 
-Logs: `C:\ProgramData\Show2Cam\logs\` — `setup.log` (installer), `install.log` (s2cinstall), `ctl.log` (s2cctl), `panel.log`
+Logs: `C:\ProgramData\Show2Cam\logs\` — `setup.log` (installer), `install.log` (s2cinstall), `ctl.log` (s2cctl), `autotest.log` (s2cautotest), `panel.log`
 (control panel), `events.log` (the panel's event list), `driver.log` (written by the driver itself).
 
 ## Building (Linux)

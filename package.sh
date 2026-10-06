@@ -29,7 +29,7 @@ for ARCH in x64 x86; do
     if [ $ARCH = x64 ]; then DRVOUT=driver/mingw/out; APP=app; MODEL=NTamd64; OSATTR=_v100_X64
     else DRVOUT=driver/mingw/out-x86; APP=app/x86; MODEL=NTx86; OSATTR=_v100; fi
     cp $DRVOUT/Show2Cam.sys $DRVOUT/Show2Cam.cer $DRVOUT/Show2Cam-Publisher.cer $A/
-    cp $APP/Show2Cam.exe $APP/Show2Cam-Setup.exe $APP/s2cinstall.exe $APP/s2cctl.exe $APP/s2ccamdiag.exe $A/
+    cp $APP/Show2Cam.exe $APP/Show2Cam-Setup.exe $APP/s2cinstall.exe $APP/s2cctl.exe $APP/s2cautotest.exe $APP/s2ccamdiag.exe $A/
     # 32-bit programs use the 32-bit DirectShow / Media Foundation: the x86 diagnostics next to the x64 one
     [ $ARCH = x64 ] && cp app/x86/s2ccamdiag.exe $A/s2ccamdiag32.exe
     cp scripts/uninstall.cmd $A/
