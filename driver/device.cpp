@@ -76,7 +76,14 @@ static NTSTATUS S2C_CB DeviceStart(_In_ PKSDEVICE Device, _In_ PIRP Irp, _In_opt
                                        0, nullptr, nullptr, &c->Factory);
         if (NT_SUCCESS(status)) status = KsFilterFactorySetDeviceClassesState(c->Factory, TRUE);
         S2cLog("Camera %lu: %lux%lu %lu fps -> 0x%08lX", i + 1, w, h, fps, (ULONG)status);
-        if (NT_SUCCESS(status)) S2cCameraApplySavedName(c);    // the INF put the default name back on an install
+        if (NT_SUCCESS(status))
+        {
+            S2cCameraApplySavedName(c);    // the INF put the default name back on an install
+            // The FilterData registry cache of the formats: some DirectShow programs read it before opening a camera
+            // and skip cameras without it.
+            NTSTATUS cache = KsFilterFactoryUpdateCacheData(c->Factory, nullptr);
+            if (!NT_SUCCESS(cache)) S2cLog("Camera %lu: FilterData not written (0x%08lX)", i + 1, (ULONG)cache);
+        }
         if (NT_SUCCESS(status)) created++;
     }
     KsReleaseDevice(Device);
