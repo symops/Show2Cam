@@ -23,6 +23,8 @@ typedef ULONG DEVPROPTYPE;
 #define DEVPROP_TYPE_STRING 0x00000012
 #endif
 extern "C" NTKERNELAPI ULONG NTAPI IoGetRequestorProcessId(PIRP Irp);
+extern "C" NTKERNELAPI NTSTATUS NTAPI PsLookupProcessByProcessId(HANDLE ProcessId, PEPROCESS* Process);
+extern "C" NTKERNELAPI NTSTATUS NTAPI SeLocateProcessImageName(PEPROCESS Process, PUNICODE_STRING* ImageFileName);
 extern "C" NTKERNELAPI NTSTATUS NTAPI IoSetDeviceInterfacePropertyData(PUNICODE_STRING SymbolicLinkName, const DEVPROPKEY* PropertyKey,
                                                                       LCID Lcid, ULONG Flags, DEVPROPTYPE Type, ULONG Size, PVOID Data);
 

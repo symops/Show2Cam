@@ -39,6 +39,10 @@ struct S2C_PIN
     ULONGLONG           FramesDone;     // frames delivered or dropped since RunStart
     ULONGLONG           Interval;       // frame interval the program chose (100-ns units)
     ULONG               Pid;            // the process that opened the pin
+    BOOLEAN             FirstLogged;    // the run's first frame was logged
+    BOOLEAN             SmallLogged;    // a too small buffer was logged
+    ULONGLONG           LastBuffer;     // QPC time (100 ns) of the last buffer from the client
+    BOOLEAN             StarveLogged;   // "no buffer for 5 s" was logged
     BOOLEAN             Running;
 };
 
@@ -74,15 +78,33 @@ static NTSTATUS S2C_CB PinCreate(_In_ PKSPIN Pin, _In_ PIRP Irp)
     Pin->Context = p;
     InterlockedIncrement(&camera->PinsOpen);
     p->Pid = IoGetRequestorProcessId(Irp);
+    // The program's file name (the panel cannot read it for system / protected processes, e.g. a DLP agent).
+    WCHAR exe[32] = {};
+    PEPROCESS proc = nullptr;
+    if (NT_SUCCESS(PsLookupProcessByProcessId((HANDLE)(ULONG_PTR)p->Pid, &proc)))
+    {
+        PUNICODE_STRING image = nullptr;
+        if (NT_SUCCESS(SeLocateProcessImageName(proc, &image)) && image)
+        {
+            USHORT chars = image->Length / sizeof(WCHAR), start = chars;
+            while (start > 0 && image->Buffer[start - 1] != L'\\') start--;
+            USHORT n = (USHORT)(chars - start) < 31 ? (USHORT)(chars - start) : 31;
+            RtlCopyMemory(exe, image->Buffer + start, n * sizeof(WCHAR));
+            exe[n] = 0;
+            ExFreePool(image);
+        }
+        ObDereferenceObject(proc);
+    }
     ExAcquireFastMutex(&camera->Lock);
     for (ULONG i = 0; i < S2C_MAX_USERS; i++)
         if (!camera->UserPids[i])
         {
             camera->UserPids[i] = p->Pid;
+            RtlCopyMemory(camera->UserNames[i], exe, sizeof(exe));
             break;
         }
     ExReleaseFastMutex(&camera->Lock);
-    S2cLog("Camera %lu: pin opened by process %lu", camera->Index + 1, p->Pid);
+    S2cLog("Camera %lu: pin opened by process %lu (%ls)", camera->Index + 1, p->Pid, exe[0] ? exe : L"?");
     S2cLogFlush();
     return STATUS_SUCCESS;
 }
@@ -101,6 +123,7 @@ static NTSTATUS S2C_CB PinClose(_In_ PKSPIN Pin, _In_ PIRP Irp)
             if (p->Camera->UserPids[i] == p->Pid)
             {
                 p->Camera->UserPids[i] = 0;
+                p->Camera->UserNames[i][0] = 0;
                 break;
             }
         ExReleaseFastMutex(&p->Camera->Lock);
@@ -136,7 +159,13 @@ static NTSTATUS S2C_CB PinSetDeviceState(_In_ PKSPIN Pin, _In_ KSSTATE ToState, 
         p->Running = FALSE;
         InterlockedDecrement(&c->Streaming);
     }
-    S2cLog("Camera %lu: state %d -> %d", c->Index + 1, (int)FromState, (int)ToState);
+    S2cLog("Camera %lu: state %d -> %d (process %lu)", c->Index + 1, (int)FromState, (int)ToState, p->Pid);
+    if (ToState == KSSTATE_RUN)
+    {
+        p->FirstLogged = p->SmallLogged = p->StarveLogged = FALSE;
+        p->LastBuffer = 0;
+    }
+    S2cLogFlush();
     return STATUS_SUCCESS;
 }
 
@@ -187,7 +216,18 @@ static NTSTATUS S2C_CB PinProcess(_In_ PKSPIN Pin)
     if (p->FramesDone >= due) return STATUS_SUCCESS;
 
     PKSSTREAM_POINTER leading = KsPinGetLeadingEdgeStreamPointer(Pin, KSSTREAM_POINTER_STATE_LOCKED);
-    if (!leading) return STATUS_SUCCESS;                            // no buffer from the client right now
+    if (!leading)
+    {
+        // no buffer from the client right now; a client that gives none for 5 s is logged once (it gets no frames)
+        if (!p->StarveLogged && now - p->LastBuffer > 50000000ULL)
+        {
+            p->StarveLogged = TRUE;
+            S2cLog("Camera %lu: no buffer from process %lu for 5 s (frames due: %llu)", c->Index + 1, p->Pid, due);
+            S2cLogFlush();
+        }
+        return STATUS_SUCCESS;
+    }
+    p->LastBuffer = now;
 
     if (due - p->FramesDone > 1)
     {
@@ -203,6 +243,20 @@ static NTSTATUS S2C_CB PinProcess(_In_ PKSPIN Pin)
     {
         S2cRenderFrame(c, vih, leading->OffsetOut.Data, size, p->FramesDone);
         used = size;
+    }
+    else if (!p->SmallLogged)
+    {
+        p->SmallLogged = TRUE;
+        S2cLog("Camera %lu: buffer of process %lu too small (%lu < %lu bytes): empty frames", c->Index + 1, p->Pid,
+               leading->OffsetOut.Remaining, size);
+        S2cLogFlush();
+    }
+    if (!p->FirstLogged)
+    {
+        p->FirstLogged = TRUE;
+        S2cLog("Camera %lu: first frame to process %lu: %lu of %lu bytes", c->Index + 1, p->Pid, used,
+               leading->OffsetOut.Remaining);
+        S2cLogFlush();
     }
     header->PresentationTime.Time = (LONGLONG)(p->FramesDone * interval);
     header->PresentationTime.Numerator = 1;
@@ -338,6 +392,7 @@ static NTSTATUS S2C_CB GetStatus(_In_ PIRP Irp, _In_ PKSIDENTIFIER Request, _Ino
     s->PinsOpen = (ULONG)c->PinsOpen;
     ExAcquireFastMutex(&c->Lock);
     RtlCopyMemory(s->UserPids, c->UserPids, sizeof(s->UserPids));
+    RtlCopyMemory(s->UserNames, c->UserNames, sizeof(s->UserNames));
     ExReleaseFastMutex(&c->Lock);
     s->FramesDelivered = (ULONGLONG)c->FramesDelivered;
     s->FramesDropped = (ULONGLONG)c->FramesDropped;

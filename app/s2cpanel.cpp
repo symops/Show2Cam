@@ -494,6 +494,12 @@ static void UsersText(const CamRunStatus& s, wchar_t* out, size_t len)
         if (!pid) continue;
         wchar_t name[MAX_PATH];
         ProcessName(pid, name, MAX_PATH);
+        if (!name[0] && s.driver.UserNames[i][0])
+        {
+            // a system / protected process the panel cannot open (e.g. a DLP agent): the name the driver saw
+            wcsncpy(name, s.driver.UserNames[i], 31);
+            name[31] = 0;
+        }
         if (!name[0] || !_wcsicmp(name, L"svchost.exe")) frameServer++;      // Frame Server (or not readable)
         else if (pid != GetCurrentProcessId()) AddName(out, len, name);
     }

@@ -42,6 +42,7 @@ struct S2C_STATUS
     ULONGLONG PicturesReceived;
     ULONG UserPids[S2C_MAX_USERS];      // processes that have the camera open (0 = free slot): the program itself
                                         // (DirectShow) or the Windows Frame Server (Media Foundation programs)
+    WCHAR UserNames[S2C_MAX_USERS][32]; // their program files ("sihost64.exe"), as the driver saw them at opening
 };
 
 struct S2C_FORMAT
