@@ -384,12 +384,60 @@ private:
         return false;
     }
 
+    // The container by the file's first bytes (for files whose extension Windows does not know: .f4v, .divx, .vob, …
+    // or a wrong one); nullptr: not recognised.
+    static const wchar_t* SniffContentType(const wchar_t* path)
+    {
+        HANDLE f = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+        if (f == INVALID_HANDLE_VALUE) return nullptr;
+        BYTE b[400] = {};
+        DWORD got = 0;
+        ReadFile(f, b, sizeof(b), &got, nullptr);
+        CloseHandle(f);
+        if (got < 16) return nullptr;
+        if (!memcmp(b + 4, "ftyp", 4)) return !memcmp(b + 8, "qt  ", 4) ? L"video/quicktime" : L"video/mp4";
+        if (!memcmp(b + 4, "moov", 4) || !memcmp(b + 4, "mdat", 4) || !memcmp(b + 4, "wide", 4)) return L"video/quicktime";
+        if (b[0] == 0x1A && b[1] == 0x45 && b[2] == 0xDF && b[3] == 0xA3)
+        {
+            for (DWORD i = 4; i + 4 <= got; i++)
+                if (!memcmp(b + i, "webm", 4)) return L"video/webm";
+            return L"video/x-matroska";
+        }
+        if (!memcmp(b, "RIFF", 4) && !memcmp(b + 8, "AVI ", 4)) return L"video/avi";
+        static const BYTE kAsf[8] = { 0x30, 0x26, 0xB2, 0x75, 0x8E, 0x66, 0xCF, 0x11 };
+        if (!memcmp(b, kAsf, 8)) return L"video/x-ms-asf";
+        if (got >= 377 && b[0] == 0x47 && b[188] == 0x47) return L"video/mp2t";              // MPEG-TS
+        if (got >= 389 && b[4] == 0x47 && b[196] == 0x47) return L"video/mp2t";              // M2TS (192-byte packets)
+        if (b[0] == 0 && b[1] == 0 && b[2] == 1 && (b[3] == 0xBA || b[3] == 0xB3)) return L"video/mpeg";   // MPEG-PS / ES
+        return nullptr;
+    }
+
     HRESULT OpenFile(const wchar_t* path)
     {
         IMFAttributes* attr = nullptr;
         HRESULT hr = MFCreateAttributes(&attr, 2);
         if (SUCCEEDED(hr)) hr = attr->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, TRUE);
         if (SUCCEEDED(hr)) hr = MFCreateSourceReaderFromURL(path, attr, &m_reader);
+        if (FAILED(hr) && attr)
+        {
+            // Windows chose the reader by the extension and failed: by the content, as a byte stream of that type.
+            const wchar_t* type = SniffContentType(path);
+            IMFByteStream* stream = nullptr;
+            if (type && SUCCEEDED(MFCreateFile(MF_ACCESSMODE_READ, MF_OPENMODE_FAIL_IF_NOT_EXIST, MF_FILEFLAGS_NONE, path, &stream)))
+            {
+                IMFAttributes* sa = nullptr;
+                if (SUCCEEDED(stream->QueryInterface(IID_PPV_ARGS(&sa))))
+                {
+                    sa->SetString(MF_BYTESTREAM_CONTENT_TYPE, type);
+                    sa->Release();
+                }
+                HRESULT hr2 = MFCreateSourceReaderFromByteStream(stream, attr, &m_reader);
+                AppLog(L"camera %d: %ls opened as %ls: 0x%08lX (by the extension: 0x%08lX)", m_sink.index + 1, FileName(path), type,
+                       (unsigned long)hr2, (unsigned long)hr);
+                if (SUCCEEDED(hr2)) hr = hr2;
+                stream->Release();
+            }
+        }
         if (attr) attr->Release();
         if (FAILED(hr)) return hr;
 

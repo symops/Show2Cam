@@ -814,6 +814,27 @@ static void UpdateCamApply()
     EnableWindow(Ctl(IDC_CAM_APPLY), EditDirty());
 }
 
+// The name typed (spaces at the ends dropped).
+static void TypedName(wchar_t* out)
+{
+    wchar_t raw[S2C_NAME_CHARS];
+    GetWindowTextW(Ctl(IDC_NAME), raw, S2C_NAME_CHARS);
+    const wchar_t* b = raw;
+    while (*b == L' ') b++;
+    wcscpy(out, b);
+    size_t n = wcslen(out);
+    while (n && out[n - 1] == L' ') out[--n] = 0;
+}
+
+// A new name typed but not given to the camera yet ("Rename" not pressed).
+static bool NameDirty()
+{
+    if (g_sel < 0 || g_sel >= g_camCount) return false;
+    wchar_t want[S2C_NAME_CHARS];
+    TypedName(want);
+    return wcscmp(want, g_cams[g_sel].info.name) != 0;
+}
+
 // The parameter box into the copy (text, address or folder, by the source chosen in the form).
 static void ReadParamToEdit()
 {
@@ -880,17 +901,29 @@ static void OnCamApply()
     UpdateCamApply();
 }
 
-// Unsaved changes of the selected camera: keep them (Yes), drop them (No) or stay (Cancel: returns false).
+static void OnRename();
+
+// Unsaved changes of the selected camera (settings or a new name): keep them (Yes), drop them (No) or stay (Cancel:
+// returns false).
 static bool AskSaveEdits()
 {
-    if (!EditDirty()) return true;
+    bool settings = EditDirty(), name = NameDirty();
+    if (!settings && !name) return true;
     wchar_t q[300];
     _snwprintf(q, 300, TR(L"Сохранить изменения настроек камеры «%ls»?"), g_cams[g_sel].info.name);
     q[299] = 0;
     int r = MessageBoxW(g_wnd, q, L"Show2Cam", MB_YESNOCANCEL | MB_ICONQUESTION);
     if (r == IDCANCEL) return false;
-    if (r == IDYES) OnCamApply();
-    else g_edit = g_cams[g_sel].config;            // dropped
+    if (r == IDYES)
+    {
+        if (settings) OnCamApply();
+        if (name) OnRename();
+    }
+    else
+    {
+        g_edit = g_cams[g_sel].config;              // dropped
+        SetWindowTextW(Ctl(IDC_NAME), g_cams[g_sel].info.name);
+    }
     return true;
 }
 
@@ -947,12 +980,8 @@ static void OnPlay()
 static void OnRename()
 {
     if (g_sel < 0) return;
-    wchar_t want[S2C_NAME_CHARS];
-    GetWindowTextW(Ctl(IDC_NAME), want, S2C_NAME_CHARS);
-    wchar_t* b = want;
-    while (*b == L' ') b++;
-    size_t n = wcslen(b);
-    while (n && b[n - 1] == L' ') b[--n] = 0;
+    wchar_t b[S2C_NAME_CHARS];
+    TypedName(b);
     // The driver puts the name on the camera's interfaces and keeps it (no administrator rights needed).
     HANDLE h = CamOpen(g_cams[g_sel].info.path);
     bool ok = h != INVALID_HANDLE_VALUE && CamSetName(h, b);
@@ -1762,11 +1791,16 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             FillList();
             ShowSelected();
         }
-        if (GetEnvironmentVariableW(L"S2C_TEST_EDIT", nullptr, 0))
+        wchar_t edit[8] = L"";
+        if (GetEnvironmentVariableW(L"S2C_TEST_EDIT", edit, 8))
         {
-            // change the source in the form (as the user would), then select another camera after a while
-            ComboSelectData(IDC_SOURCE, SourceStream);
-            PostMessageW(hwnd, WM_COMMAND, MAKEWPARAM(IDC_SOURCE, CBN_SELCHANGE), (LPARAM)Ctl(IDC_SOURCE));
+            // change the source (or only the name: "name") in the form as the user would, then select another camera
+            if (!wcscmp(edit, L"name")) SetWindowTextW(Ctl(IDC_NAME), L"Новое имя");
+            else
+            {
+                ComboSelectData(IDC_SOURCE, SourceStream);
+                PostMessageW(hwnd, WM_COMMAND, MAKEWPARAM(IDC_SOURCE, CBN_SELCHANGE), (LPARAM)Ctl(IDC_SOURCE));
+            }
             SetTimer(hwnd, 99, 5000, nullptr);
         }
         wchar_t io[MAX_PATH];
@@ -1837,8 +1871,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             HWND box = FindWindowW(L"#32770", L"Show2Cam");
             if (box && cancels < 5)
             {
-                AppLog(L"test: save question %d -> Cancel", ++cancels);
-                PostMessageW(box, WM_COMMAND, IDCANCEL, 0);
+                wchar_t answer[8] = L"";
+                GetEnvironmentVariableW(L"S2C_TEST_CANCEL", answer, 8);
+                int id = !wcscmp(answer, L"yes") ? IDYES : !wcscmp(answer, L"no") ? IDNO : IDCANCEL;
+                AppLog(L"test: save question %d -> %ls", ++cancels, id == IDYES ? L"Yes" : id == IDNO ? L"No" : L"Cancel");
+                PostMessageW(box, WM_COMMAND, id, 0);
             }
             AppLog(L"test: selected camera %d", g_sel + 1);
         }
@@ -1871,10 +1908,16 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         g_switchTo = -1;
         if (go && to >= 0 && to < g_camCount && to != g_sel)
         {
+            // Only the new camera selected: the previous one (whose change was refused during the question) loses
+            // its selection and focus explicitly, then the list is drawn again.
+            HWND list = Ctl(IDC_LIST);
             g_updating = true;
-            ListView_SetItemState(Ctl(IDC_LIST), to, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
-            ListView_EnsureVisible(Ctl(IDC_LIST), to, FALSE);
+            ListView_SetItemState(list, -1, 0, LVIS_SELECTED | LVIS_FOCUSED);
+            ListView_SetItemState(list, to, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+            ListView_SetSelectionMark(list, to);
+            ListView_EnsureVisible(list, to, FALSE);
             g_updating = false;
+            InvalidateRect(list, nullptr, FALSE);
             g_sel = to;
             ShowSelected();
         }
@@ -1901,7 +1944,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             // and the question came twice).
             NMLISTVIEW* nm = (NMLISTVIEW*)lp;
             bool selChange = (nm->uChanged & LVIF_STATE) && ((nm->uOldState ^ nm->uNewState) & LVIS_SELECTED);
-            if (selChange && nm->iItem >= 0 && (g_switchTo >= 0 || EditDirty()))
+            if (selChange && nm->iItem >= 0 && (g_switchTo >= 0 || EditDirty() || NameDirty()))
             {
                 if ((nm->uNewState & LVIS_SELECTED) && nm->iItem != g_sel && g_switchTo < 0)
                 {
@@ -1979,6 +2022,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         {
             // The installer closes the panel to replace its files: no question, unsaved settings are kept (applied).
             if (EditDirty()) OnCamApply();
+            if (NameDirty()) OnRename();
         }
         else
         {

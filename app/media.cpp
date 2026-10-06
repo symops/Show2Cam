@@ -432,8 +432,12 @@ bool IsMediaFile(const wchar_t* name, MediaKind kind)
     if (!dot) return false;
     static const wchar_t* kImages[] = { L".png", L".jpg", L".jpeg", L".jpe", L".jfif", L".bmp", L".dib", L".gif", L".tif",
                                         L".tiff", L".ico", L".webp", L".heic", L".heif", L".avif", L".jxr", L".wdp", L".hdp" };
-    static const wchar_t* kVideo[] = { L".mp4", L".m4v", L".mov", L".3gp", L".wmv", L".asf", L".avi", L".mkv", L".webm",
-                                       L".ts", L".mts", L".m2ts" };
+    // What Windows' Media Foundation plays (with its own codecs: H.264, HEVC / VP9 / AV1 with the free Store
+    // extensions, MPEG-1/2, MPEG-4 Part 2 (DivX / XviD), WMV, MJPEG, DV; sound AAC, MP3, AC-3, WMA, PCM, FLAC, Opus).
+    static const wchar_t* kVideo[] = { L".mp4", L".m4v", L".mp4v", L".mov", L".qt", L".3gp", L".3gpp", L".3g2", L".3gp2",
+                                       L".f4v", L".wmv", L".asf", L".avi", L".divx", L".xvid", L".mkv", L".mk3d", L".webm",
+                                       L".ts", L".mts", L".m2ts", L".m2t", L".tts", L".mpg", L".mpeg", L".mpe", L".m1v",
+                                       L".m2v", L".mp2v", L".vob", L".mod", L".tod", L".dv" };
     if (kind == MediaImages)
     {
         for (const wchar_t* e : kImages)

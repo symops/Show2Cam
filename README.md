@@ -16,7 +16,9 @@ sizes (1920×1080 … 320×240) at 1–60 fps; the device is in the Image class,
     * *Text* (default "Camera 1", "Camera 2", …), drawn as large as fits;
     * *Images from a folder* — PNG, JPEG, BMP, GIF, TIFF, ICO, JPEG XR, and WebP / HEIF / AVIF when Windows has
       their codecs; a random picture every 5 seconds, never the same one twice in a row while there is another;
-    * *Videos from a folder* — MP4, MOV, M4V, WMV, AVI, MKV, WebM, … (Media Foundation), random files by the same
+    * *Videos from a folder* — MP4, M4V, MOV, 3GP/3G2, F4V, WMV/ASF, AVI (DivX, XviD), MKV, WebM, MPEG-TS/M2TS/MTS,
+      MPG/MPEG/VOB, DV (Windows' Media Foundation and its codecs; a file whose extension Windows does not know is
+      recognised by its content), random files by the same
       rule. Their sound plays in step with the picture on **Speak2Mic Speaker** (found by its adapter, so a renamed
       one is found too), on another playback device, or not at all;
     * *Generator* — an animated picture made up on the fly: a slowly changing gradient with moving, turning shapes;
