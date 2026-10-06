@@ -103,7 +103,10 @@ bool AudioOut::Open(const wchar_t* deviceId, UINT32 rate, UINT32 channels, HRESU
         wf.Format.nAvgBytesPerSec = rate * channels * 4;
         wf.Format.cbSize = sizeof(WAVEFORMATEXTENSIBLE) - sizeof(WAVEFORMATEX);
         wf.Samples.wValidBitsPerSample = 32;
-        wf.dwChannelMask = channels == 1 ? SPEAKER_FRONT_CENTER : channels == 2 ? (SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT) : 0;
+        // The usual layouts (Windows mixes them down to the device); without one some systems refuse 5.1 / 7.1 tracks.
+        static const DWORD kMasks[9] = { 0, 0x4 /* C */, 0x3 /* L R */, 0x7 /* L R C */, 0x33 /* quad */, 0x37 /* 5.0 */,
+                                         0x3F /* 5.1 */, 0x13F /* 6.1 */, 0x63F /* 7.1 */ };
+        wf.dwChannelMask = channels <= 8 ? kMasks[channels] : 0;
         wf.SubFormat = kSubtypeFloat;
         // 1 s buffer; Windows resamples / remaps the channels to the device format.
         hr = m_client->Initialize(AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,

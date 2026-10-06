@@ -274,9 +274,15 @@ public:
         FeedAudio(t);
         if (m_audio.Failed())
         {
-            AppLog(L"camera %d: the sound device went away", m_sink.index + 1);
+            AppLog(L"camera %d: the sound device went away (looked for again every 2 s)", m_sink.index + 1);
             m_audio.Close();
             m_audioName[0] = 0;
+            m_audioRetryAt = now + 2000;
+        }
+        if (m_audioStream && !m_audioEnded && !m_audio.IsOpen() && (int)(now - m_audioRetryAt) >= 0)
+        {
+            m_audioRetryAt = now + 2000;
+            OpenAudioDevice(false);
         }
 
         bool audioDone = !m_audio.IsOpen() || (m_audioEnded && m_pendingPos >= m_pendingFrames && m_audio.QueuedFrames() == 0);
@@ -484,15 +490,13 @@ private:
         cur->Release();
         if (!m_frameW || !m_frameH) return MF_E_INVALIDMEDIATYPE;
 
-        // Sound: float samples, played on the chosen device; without one the audio stream is not decoded at all.
+        // Sound: float samples, played on the chosen device. The track is decoded whenever there is one (and sound is
+        // on), also while the device is missing: its samples are then dropped in step with the picture, and the sound
+        // comes back as soon as the device is there again (Speak2Mic restarted, Apply in its panel, a format change).
         m_audioName[0] = 0;
-        bool wantAudio = false;
-        RenderDevice dev = {};
-        if (m_audioMode == AudioSpeak2Mic) wantAudio = FindSpeak2MicSpeaker(&dev);
-        else if (m_audioMode == AudioDevice) wantAudio = m_audioDevice[0] && FindRenderDevice(m_audioDevice, &dev);
-        if (m_audioMode != AudioOff && !wantAudio) m_sink.Post(EvAudioMissing);
-        bool audioOk = false;
-        if (wantAudio)
+        m_audioStream = false;
+        m_audioLastErr = S_OK;
+        if (m_audioMode != AudioOff)
         {
             IMFMediaType* at = nullptr;
             HRESULT ahr = MFCreateMediaType(&at);
@@ -504,24 +508,19 @@ private:
             if (SUCCEEDED(ahr)) ahr = m_reader->GetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, &ac);
             if (SUCCEEDED(ahr))
             {
-                UINT32 ch = MFGetAttributeUINT32(ac, MF_MT_AUDIO_NUM_CHANNELS, 0);
-                UINT32 rate = MFGetAttributeUINT32(ac, MF_MT_AUDIO_SAMPLES_PER_SECOND, 0);
+                m_audioCh = MFGetAttributeUINT32(ac, MF_MT_AUDIO_NUM_CHANNELS, 0);
+                m_audioRate = MFGetAttributeUINT32(ac, MF_MT_AUDIO_SAMPLES_PER_SECOND, 0);
                 ac->Release();
-                HRESULT ohr = E_FAIL;
-                if (ch && rate && m_audio.Open(dev.id, rate, ch, &ohr))
-                {
-                    audioOk = true;
-                    wcscpy(m_audioName, dev.name);
-                }
-                else
-                    AppLog(L"camera %d: cannot open the sound device \"%ls\" (0x%08lX)", m_sink.index + 1, dev.name, (unsigned long)ohr);
+                m_audioStream = m_audioCh && m_audioRate;
             }
             else if (ahr != (HRESULT)MF_E_INVALIDSTREAMNUMBER)
                 AppLog(L"camera %d: the video's sound cannot be decoded (0x%08lX)", m_sink.index + 1, (unsigned long)ahr);
         }
-        if (!audioOk) m_reader->SetStreamSelection((DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, FALSE);
-        m_audioEnded = !audioOk;
+        if (!m_audioStream) m_reader->SetStreamSelection((DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, FALSE);
+        m_audioEnded = !m_audioStream;
         m_audioStarted = false;
+        bool audioOk = m_audioStream && OpenAudioDevice(true);
+        m_audioRetryAt = GetTickCount() + 2000;
         m_videoEnded = false;
         m_videoEndTick = 0;
         wcscpy(m_current, path);
@@ -534,6 +533,34 @@ private:
         AppLog(L"camera %d: video %ls, %ux%u (shown %ux%u) %lu fps, sound %ls", m_sink.index + 1, path, m_frameW, m_frameH, m_cropW,
                m_cropH, m_fps, audioOk ? m_audioName : L"off");
         return S_OK;
+    }
+
+    // The sound device for the file's track (rate, channels); first: when the file opens (later: a retry every 2 s).
+    bool OpenAudioDevice(bool first)
+    {
+        RenderDevice dev = {};
+        bool found = false;
+        if (m_audioMode == AudioSpeak2Mic) found = FindSpeak2MicSpeaker(&dev);
+        else if (m_audioMode == AudioDevice) found = m_audioDevice[0] && FindRenderDevice(m_audioDevice, &dev);
+        if (!found)
+        {
+            if (first) m_sink.Post(EvAudioMissing);
+            return false;
+        }
+        HRESULT hr = E_FAIL;
+        if (!m_audio.Open(dev.id, m_audioRate, m_audioCh, &hr))
+        {
+            if (first || hr != m_audioLastErr)
+                AppLog(L"camera %d: cannot open the sound device \"%ls\" for %u Hz %u ch (0x%08lX)", m_sink.index + 1, dev.name,
+                       m_audioRate, m_audioCh, (unsigned long)hr);
+            m_audioLastErr = hr;
+            return false;
+        }
+        m_audioLastErr = S_OK;
+        m_audioStarted = false;                 // starts with the first samples written
+        wcscpy(m_audioName, dev.name);
+        if (!first) AppLog(L"camera %d: sound back on \"%ls\"", m_sink.index + 1, dev.name);
+        return true;
     }
 
     void CloseFile()
@@ -619,8 +646,8 @@ private:
     // Keeps the sound device fed up to kAudioLead ahead of the clock.
     void FeedAudio(LONGLONG t)
     {
-        if (!m_audio.IsOpen()) return;
-        UINT32 ch = m_audio.Channels();
+        if (!m_audioStream) return;
+        UINT32 ch = m_audioCh;
         for (int guard = 0; guard < 64; guard++)
         {
             if (m_pendingPos >= m_pendingFrames)
@@ -663,9 +690,14 @@ private:
                 if (m_pendingPos >= m_pendingFrames) continue;
             }
             // The chunk's time at its current position: written only when it is close to being due.
-            LONGLONG at = m_pendingTs + (LONGLONG)m_pendingPos * 10000000 / m_audio.Rate();
+            LONGLONG at = m_pendingTs + (LONGLONG)m_pendingPos * 10000000 / m_audioRate;
             if (at > t + kAudioLead) return;
-            if (at + (LONGLONG)(m_pendingFrames - m_pendingPos) * 10000000 / m_audio.Rate() < t - 2000000)
+            if (!m_audio.IsOpen())
+            {
+                m_pendingPos = m_pendingFrames;     // no device now: dropped in step with the picture
+                continue;
+            }
+            if (at + (LONGLONG)(m_pendingFrames - m_pendingPos) * 10000000 / m_audioRate < t - 2000000)
             {
                 m_pendingPos = m_pendingFrames;     // more than 200 ms late (e.g. after a stall): dropped
                 continue;
@@ -704,6 +736,10 @@ private:
     DWORD   m_videoEndTick = 0;
 
     AudioOut m_audio;
+    bool    m_audioStream = false;          // the file's sound track is decoded (it has one and sound is on)
+    UINT32  m_audioRate = 0, m_audioCh = 0;
+    DWORD   m_audioRetryAt = 0;
+    HRESULT m_audioLastErr = S_OK;
     float*  m_pending = nullptr;
     UINT32  m_pendingCap = 0, m_pendingFrames = 0, m_pendingPos = 0;
     LONGLONG m_pendingTs = 0;
