@@ -8,7 +8,7 @@ sizes (1920×1080 … 320×240) at 1–60 fps; the device is in the Image class,
 
 ## Control panel (Show2Cam.exe)
 
-* **Cameras** — the list of the cameras with their source, format and who uses each one right now ("self-view", the
+* **Cameras** — the list of the cameras with their source, format and who uses each one right now (the
   program's name, or "in use" when Windows does not tell); the number of cameras (1–10; one Windows device per camera, as one-camera drivers: devices are added / removed with administrator rights, the other cameras keep running).
 * **The selected camera**
   * **Name** — the name programs show; renaming needs no administrator rights (the driver keeps it).
@@ -24,15 +24,11 @@ sizes (1920×1080 … 320×240) at 1–60 fps; the device is in the Image class,
       pictures the camera shows "No signal" (in the interface language) and reconnects every 3 seconds.
   * **Resolution and frame rate** — "as the source" (default) or chosen. They change while no program has the
     camera open; otherwise as soon as it is closed.
-  * **Apply** puts the camera's settings (source, text / folder / address, sound, size, frame rate, self-view) into
+  * **Apply** puts the camera's settings (source, text / folder / address, sound, size, frame rate) into
     effect; switching to another camera or closing the panel with unsaved changes asks whether to keep them.
   * **Check** — a live preview window of that camera (several cameras' windows may be open at once); **Play / Pause**.
-  * **Self-view** — the panel itself uses the camera like any webcam program (Media Foundation, through the Windows
-    camera stack): for Windows the camera is really in use (the "camera in use" indicator, Settings → Privacy →
-    Camera), as if someone were watching it. The size / frame rate can still change: the panel closes its own use
-    for that moment.
 * Settings export / import (an .ini file, as Speak2Mic): the number of cameras and every camera's name, source,
-  folders, address, sound, size, frame rate, pause and self-view.
+  folders, address, sound, size, frame rate and pause.
 * Event list, start with Windows in the tray (on by default: the cameras show their sources while the panel runs;
   without it they show the driver's test pattern), 17 languages.
 

@@ -30,7 +30,7 @@ enum
     IDC_RESET_ALL = 100, IDC_L_LANG, IDC_LANG,
     IDC_GROUP1, IDC_LIST, IDC_L_COUNT, IDC_COUNT, IDC_COUNT_APPLY,
     IDC_GROUP2, IDC_L_NAME, IDC_NAME, IDC_RENAME, IDC_L_SOURCE, IDC_SOURCE, IDC_L_PARAM, IDC_PARAM, IDC_BROWSE, IDC_OPENFOLDER,
-    IDC_L_AUDIO, IDC_AUDIO, IDC_L_RES, IDC_RES, IDC_L_FPS, IDC_FPS, IDC_CAM_STATUS, IDC_TEST, IDC_PLAY, IDC_SELFVIEW, IDC_CAM_APPLY,
+    IDC_L_AUDIO, IDC_AUDIO, IDC_L_RES, IDC_RES, IDC_L_FPS, IDC_FPS, IDC_CAM_STATUS, IDC_TEST, IDC_PLAY, IDC_CAM_APPLY,
     IDC_EVENTS, IDC_CLEARLOG, IDC_AUTOSTART, IDC_EXPORT, IDC_IMPORT,
 };
 
@@ -153,7 +153,6 @@ static void LoadConfig(int index, CamConfig* c)
     c->height = num(L"Height", 0);
     c->fps = num(L"Fps", 0);
     c->paused = num(L"Paused", 0) != 0;
-    c->selfView = num(L"SelfView", 0) != 0;
     RegCloseKey(k);
 }
 
@@ -178,7 +177,6 @@ static void SaveConfig(int index, const CamConfig& c)
     num(L"Height", c.height);
     num(L"Fps", c.fps);
     num(L"Paused", c.paused ? 1 : 0);
-    num(L"SelfView", c.selfView ? 1 : 0);
     RegCloseKey(k);
 }
 
@@ -401,7 +399,7 @@ static bool InUse(const CamRunStatus& s)
 
 // ---------------------------------------------------------------------------
 // Who uses a camera. The driver tells which processes opened it: a DirectShow program itself, or the Windows Frame
-// Server for Media Foundation programs (Teams, browsers, the Camera app, our self-view). For the latter the program is
+// Server for Media Foundation programs (Teams, browsers, the Camera app). For the latter the program is
 // what Windows' camera privacy records as using a camera right now (LastUsedTimeStop = 0; per user, not per camera).
 
 static wchar_t g_appsNow[16][64];
@@ -480,13 +478,11 @@ static void AddName(wchar_t* list, size_t len, const wchar_t* name)
     wcsncat(list, name, len - wcslen(list) - 1);
 }
 
-// "самотрансляция, Teams.exe" / "" when not in use.
+// "Teams.exe, obs64.exe" / "" when not in use.
 static void UsersText(const CamRunStatus& s, wchar_t* out, size_t len)
 {
     out[0] = 0;
     if (!InUse(s)) return;
-    bool self = s.selfView && s.self.open;
-    if (self) AddName(out, len, TR(L"самотрансляция"));
     int frameServer = 0;
     for (ULONG i = 0; i < S2C_MAX_USERS; i++)
     {
@@ -503,9 +499,7 @@ static void UsersText(const CamRunStatus& s, wchar_t* out, size_t len)
         if (!name[0] || !_wcsicmp(name, L"svchost.exe")) frameServer++;      // Frame Server (or not readable)
         else if (pid != GetCurrentProcessId()) AddName(out, len, name);
     }
-    // The Frame Server's clients: Windows' current camera users, but only when this camera's Frame Server stream is not
-    // just our self-view (the record is for all cameras).
-    if (self) frameServer--;
+    // The Frame Server's clients: Windows' current camera users (the record is for all cameras).
     if (frameServer > 0)
         for (int i = 0; i < g_appsNowCount; i++)
             if (_wcsicmp(g_appsNow[i], L"Show2Cam.exe") != 0) AddName(out, len, g_appsNow[i]);
@@ -556,7 +550,7 @@ static int ScanCameras(bool log)
         return n;
     }
     int keepSel = g_sel >= 0 && g_sel < g_camCount ? g_cams[g_sel].info.index : 0;
-    // The cameras that stay keep running (their source, preview and self-view are not interrupted); usually only the
+    // The cameras that stay keep running (their source and preview are not interrupted); usually only the
     // last ones come or go (the number of cameras changed).
     int keep = 0;
     while (keep < n && keep < g_camCount && found[keep].index == g_cams[keep].info.index &&
@@ -630,7 +624,6 @@ static void UpdateListRow(int i)
     else _snwprintf(t, 300, L"%ls", what);
     t[299] = 0;
     if (c.config.paused) { wcsncat(t, L" — ", 299 - wcslen(t)); wcsncat(t, TR(L"пауза"), 299 - wcslen(t)); }
-    if (c.config.selfView) { wcsncat(t, L" · ", 299 - wcslen(t)); wcsncat(t, TR(L"самотрансляция"), 299 - wcslen(t)); }
     ListSetText(i, 1, t);
     if (c.status.deviceOpen) FormatText(t, 300, c.status.driver.Width, c.status.driver.Height, c.status.driver.Fps);
     else wcscpy(t, L"—");
@@ -806,16 +799,6 @@ static void ShowCamStatus()
         break;
     default: break;
     }
-    if (s.selfView)
-    {
-        wchar_t sv[120];
-        if (s.self.open) _snwprintf(sv, 120, TR(L"самотрансляция: %lu кадр/с"), s.self.fps);
-        else if (FAILED(s.self.error)) _snwprintf(sv, 120, TR(L"самотрансляция: ошибка 0x%08lX"), (unsigned long)s.self.error);
-        else _snwprintf(sv, 120, L"%ls", TR(L"самотрансляция"));
-        sv[119] = 0;
-        if (line2[0]) wcsncat(line2, L" · ", 399 - wcslen(line2));
-        wcsncat(line2, sv, 399 - wcslen(line2));
-    }
     line2[399] = 0;
     wchar_t all[820];
     _snwprintf(all, 820, line2[0] ? L"%ls\n%ls" : L"%ls", line1, line2);
@@ -826,7 +809,7 @@ static void ShowCamStatus()
 static void ShowSelected(bool keepEdits)
 {
     bool ok = g_sel >= 0 && g_sel < g_camCount;
-    const int ids[] = { IDC_NAME, IDC_SOURCE, IDC_PARAM, IDC_BROWSE, IDC_OPENFOLDER, IDC_AUDIO, IDC_RES, IDC_FPS, IDC_SELFVIEW };
+    const int ids[] = { IDC_NAME, IDC_SOURCE, IDC_PARAM, IDC_BROWSE, IDC_OPENFOLDER, IDC_AUDIO, IDC_RES, IDC_FPS };
     for (int id : ids) EnableWindow(Ctl(id), ok);
     if (!ok) EnableWindow(Ctl(IDC_CAM_APPLY), FALSE);
     wchar_t title[200];
@@ -846,7 +829,6 @@ static void ShowSelected(bool keepEdits)
     const CamConfig& c = g_edit;
     g_updating = true;
     SetWindowTextW(Ctl(IDC_NAME), g_cams[g_sel].info.name);
-    SendMessageW(Ctl(IDC_SELFVIEW), BM_SETCHECK, c.selfView ? BST_CHECKED : BST_UNCHECKED, 0);
     ComboSelectData(IDC_SOURCE, c.kind);
     LayoutParamRow(c.kind);
     wchar_t param[MAX_PATH];
@@ -889,7 +871,7 @@ static bool EditDirty()
     const CamConfig& b = g_cams[g_sel].config;
     return a.kind != b.kind || wcscmp(a.text, b.text) || wcscmp(a.imageFolder, b.imageFolder) || wcscmp(a.videoFolder, b.videoFolder) ||
            wcscmp(a.url, b.url) || a.audioMode != b.audioMode || (a.audioMode == AudioDevice && wcscmp(a.audioDevice, b.audioDevice)) ||
-           a.width != b.width || a.height != b.height || a.fps != b.fps || a.selfView != b.selfView;
+           a.width != b.width || a.height != b.height || a.fps != b.fps;
 }
 
 static void UpdateCamApply()
@@ -957,7 +939,6 @@ static void OnCamApply()
     const wchar_t* name = cam.info.name;
     if (now.kind != old.kind) AddEventF(TR(L"Камера «%ls»: источник — %ls."), name, SourceName(now.kind));
     if (now.kind == SourceStream && wcscmp(now.url, old.url)) AddEventF(TR(L"Камера «%ls»: MJPEG-поток %ls."), name, now.url);
-    if (old.selfView && !now.selfView) AddEventF(TR(L"Камера «%ls»: самотрансляция выключена."), name);
     AddEventF(TR(L"Камера «%ls»: настройки применены."), name);
     UpdateListRow(g_sel);
     ShowCamStatus();
@@ -1014,14 +995,6 @@ static void OnFormatChanged()
     c.width = size > 0 ? (ULONG)(size >> 16) : 0;
     c.height = size > 0 ? (ULONG)(size & 0xFFFF) : 0;
     c.fps = fps > 0 ? (ULONG)fps : 0;
-    UpdateCamApply();
-}
-
-// Self-view: the panel uses the camera itself, like any webcam program (see selfview.h).
-static void OnSelfView()
-{
-    if (g_sel < 0) return;
-    g_edit.selfView = SendMessageW(Ctl(IDC_SELFVIEW), BM_GETCHECK, 0, 0) == BST_CHECKED;
     UpdateCamApply();
 }
 
@@ -1308,8 +1281,7 @@ static void OnCountApply()
 // ---------------------------------------------------------------------------
 // Settings file (export / import), as in Speak2Mic: everything except the interface language.
 //   [Show2Cam]  Version, CameraCount
-//   [Camera<N>] Name, Source, Text, ImageFolder, VideoFolder, Url, AudioMode, AudioDevice, Width, Height, Fps, Paused,
-//               SelfView
+//   [Camera<N>] Name, Source, Text, ImageFolder, VideoFolder, Url, AudioMode, AudioDevice, Width, Height, Fps, Paused
 // UTF-16 INI (WritePrivateProfileString keeps Unicode when the file starts with a UTF-16 BOM).
 
 static bool AskFileName(bool save, wchar_t* path)
@@ -1381,7 +1353,6 @@ static void ExportTo(const wchar_t* path)
         num(sec, L"Height", c.config.height);
         num(sec, L"Fps", c.config.fps);
         num(sec, L"Paused", c.config.paused ? 1 : 0);
-        num(sec, L"SelfView", c.config.selfView ? 1 : 0);
     }
     bool ok = WritePrivateProfileStringW(nullptr, nullptr, nullptr, path) != FALSE;     // flush
     AppLog(L"settings exported to %ls", path);
@@ -1443,8 +1414,6 @@ static void ImportFrom(const wchar_t* path)
         if (fps != none && fps <= S2C_MAX_FPS) c.fps = fps;
         k = num(sec, L"Paused");
         if (k <= 1) c.paused = k == 1;
-        k = num(sec, L"SelfView");
-        if (k <= 1) c.selfView = k == 1;
         SaveConfig(n - 1, c);
         wchar_t name[S2C_NAME_CHARS] = L"";
         bool hasName = str(sec, L"Name", name, S2C_NAME_CHARS);
@@ -1561,15 +1530,6 @@ static void OnCamEvent(int i, int ev)
         FormatText(fmt, 80, c.status.wantW, c.status.wantH, c.status.wantFps);
         AddEventF(TR(L"Камера «%ls»: формат %ls будет установлен, когда камеру закроют все программы."), name, fmt);
         break;
-    case EvSelfViewOn:
-        AddEventF(TR(L"Камера «%ls»: самотрансляция включена — Windows видит камеру используемой."), name);
-        break;
-    case EvSelfViewError:
-        if (c.status.self.error == E_ACCESSDENIED)
-            AddEventF(TR(L"Камера «%ls»: самотрансляции запрещён доступ к камере — разрешите классическим приложениям доступ к камере в параметрах конфиденциальности Windows."), name);
-        else
-            AddEventF(TR(L"Камера «%ls»: самотрансляция не может открыть камеру (0x%08lX)."), name, (unsigned long)c.status.self.error);
-        break;
     case EvAudioMissing:
         if (c.audioMissingLogged) break;
         c.audioMissingLogged = true;
@@ -1641,8 +1601,7 @@ static void Layout()
     Place(IDC_L_FPS, 304, 432, 140, 20);   Place(IDC_FPS, 450, 428, 122, 300);
     Place(IDC_CAM_STATUS, 24, 460, 548, 52);
     Place(IDC_TEST, 24, 516, 150, 28);     Place(IDC_PLAY, 180, 516, 110, 28);
-    Place(IDC_SELFVIEW, 300, 518, 150, 24);
-    Place(IDC_CAM_APPLY, 452, 516, 120, 28);
+    Place(IDC_CAM_APPLY, 412, 516, 160, 28);
     if (g_sel >= 0) LayoutParamRow(g_cams[g_sel].config.kind);
 
     Place(IDC_EVENTS, 24, 562, 512, 300);
@@ -1743,7 +1702,6 @@ static void CreateControls()
     Create(L"STATIC", L"", SS_EDITCONTROL | SS_NOPREFIX, IDC_CAM_STATUS);   // up to 3 lines, long paths wrap
     Create(L"BUTTON", TR(L"Проверка"), BS_PUSHBUTTON | WS_TABSTOP, IDC_TEST);
     Create(L"BUTTON", TR(L"Пауза"), BS_PUSHBUTTON | WS_TABSTOP, IDC_PLAY);
-    Create(L"BUTTON", TR(L"Самотрансляция"), BS_AUTOCHECKBOX | WS_TABSTOP, IDC_SELFVIEW);
     Create(L"BUTTON", TR(L"Применить"), BS_PUSHBUTTON | WS_TABSTOP, IDC_CAM_APPLY);
 
     Create(WC_COMBOBOXW, L"", CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, IDC_EVENTS);
@@ -1759,7 +1717,6 @@ static void CreateControls()
         AddTip(tip, IDC_IMPORT, TR(L"Импорт настроек…"));
         AddTip(tip, IDC_CLEARLOG, TR(L"Очистить журнал событий"));
         AddTip(tip, IDC_TEST, TR(L"Окно с тем, что сейчас показывает камера"));
-        AddTip(tip, IDC_SELFVIEW, TR(L"Панель сама использует камеру, как обычная программа: Windows показывает камеру включённой"));
     }
     g_eventTip = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr, WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX, CW_USEDEFAULT,
                                  CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, g_wnd, nullptr, g_inst, nullptr);
@@ -2056,7 +2013,6 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             else if (id == IDC_OPENFOLDER) OnOpenFolder();
             else if (id == IDC_TEST) OnTest();
             else if (id == IDC_PLAY) OnPlay();
-            else if (id == IDC_SELFVIEW) OnSelfView();
             else if (id == IDC_CAM_APPLY) OnCamApply();
             else if (id == IDC_COUNT_APPLY) OnCountApply();
             else if (id == IDC_RESET_ALL) OnResetAll();
