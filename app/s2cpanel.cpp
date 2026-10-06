@@ -1816,6 +1816,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         SendMessageW(Ctl(IDC_AUTOSTART), BM_SETCHECK, S2cAutostartEnabled() ? BST_CHECKED : BST_UNCHECKED, 0);
         ScanCameras(true);
         SetTimer(hwnd, TIMER_STATUS, 500, nullptr);
+        DriverLogWriterStart();                // driver.log (the driver writes no file while running)
 #ifdef S2C_UI_TEST
         wchar_t sel[8];
         if (GetEnvironmentVariableW(L"S2C_TEST_SELECT", sel, 8) && _wtoi(sel) < g_camCount)
@@ -2066,6 +2067,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         g_inTray = false;
         KillTimer(hwnd, TIMER_STATUS);
         StopRunners();                       // the cameras go back to the test pattern
+        DriverLogWriterStop();
         AppLog(L"panel closed");
         DestroyWindow(hwnd);
         return 0;

@@ -403,6 +403,25 @@ static int CmdBmp(int n, const wchar_t* file)
 
 static void PrintDriverLog()
 {
+    // The running driver's log (it writes the registry copy only at start / removal).
+    for (int n = 1; n <= 1; n++)            // every camera has the (one) log: camera 1
+    {
+        HANDLE h = OpenCamera(n);
+        if (h == INVALID_HANDLE_VALUE) continue;
+        S2C_LOG* l = (S2C_LOG*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(S2C_LOG));
+        DWORD got = 0;
+        bool ok = l && Property(h, S2C_PROPERTY_LOG, KSPROPERTY_TYPE_GET, l, sizeof(S2C_LOG), &got) && l->Length <= S2C_LOG_MAX;
+        CloseHandle(h);
+        if (ok)
+        {
+            Out(L"---- driver log ----");
+            char* ctx = nullptr;
+            l->Text[l->Length < S2C_LOG_MAX ? l->Length : S2C_LOG_MAX - 1] = 0;
+            for (char* line = strtok_s(l->Text, "\r\n", &ctx); line; line = strtok_s(nullptr, "\r\n", &ctx)) Out(L"  %hs", line);
+        }
+        if (l) HeapFree(GetProcessHeap(), 0, l);
+        if (ok) return;
+    }
     DWORD size = 0;
     if (RegGetValueW(HKEY_LOCAL_MACHINE, kParams, L"DriverLog", RRF_RT_REG_SZ, nullptr, nullptr, &size) != ERROR_SUCCESS)
     {

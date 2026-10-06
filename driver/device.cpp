@@ -89,8 +89,7 @@ static NTSTATUS S2C_CB DeviceStart(_In_ PKSDEVICE Device, _In_ PIRP Irp, _In_opt
     S2cLog("StartDevice: camera %lu -> 0x%08lX", index + 1, (ULONG)status);
     S2cLogSetValue(L"StartStatus", (ULONG)status);
     S2cLogSetValue(L"CamerasCreated", created);
-    S2cLogSetDevice(Device->FunctionalDeviceObject, TRUE);
-    S2cLogFlush();
+    S2cLogFlushNow();
     return status;
 }
 
@@ -148,7 +147,6 @@ static void S2C_CB DeviceRemove(_In_ PKSDEVICE Device, _In_ PIRP Irp)
     UNREFERENCED_PARAMETER(Irp);
     S2C_DEVICE* d = (S2C_DEVICE*)Device->Context;
     S2cLog("RemoveDevice");
-    S2cLogSetDevice(Device->FunctionalDeviceObject, FALSE);
     S2cLogFlushNow();
     if (d)
     {

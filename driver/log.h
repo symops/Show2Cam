@@ -8,12 +8,13 @@
 
 void S2cLogInit();
 void S2cLog(_In_z_ _Printf_format_string_ const char* Format, ...);
-// Writes the log out on a system worker thread (any IRQL <= DISPATCH_LEVEL; never blocks the caller).
+// Nothing while running (the panel fetches the log, S2cLogCopy / S2C_PROPERTY_LOG, and writes driver.log): a file or
+// registry write from the driver could be held by a DLP file filter while its agent opens a camera.
 void S2cLogFlush();
-// Writes it out now, in this thread (PASSIVE_LEVEL): DriverEntry and PnP only, never in a program's camera calls.
+// Writes it to the registry and the file now (PASSIVE_LEVEL): DriverEntry and device start / removal only.
 void S2cLogFlushNow();
-// The device objects the worker items are queued on (added at start, removed at removal).
-void S2cLogSetDevice(_In_ PDEVICE_OBJECT Device, _In_ BOOLEAN Present);
+// The newest bytes of the log (up to Max) and its generation (changes with every line).
+ULONG S2cLogCopy(_Out_writes_bytes_(Max) char* Out, _In_ ULONG Max, _Out_ ULONG* Generation);
 
 // Stores a DWORD next to the log (e.g. StartStatus, CamerasCreated). PASSIVE_LEVEL only.
 void S2cLogSetValue(_In_z_ PCWSTR Name, _In_ ULONG Value);

@@ -462,6 +462,16 @@ static void S2cCameraWatchdog(S2C_CAMERA* c)
     ExReleaseFastMutex(&c->Lock);
 }
 
+static NTSTATUS S2C_CB GetLog(_In_ PIRP Irp, _In_ PKSIDENTIFIER Request, _Inout_ PVOID Data)
+{
+    UNREFERENCED_PARAMETER(Request);
+    if (PropertyDataSize(Irp) < sizeof(S2C_LOG)) return STATUS_BUFFER_TOO_SMALL;
+    S2C_LOG* l = (S2C_LOG*)Data;
+    l->Length = S2cLogCopy(l->Text, S2C_LOG_MAX, &l->Generation);
+    Irp->IoStatus.Information = sizeof(S2C_LOG);
+    return STATUS_SUCCESS;
+}
+
 static NTSTATUS S2C_CB GetStatus(_In_ PIRP Irp, _In_ PKSIDENTIFIER Request, _Inout_ PVOID Data)
 {
     UNREFERENCED_PARAMETER(Request);
@@ -554,6 +564,8 @@ static const KSPROPERTY_ITEM kProperties[] = {
     { S2C_PROPERTY_FORMAT, { nullptr }, sizeof(KSPROPERTY), sizeof(S2C_FORMAT), { (PFNKSHANDLER)SetFormat },
       nullptr, 0, nullptr, nullptr, 0 },
     { S2C_PROPERTY_NAME, { nullptr }, sizeof(KSPROPERTY), sizeof(S2C_NAME), { (PFNKSHANDLER)SetName },
+      nullptr, 0, nullptr, nullptr, 0 },
+    { S2C_PROPERTY_LOG, { (PFNKSHANDLER)GetLog }, sizeof(KSPROPERTY), sizeof(S2C_LOG), { nullptr },
       nullptr, 0, nullptr, nullptr, 0 },
 };
 static const KSPROPERTY_SET kPropertySets[] = {

@@ -24,6 +24,11 @@ HANDLE CamOpen(const wchar_t* path);
 // One property request; false on error (GetLastError()).
 bool CamProperty(HANDLE cam, ULONG id, ULONG flags, void* data, DWORD size, DWORD* returned);
 bool CamGetStatus(HANDLE cam, S2C_STATUS* status);
+bool CamGetLog(HANDLE cam, S2C_LOG* log);             // the driver's log (S2C_LOG is 64 KB: allocate it)
+// The driver writes no file while running: this thread fetches its log every 2 s and writes
+// %ProgramData%\Show2Cam\logs\driver.log when it changed (a slow write there holds only this thread).
+void DriverLogWriterStart();
+void DriverLogWriterStop();
 // ERROR_SUCCESS, ERROR_BUSY (the camera is in use: the size can't change now) or another error.
 DWORD CamSetFormat(HANDLE cam, ULONG width, ULONG height, ULONG fps);
 bool CamSetName(HANDLE cam, const wchar_t* name);     // empty = default name

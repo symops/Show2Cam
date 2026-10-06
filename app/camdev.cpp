@@ -96,6 +96,7 @@ bool CamProperty(HANDLE cam, ULONG id, ULONG flags, void* data, DWORD size, DWOR
     {
         if (id == S2C_PROPERTY_STATUS) { g_fake[fi].PicturesReceived++; memcpy(data, &g_fake[fi], sizeof(S2C_STATUS)); if (returned) *returned = sizeof(S2C_STATUS); }
         if (id == S2C_PROPERTY_FORMAT) { auto* f = (S2C_FORMAT*)data; g_fake[fi].Width = f->Width; g_fake[fi].Height = f->Height; g_fake[fi].Fps = f->Fps; }
+        if (id == S2C_PROPERTY_LOG) { auto* l = (S2C_LOG*)data; l->Generation = 1; l->Length = (ULONG)sprintf(l->Text, "test driver log line\n"); if (returned) *returned = sizeof(S2C_LOG); }
         if (id == S2C_PROPERTY_NAME) { auto* n = (S2C_NAME*)data; if (n->Name[0]) wcscpy(g_fakeName[fi], n->Name); else _snwprintf(g_fakeName[fi], S2C_NAME_CHARS, L"Show2Cam Camera %d", fi + 1); }
         return true;
     }
@@ -115,6 +116,14 @@ bool CamProperty(HANDLE cam, ULONG id, ULONG flags, void* data, DWORD size, DWOR
     if (returned) *returned = got;
     SetLastError(err);
     return ok != FALSE;
+}
+
+bool CamGetLog(HANDLE cam, S2C_LOG* log)
+{
+    DWORD got = 0;
+    log->Length = 0;
+    return CamProperty(cam, S2C_PROPERTY_LOG, KSPROPERTY_TYPE_GET, log, sizeof(*log), &got) && got >= sizeof(*log) - S2C_LOG_MAX &&
+           log->Length <= S2C_LOG_MAX;
 }
 
 bool CamGetStatus(HANDLE cam, S2C_STATUS* status)
@@ -176,3 +185,4 @@ bool CamSendTestPattern(HANDLE cam)
     S2C_FRAME_HEADER h = { S2C_FRAME_MAGIC, 0, 0, 0 };
     return CamProperty(cam, S2C_PROPERTY_FRAME, KSPROPERTY_TYPE_SET, &h, sizeof(h), nullptr);
 }
+

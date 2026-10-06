@@ -11,7 +11,10 @@
 //                               empty = "Show2Cam Camera N". Kept in the driver settings.
 // {6F1C2A9E-3B57-4E0C-9D1A-5C2E7B3F8A41}
 #define STATIC_PROPSETID_Show2Cam 0x6f1c2a9e, 0x3b57, 0x4e0c, 0x9d, 0x1a, 0x5c, 0x2e, 0x7b, 0x3f, 0x8a, 0x41
-enum { S2C_PROPERTY_FRAME = 0, S2C_PROPERTY_STATUS = 1, S2C_PROPERTY_FORMAT = 2, S2C_PROPERTY_NAME = 3 };
+//   S2C_PROPERTY_LOG    (GET)  S2C_LOG: the driver's log (kept in memory only; the panel writes it to driver.log - the
+//                               driver itself writes no file / registry value while running: DLP file filters blocked
+//                               those writes while their agent opened a camera, and the camera hung with them)
+enum { S2C_PROPERTY_FRAME = 0, S2C_PROPERTY_STATUS = 1, S2C_PROPERTY_FORMAT = 2, S2C_PROPERTY_NAME = 3, S2C_PROPERTY_LOG = 4 };
 #define S2C_NAME_CHARS 64
 #define S2C_MIN_WIDTH  160
 #define S2C_MIN_HEIGHT 120
@@ -49,6 +52,14 @@ struct S2C_FORMAT
 {
     ULONG Width, Height, Fps;           // even, S2C_MIN..S2C_MAX; 1..S2C_MAX_FPS
     ULONG Reserved;                     // 0
+};
+
+#define S2C_LOG_MAX 65536
+struct S2C_LOG
+{
+    ULONG Generation;                   // changes with every new line
+    ULONG Length;                       // bytes of Text (ASCII lines ending in \n)
+    char  Text[S2C_LOG_MAX];
 };
 
 struct S2C_NAME
