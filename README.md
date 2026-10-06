@@ -21,7 +21,11 @@ webcam. What each camera shows is chosen in the control panel. A sister project 
       pictures the camera shows "No signal" (in the interface language) and reconnects every 3 seconds.
   * **Resolution and frame rate** — "as the source" (default) or chosen. They change while no program has the
     camera open; otherwise as soon as it is closed.
-  * **Check** — a live preview window of that camera; **Play / Pause**.
+  * **Check** — a live preview window of that camera (several cameras' windows may be open at once); **Play / Pause**.
+  * **Self-view** — the panel itself uses the camera like any webcam program (Media Foundation, through the Windows
+    camera stack): for Windows the camera is really in use (the "camera in use" indicator, Settings → Privacy →
+    Camera), as if someone were watching it. The size / frame rate can still change: the panel closes its own use
+    for that moment.
 * Event list, start with Windows in the tray (on by default: the cameras show their sources while the panel runs;
   without it they show the driver's test pattern), 17 languages.
 

@@ -241,3 +241,12 @@ el flujo no parece MJPEG
 se perdió la conexión (%lu)
 el servidor cerró la conexión
 Conectando…
+autotransmisión
+autotransmisión: %lu fps
+autotransmisión: error 0x%08lX
+Cámara «%ls»: autotransmisión desactivada.
+Cámara «%ls»: autotransmisión activada — Windows ve la cámara en uso.
+Cámara «%ls»: la autotransmisión no tiene acceso a la cámara — permita a las aplicaciones de escritorio acceder a la cámara en la configuración de privacidad de Windows.
+Cámara «%ls»: la autotransmisión no puede abrir la cámara (0x%08lX).
+Autotransmisión
+El panel usa la cámara él mismo, como un programa normal: Windows muestra la cámara encendida

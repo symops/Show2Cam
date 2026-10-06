@@ -241,3 +241,12 @@ de stream lijkt geen MJPEG
 de verbinding is verbroken (%lu)
 de server heeft de verbinding gesloten
 Verbinden…
+zelfuitzending
+zelfuitzending: %lu fps
+zelfuitzending: fout 0x%08lX
+Camera ‘%ls’: zelfuitzending uit.
+Camera ‘%ls’: zelfuitzending aan — Windows ziet de camera als in gebruik.
+Camera ‘%ls’: de zelfuitzending krijgt geen toegang tot de camera — sta bureaublad-apps toegang tot de camera toe in de privacy-instellingen van Windows.
+Camera ‘%ls’: de zelfuitzending kan de camera niet openen (0x%08lX).
+Zelfuitzending
+Het paneel gebruikt de camera zelf zoals een gewoon programma: Windows toont de camera als ingeschakeld

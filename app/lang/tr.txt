@@ -241,3 +241,12 @@ akış MJPEG'e benzemiyor
 bağlantı koptu (%lu)
 sunucu bağlantıyı kapattı
 Bağlanılıyor…
+kendi yayını
+kendi yayını: %lu fps
+kendi yayını: hata 0x%08lX
+“%ls” kamerası: kendi yayını kapalı.
+“%ls” kamerası: kendi yayını açık — Windows kamerayı kullanımda görüyor.
+“%ls” kamerası: kendi yayınının kameraya erişimi engellendi — Windows gizlilik ayarlarında masaüstü uygulamalarının kameraya erişmesine izin verin.
+“%ls” kamerası: kendi yayını kamerayı açamıyor (0x%08lX).
+Kendi yayını
+Panel kamerayı sıradan bir program gibi kendisi kullanır: Windows kamerayı açık gösterir

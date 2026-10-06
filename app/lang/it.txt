@@ -241,3 +241,12 @@ il flusso non sembra MJPEG
 connessione interrotta (%lu)
 il server ha chiuso la connessione
 Connessione…
+autotrasmissione
+autotrasmissione: %lu fps
+autotrasmissione: errore 0x%08lX
+Telecamera «%ls»: autotrasmissione disattivata.
+Telecamera «%ls»: autotrasmissione attivata — Windows vede la telecamera in uso.
+Telecamera «%ls»: all’autotrasmissione è negato l’accesso alla telecamera — consenti alle app desktop di accedere alla telecamera nelle impostazioni di privacy di Windows.
+Telecamera «%ls»: l’autotrasmissione non può aprire la telecamera (0x%08lX).
+Autotrasmissione
+Il pannello usa da sé la telecamera come un normale programma: Windows mostra la telecamera accesa

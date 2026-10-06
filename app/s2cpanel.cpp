@@ -28,7 +28,7 @@ enum
     IDC_RESET_ALL = 100, IDC_L_LANG, IDC_LANG,
     IDC_GROUP1, IDC_LIST, IDC_L_COUNT, IDC_COUNT, IDC_COUNT_APPLY,
     IDC_GROUP2, IDC_L_NAME, IDC_NAME, IDC_RENAME, IDC_L_SOURCE, IDC_SOURCE, IDC_L_PARAM, IDC_PARAM, IDC_BROWSE, IDC_OPENFOLDER,
-    IDC_L_AUDIO, IDC_AUDIO, IDC_L_RES, IDC_RES, IDC_L_FPS, IDC_FPS, IDC_CAM_STATUS, IDC_TEST, IDC_PLAY,
+    IDC_L_AUDIO, IDC_AUDIO, IDC_L_RES, IDC_RES, IDC_L_FPS, IDC_FPS, IDC_CAM_STATUS, IDC_TEST, IDC_PLAY, IDC_SELFVIEW,
     IDC_EVENTS, IDC_CLEARLOG, IDC_AUTOSTART,
 };
 
@@ -147,6 +147,7 @@ static void LoadConfig(int index, CamConfig* c)
     c->height = num(L"Height", 0);
     c->fps = num(L"Fps", 0);
     c->paused = num(L"Paused", 0) != 0;
+    c->selfView = num(L"SelfView", 0) != 0;
     RegCloseKey(k);
 }
 
@@ -171,6 +172,7 @@ static void SaveConfig(int index, const CamConfig& c)
     num(L"Height", c.height);
     num(L"Fps", c.fps);
     num(L"Paused", c.paused ? 1 : 0);
+    num(L"SelfView", c.selfView ? 1 : 0);
     RegCloseKey(k);
 }
 
@@ -471,6 +473,7 @@ static void UpdateListRow(int i)
     else _snwprintf(t, 300, L"%ls", what);
     t[299] = 0;
     if (c.config.paused) { wcsncat(t, L" — ", 299 - wcslen(t)); wcsncat(t, TR(L"пауза"), 299 - wcslen(t)); }
+    if (c.config.selfView) { wcsncat(t, L" · ", 299 - wcslen(t)); wcsncat(t, TR(L"самотрансляция"), 299 - wcslen(t)); }
     ListSetText(i, 1, t);
     if (c.status.deviceOpen) FormatText(t, 300, c.status.driver.Width, c.status.driver.Height, c.status.driver.Fps);
     else wcscpy(t, L"—");
@@ -631,6 +634,16 @@ static void ShowCamStatus()
         break;
     default: break;
     }
+    if (s.selfView)
+    {
+        wchar_t sv[120];
+        if (s.self.open) _snwprintf(sv, 120, TR(L"самотрансляция: %lu кадр/с"), s.self.fps);
+        else if (FAILED(s.self.error)) _snwprintf(sv, 120, TR(L"самотрансляция: ошибка 0x%08lX"), (unsigned long)s.self.error);
+        else _snwprintf(sv, 120, L"%ls", TR(L"самотрансляция"));
+        sv[119] = 0;
+        if (line2[0]) wcsncat(line2, L" · ", 399 - wcslen(line2));
+        wcsncat(line2, sv, 399 - wcslen(line2));
+    }
     line2[399] = 0;
     wchar_t all[820];
     _snwprintf(all, 820, line2[0] ? L"%ls\n%ls" : L"%ls", line1, line2);
@@ -641,7 +654,7 @@ static void ShowCamStatus()
 static void ShowSelected()
 {
     bool ok = g_sel >= 0 && g_sel < g_camCount;
-    const int ids[] = { IDC_NAME, IDC_SOURCE, IDC_PARAM, IDC_BROWSE, IDC_OPENFOLDER, IDC_AUDIO, IDC_RES, IDC_FPS };
+    const int ids[] = { IDC_NAME, IDC_SOURCE, IDC_PARAM, IDC_BROWSE, IDC_OPENFOLDER, IDC_AUDIO, IDC_RES, IDC_FPS, IDC_SELFVIEW };
     for (int id : ids) EnableWindow(Ctl(id), ok);
     wchar_t title[200];
     if (ok) _snwprintf(title, 200, TR(L"Камера %d: %ls"), g_cams[g_sel].info.index + 1, g_cams[g_sel].info.name);
@@ -658,6 +671,7 @@ static void ShowSelected()
     const CamConfig& c = g_cams[g_sel].config;
     g_updating = true;
     SetWindowTextW(Ctl(IDC_NAME), g_cams[g_sel].info.name);
+    SendMessageW(Ctl(IDC_SELFVIEW), BM_SETCHECK, c.selfView ? BST_CHECKED : BST_UNCHECKED, 0);
     ComboSelectData(IDC_SOURCE, c.kind);
     LayoutParamRow(c.kind);
     wchar_t param[MAX_PATH];
@@ -765,6 +779,17 @@ static void OnFormatChanged()
     c.height = size > 0 ? (ULONG)(size & 0xFFFF) : 0;
     c.fps = fps > 0 ? (ULONG)fps : 0;
     ApplyConfig(g_sel);
+}
+
+// Self-view: the panel uses the camera itself, like any webcam program (see selfview.h).
+static void OnSelfView()
+{
+    if (g_sel < 0) return;
+    CamConfig& c = g_cams[g_sel].config;
+    c.selfView = SendMessageW(Ctl(IDC_SELFVIEW), BM_GETCHECK, 0, 0) == BST_CHECKED;
+    ApplyConfig(g_sel);
+    if (!c.selfView) AddEventF(TR(L"Камера «%ls»: самотрансляция выключена."), g_cams[g_sel].info.name);
+    UpdateListRow(g_sel);
 }
 
 static void OnPlay()
@@ -1122,6 +1147,15 @@ static void OnCamEvent(int i, int ev)
         FormatText(fmt, 80, c.status.wantW, c.status.wantH, c.status.wantFps);
         AddEventF(TR(L"Камера «%ls»: формат %ls будет установлен, когда камеру закроют все программы."), name, fmt);
         break;
+    case EvSelfViewOn:
+        AddEventF(TR(L"Камера «%ls»: самотрансляция включена — Windows видит камеру используемой."), name);
+        break;
+    case EvSelfViewError:
+        if (c.status.self.error == E_ACCESSDENIED)
+            AddEventF(TR(L"Камера «%ls»: самотрансляции запрещён доступ к камере — разрешите классическим приложениям доступ к камере в параметрах конфиденциальности Windows."), name);
+        else
+            AddEventF(TR(L"Камера «%ls»: самотрансляция не может открыть камеру (0x%08lX)."), name, (unsigned long)c.status.self.error);
+        break;
     case EvAudioMissing:
         if (c.audioMissingLogged) break;
         c.audioMissingLogged = true;
@@ -1193,6 +1227,7 @@ static void Layout()
     Place(IDC_L_FPS, 304, 432, 140, 20);   Place(IDC_FPS, 450, 428, 122, 300);
     Place(IDC_CAM_STATUS, 24, 462, 548, 34);
     Place(IDC_TEST, 24, 498, 160, 28);     Place(IDC_PLAY, 192, 498, 120, 28);
+    Place(IDC_SELFVIEW, 330, 500, 242, 24);
     if (g_sel >= 0) LayoutParamRow(g_cams[g_sel].config.kind);
 
     Place(IDC_EVENTS, 24, 544, 512, 300);
@@ -1290,6 +1325,7 @@ static void CreateControls()
     Create(L"STATIC", L"", 0, IDC_CAM_STATUS);
     Create(L"BUTTON", TR(L"Проверка"), BS_PUSHBUTTON | WS_TABSTOP, IDC_TEST);
     Create(L"BUTTON", TR(L"Пауза"), BS_PUSHBUTTON | WS_TABSTOP, IDC_PLAY);
+    Create(L"BUTTON", TR(L"Самотрансляция"), BS_AUTOCHECKBOX | WS_TABSTOP, IDC_SELFVIEW);
 
     Create(WC_COMBOBOXW, L"", CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, IDC_EVENTS);
     Create(L"BUTTON", TR(L"Очистить журнал событий"), BS_PUSHBUTTON | BS_ICON | WS_TABSTOP, IDC_CLEARLOG);
@@ -1302,6 +1338,7 @@ static void CreateControls()
         AddTip(tip, IDC_RESET_ALL, TR(L"Сбросить все настройки"));
         AddTip(tip, IDC_CLEARLOG, TR(L"Очистить журнал событий"));
         AddTip(tip, IDC_TEST, TR(L"Окно с тем, что сейчас показывает камера"));
+        AddTip(tip, IDC_SELFVIEW, TR(L"Панель сама использует камеру, как обычная программа: Windows показывает камеру включённой"));
     }
     g_eventTip = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr, WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX, CW_USEDEFAULT,
                                  CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, g_wnd, nullptr, g_inst, nullptr);
@@ -1587,6 +1624,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             else if (id == IDC_OPENFOLDER) OnOpenFolder();
             else if (id == IDC_TEST) OnTest();
             else if (id == IDC_PLAY) OnPlay();
+            else if (id == IDC_SELFVIEW) OnSelfView();
             else if (id == IDC_COUNT_APPLY) OnCountApply();
             else if (id == IDC_RESET_ALL) OnResetAll();
             else if (id == IDC_CLEARLOG) ClearEvents();

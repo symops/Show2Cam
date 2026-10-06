@@ -1118,6 +1118,10 @@ static DWORD WINAPI RunnerThread(LPVOID p)
     bool have = false, resend = true, force = true, waiting = false, previewWas = false;
     DWORD nextOpen = 0, nextStatus = 0, nextFormat = 0;
     ULONG lastWantW = 0, lastWantH = 0, lastWantFps = 0;
+    SelfView* self = nullptr;
+    SelfViewStatus selfStatus = {};
+    HRESULT selfLastError = S_OK;
+    bool selfAnnounced = false;
 
     while (!r->stop)
     {
@@ -1197,6 +1201,27 @@ static DWORD WINAPI RunnerThread(LPVOID p)
                         LeaveCriticalSection(&r->cs);
                         r->sink.Post(EvFormatChanged);
                     }
+                    else if (err == ERROR_BUSY && self && st.PinsOpen <= 1)
+                    {
+                        // Only our own self-view holds the camera: close it for the change, then it opens again.
+                        SelfViewStop(self);
+                        self = nullptr;
+                        selfAnnounced = false;
+                        for (int i = 0; i < 30 && CamGetStatus(cam, &st) && st.PinsOpen > 0 && !r->stop; i++) Sleep(100);
+                        err = CamSetFormat(cam, w, h, fps);
+                        AppLog(L"camera %d: format %lux%lu %lu fps with self-view closed: %lu", r->index + 1, w, h, fps, err);
+                        CamGetStatus(cam, &st);
+                        if (err == ERROR_SUCCESS)
+                        {
+                            waiting = false;
+                            EnterCriticalSection(&r->cs);
+                            r->status.driver = st;
+                            LeaveCriticalSection(&r->cs);
+                            r->sink.Post(EvFormatChanged);
+                        }
+                        else
+                            nextFormat = now + 1000;
+                    }
                     else if (err == ERROR_BUSY)
                     {
                         if (!waiting || w != lastWantW || h != lastWantH || fps != lastWantFps)
@@ -1229,6 +1254,37 @@ static DWORD WINAPI RunnerThread(LPVOID p)
             }
         }
 
+        // Self-view: the panel uses the camera itself while it is on (once the camera is there).
+        if (cfg.selfView && have && !self)
+        {
+            self = SelfViewStart(r->path, r->index);
+            selfLastError = S_OK;
+            selfAnnounced = false;
+        }
+        else if ((!cfg.selfView || !have) && self)
+        {
+            SelfViewStop(self);
+            self = nullptr;
+        }
+        ZeroMemory(&selfStatus, sizeof(selfStatus));
+        if (self)
+        {
+            SelfViewGetStatus(self, &selfStatus);
+            if (selfStatus.open && !selfAnnounced)
+            {
+                selfAnnounced = true;
+                r->sink.Post(EvSelfViewOn);
+            }
+            if (FAILED(selfStatus.error) && selfStatus.error != selfLastError)
+            {
+                EnterCriticalSection(&r->cs);
+                r->status.self = selfStatus;
+                LeaveCriticalSection(&r->cs);
+                r->sink.Post(EvSelfViewError);
+            }
+            selfLastError = selfStatus.error;
+        }
+
         DWORD wait = 200;
         if (src && frame.buffer && frame.width)
         {
@@ -1258,6 +1314,8 @@ static DWORD WINAPI RunnerThread(LPVOID p)
         s.wantW = lastWantW;
         s.wantH = lastWantH;
         s.wantFps = lastWantFps;
+        s.selfView = self != nullptr;
+        s.self = selfStatus;
         if (src)
         {
             src->Native(&s.sourceW, &s.sourceH, &s.sourceFps);
@@ -1267,6 +1325,7 @@ static DWORD WINAPI RunnerThread(LPVOID p)
 
         WaitForSingleObject(r->wake, wait > 500 ? 500 : wait);
     }
+    SelfViewStop(self);
     delete src;
     if (cam != INVALID_HANDLE_VALUE)
     {

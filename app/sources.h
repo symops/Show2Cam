@@ -7,6 +7,7 @@
 #include <windows.h>
 #include "camdev.h"
 #include "media.h"
+#include "selfview.h"
 
 enum SourceKind { SourceText = 0, SourceImages, SourceVideo, SourceStream, SourceKindCount };
 enum AudioMode { AudioSpeak2Mic = 0, AudioOff, AudioDevice };
@@ -23,6 +24,7 @@ struct CamConfig
     ULONG   width = 0, height = 0;           // 0: as the source
     ULONG   fps = 0;                         // 0: as the source
     bool    paused = false;
+    bool    selfView = false;                // the panel itself uses the camera (Windows sees it in use)
 };
 
 enum SourceState { StateStarting = 0, StateOk, StateNoSignal, StateNoFiles, StateError };
@@ -38,12 +40,15 @@ struct CamRunStatus
     wchar_t    audio[256];                   // where the video's sound goes ("" = nowhere)
     bool       formatWaiting;                // another size is wanted but the camera is in use
     ULONG      wantW, wantH, wantFps;
+    bool       selfView;                     // self-view is on
+    SelfViewStatus self;                     // its state
 };
 
 // Events posted to the notify window: message `msg`, wParam = camera index, lParam = event.
 enum CamEvent
 {
     EvNoSignal = 1, EvSignal, EvNoFiles, EvVideoFile, EvVideoError, EvFormatChanged, EvFormatWaiting, EvAudioMissing,
+    EvSelfViewOn, EvSelfViewError,
     EvPreviewFrame,     // a new frame for the preview window
 };
 

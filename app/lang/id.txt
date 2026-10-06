@@ -241,3 +241,12 @@ aliran tidak tampak seperti MJPEG
 koneksi terputus (%lu)
 server menutup koneksi
 Menghubungkan…
+siaran mandiri
+siaran mandiri: %lu fps
+siaran mandiri: kesalahan 0x%08lX
+Kamera “%ls”: siaran mandiri mati.
+Kamera “%ls”: siaran mandiri aktif — Windows melihat kamera sedang dipakai.
+Kamera “%ls”: siaran mandiri ditolak aksesnya ke kamera — izinkan aplikasi desktop mengakses kamera di pengaturan privasi Windows.
+Kamera “%ls”: siaran mandiri tidak dapat membuka kamera (0x%08lX).
+Siaran mandiri
+Panel sendiri memakai kamera seperti program biasa: Windows menampilkan kamera sebagai menyala

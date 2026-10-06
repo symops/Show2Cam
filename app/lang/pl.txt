@@ -241,3 +241,12 @@ strumień nie wygląda na MJPEG
 połączenie zostało przerwane (%lu)
 serwer zamknął połączenie
 Łączenie…
+autotransmisja
+autotransmisja: %lu kl./s
+autotransmisja: błąd 0x%08lX
+Kamera „%ls”: autotransmisja wyłączona.
+Kamera „%ls”: autotransmisja włączona — Windows widzi kamerę jako używaną.
+Kamera „%ls”: autotransmisja nie ma dostępu do kamery — zezwól aplikacjom klasycznym na dostęp do kamery w ustawieniach prywatności Windows.
+Kamera „%ls”: autotransmisja nie może otworzyć kamery (0x%08lX).
+Autotransmisja
+Panel sam używa kamery jak zwykły program: Windows pokazuje kamerę jako włączoną

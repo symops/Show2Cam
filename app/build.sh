@@ -14,14 +14,14 @@ mkdir -p "$T"
 CXX="clang++ --target=$TARGET -std=c++17 -O2 -fno-exceptions -fno-rtti -municode
      -D_WIN32_WINNT=0x0A00 -DWINVER=0x0A00 -DUNICODE -D_UNICODE -Wall -Wextra -Wno-unused-parameter
      -Wno-missing-field-initializers -isystem /usr/$TRIPLE/include"
-for f in applog lang setupcore setupfiles devctl diag s2csetup s2cinstall camdev media audioout sources s2cpanel cxxrt; do $CXX -c $f.cpp -o "$T/$f.o"; done
+for f in applog lang setupcore setupfiles devctl diag s2csetup s2cinstall camdev media audioout sources selfview s2cpanel cxxrt; do $CXX -c $f.cpp -o "$T/$f.o"; done
 for r in s2csetup s2cinstall s2cpanel; do $TRIPLE-windres $r.rc -O coff -o "$T/$r.res.o"; done
 $TRIPLE-gcc -municode -mwindows -static -s -o "$O/Show2Cam-Setup.exe" "$T/s2csetup.o" "$T/devctl.o" "$T/setupcore.o" \
     "$T/setupfiles.o" "$T/diag.o" "$T/applog.o" "$T/lang.o" "$T/s2csetup.res.o" \
     -lsetupapi -lnewdev -lcfgmgr32 -lcrypt32 -lcomctl32 -lshell32 -lgdi32 -ladvapi32 -luser32 -lole32 -lwevtapi -luuid
-$TRIPLE-gcc -municode -mwindows -static -s -o "$O/Show2Cam.exe" "$T/s2cpanel.o" "$T/sources.o" "$T/media.o" "$T/audioout.o" \
+$TRIPLE-gcc -municode -mwindows -static -s -o "$O/Show2Cam.exe" "$T/s2cpanel.o" "$T/sources.o" "$T/selfview.o" "$T/media.o" "$T/audioout.o" \
     "$T/camdev.o" "$T/cxxrt.o" "$T/devctl.o" "$T/applog.o" "$T/lang.o" "$T/s2cpanel.res.o" \
-    -lmfplat -lmfreadwrite -lmfuuid -lwindowscodecs -lwinhttp -lcrypt32 -lbcrypt -lsetupapi -lnewdev -lcfgmgr32 -lcomctl32 \
+    -lmf -lmfplat -lmfreadwrite -lmfuuid -lwindowscodecs -lwinhttp -lcrypt32 -lbcrypt -lsetupapi -lnewdev -lcfgmgr32 -lcomctl32 \
     -lshell32 -lgdi32 -ladvapi32 -luser32 -lole32 -loleaut32 -luuid -lpropsys
 $TRIPLE-gcc -municode -static -s -o "$O/s2cinstall.exe" "$T/s2cinstall.o" "$T/s2cinstall.res.o" \
     -lsetupapi -lnewdev -lcfgmgr32 -lcrypt32 -lshell32 -ladvapi32 -lole32

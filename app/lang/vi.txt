@@ -241,3 +241,12 @@ luồng không giống MJPEG
 mất kết nối (%lu)
 máy chủ đã đóng kết nối
 Đang kết nối…
+tự phát
+tự phát: %lu khung/giây
+tự phát: lỗi 0x%08lX
+Camera “%ls”: đã tắt tự phát.
+Camera “%ls”: đã bật tự phát — Windows thấy camera đang được dùng.
+Camera “%ls”: tự phát bị từ chối quyền truy cập camera — hãy cho phép ứng dụng máy tính truy cập camera trong cài đặt quyền riêng tư của Windows.
+Camera “%ls”: tự phát không mở được camera (0x%08lX).
+Tự phát
+Bảng điều khiển tự dùng camera như một chương trình thông thường: Windows hiển thị camera đang bật

@@ -241,3 +241,12 @@ le flux ne ressemble pas à du MJPEG
 la connexion a été interrompue (%lu)
 le serveur a fermé la connexion
 Connexion…
+auto-diffusion
+auto-diffusion : %lu im/s
+auto-diffusion : erreur 0x%08lX
+Caméra « %ls » : auto-diffusion désactivée.
+Caméra « %ls » : auto-diffusion activée — Windows voit la caméra comme utilisée.
+Caméra « %ls » : l’accès à la caméra est refusé à l’auto-diffusion — autorisez les applications de bureau à accéder à la caméra dans les paramètres de confidentialité de Windows.
+Caméra « %ls » : l’auto-diffusion ne peut pas ouvrir la caméra (0x%08lX).
+Auto-diffusion
+Le panneau utilise lui-même la caméra comme un programme ordinaire : Windows affiche la caméra comme allumée

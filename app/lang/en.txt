@@ -241,6 +241,15 @@ the stream does not look like MJPEG
 the connection was lost (%lu)
 the server closed the connection
 Connecting…
+self-view
+self-view: %lu fps
+self-view: error 0x%08lX
+Camera “%ls”: self-view off.
+Camera “%ls”: self-view on — Windows sees the camera in use.
+Camera “%ls”: self-view is denied access to the camera — allow desktop apps to access the camera in Windows privacy settings.
+Camera “%ls”: self-view cannot open the camera (0x%08lX).
+Self-view
+The panel itself uses the camera like an ordinary program: Windows shows the camera as on
 [driver] the driver log is empty: the driver has never started
 [driver] ---- driver log (DriverLog) ----
 [setupapi] cannot open %ls (%lu)
