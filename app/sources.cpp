@@ -227,7 +227,11 @@ public:
         wcscpy(m_audioDevice, c.audioDevice);
         QueryPerformanceFrequency(&m_freq);
     }
-    ~VideoSource() override { CloseFile(); }
+    ~VideoSource() override
+    {
+        CloseFile();
+        free(m_rgb);
+    }
 
     DWORD Tick(ULONG* px, int w, int h, bool force, bool paused, bool* changed) override
     {
@@ -418,15 +422,16 @@ private:
         return nullptr;
     }
 
-    HRESULT OpenFile(const wchar_t* path)
+    // A source reader for the file (by its extension, else by its content as a byte stream of that type).
+    HRESULT CreateReader(const wchar_t* path, bool videoProcessing, IMFSourceReader** out)
     {
+        *out = nullptr;
         IMFAttributes* attr = nullptr;
         HRESULT hr = MFCreateAttributes(&attr, 2);
-        if (SUCCEEDED(hr)) hr = attr->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, TRUE);
-        if (SUCCEEDED(hr)) hr = MFCreateSourceReaderFromURL(path, attr, &m_reader);
+        if (SUCCEEDED(hr) && videoProcessing) hr = attr->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, TRUE);
+        if (SUCCEEDED(hr)) hr = MFCreateSourceReaderFromURL(path, attr, out);
         if (FAILED(hr) && attr)
         {
-            // Windows chose the reader by the extension and failed: by the content, as a byte stream of that type.
             const wchar_t* type = SniffContentType(path);
             IMFByteStream* stream = nullptr;
             if (type && SUCCEEDED(MFCreateFile(MF_ACCESSMODE_READ, MF_OPENMODE_FAIL_IF_NOT_EXIST, MF_FILEFLAGS_NONE, path, &stream)))
@@ -437,24 +442,47 @@ private:
                     sa->SetString(MF_BYTESTREAM_CONTENT_TYPE, type);
                     sa->Release();
                 }
-                HRESULT hr2 = MFCreateSourceReaderFromByteStream(stream, attr, &m_reader);
-                AppLog(L"camera %d: %ls opened as %ls: 0x%08lX (by the extension: 0x%08lX)", m_sink.index + 1, FileName(path), type,
-                       (unsigned long)hr2, (unsigned long)hr);
+                HRESULT hr2 = MFCreateSourceReaderFromByteStream(stream, attr, out);
+                if (videoProcessing)
+                    AppLog(L"camera %d: %ls opened as %ls: 0x%08lX (by the extension: 0x%08lX)", m_sink.index + 1, FileName(path),
+                           type, (unsigned long)hr2, (unsigned long)hr);
                 if (SUCCEEDED(hr2)) hr = hr2;
                 stream->Release();
             }
         }
         if (attr) attr->Release();
-        if (FAILED(hr)) return hr;
+        return hr;
+    }
 
-        // Video: RGB32 (converted by the reader).
+    HRESULT OpenFile(const wchar_t* path)
+    {
+        // The picture and the sound have readers of their own: read through one reader, the sound waited behind the
+        // (slower) picture, came late and stopped after a few seconds, and on the next pass there was none at all.
+        HRESULT hr = CreateReader(path, true, &m_reader);
+        if (FAILED(hr)) return hr;
+        m_reader->SetStreamSelection((DWORD)MF_SOURCE_READER_ALL_STREAMS, FALSE);
+        m_reader->SetStreamSelection((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, TRUE);
+
+        // Video: NV12 straight from the decoder, converted here only for the frames shown (converting every decoded
+        // frame to RGB32 in the reader made 1080p play slower than real time); RGB32 by the reader otherwise.
         IMFMediaType* type = nullptr;
+        m_nv12 = false;
         hr = MFCreateMediaType(&type);
         if (SUCCEEDED(hr)) hr = type->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
-        if (SUCCEEDED(hr)) hr = type->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
-        if (SUCCEEDED(hr)) hr = m_reader->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, nullptr, type);
+        if (SUCCEEDED(hr)) hr = type->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_NV12);
+        if (SUCCEEDED(hr) && SUCCEEDED(m_reader->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, nullptr, type)))
+            m_nv12 = true;
         if (type) type->Release();
-        if (FAILED(hr)) return hr;
+        type = nullptr;
+        if (!m_nv12)
+        {
+            hr = MFCreateMediaType(&type);
+            if (SUCCEEDED(hr)) hr = type->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+            if (SUCCEEDED(hr)) hr = type->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
+            if (SUCCEEDED(hr)) hr = m_reader->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, nullptr, type);
+            if (type) type->Release();
+            if (FAILED(hr)) return hr;
+        }
         IMFMediaType* cur = nullptr;
         hr = m_reader->GetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, &cur);
         if (FAILED(hr)) return hr;
@@ -462,9 +490,18 @@ private:
         MFGetAttributeSize(cur, MF_MT_FRAME_SIZE, &w, &h);
         m_frameW = w;
         m_frameH = h;
-        m_stride = (LONG)MFGetAttributeUINT32(cur, MF_MT_DEFAULT_STRIDE, w * 4);
-        // RGB32 rows are at least width * 4 bytes apart (some decoders report the stride in pixels).
-        if ((m_stride < 0 ? -m_stride : m_stride) < (LONG)(w * 4)) m_stride = m_stride < 0 ? -(LONG)(w * 4) : (LONG)(w * 4);
+        UINT32 bpp = m_nv12 ? 1 : 4;                // bytes per pixel of the (first) plane
+        m_stride = (LONG)MFGetAttributeUINT32(cur, MF_MT_DEFAULT_STRIDE, w * bpp);
+        // Rows are at least width * bpp bytes apart (some decoders report the stride in pixels).
+        if ((m_stride < 0 ? -m_stride : m_stride) < (LONG)(w * bpp)) m_stride = m_stride < 0 ? -(LONG)(w * bpp) : (LONG)(w * bpp);
+        if (m_nv12)
+        {
+            // BT.709 for HD unless the file says otherwise; limited range (16-235) unless it says full.
+            UINT32 matrix = MFGetAttributeUINT32(cur, MF_MT_YUV_MATRIX, 0);
+            m_bt709 = matrix ? matrix == MFVideoTransferMatrix_BT709 : h >= 720;
+            m_fullRange = MFGetAttributeUINT32(cur, MF_MT_VIDEO_NOMINAL_RANGE, 0) == MFNominalRange_0_255;
+            if (m_stride < 0) m_stride = -m_stride;     // NV12 is top-down
+        }
         m_cropX = m_cropY = 0;
         m_cropW = w;
         m_cropH = h;
@@ -484,8 +521,8 @@ private:
             m_fps = (num + den / 2) / den;
         GUID sub = {};
         cur->GetGUID(MF_MT_SUBTYPE, &sub);
-        AppLog(L"camera %d: video output type %08lX, %ux%u, default stride %ld", m_sink.index + 1, (unsigned long)sub.Data1, w, h,
-               (long)m_stride);
+        AppLog(L"camera %d: video output type %08lX%ls, %ux%u, default stride %ld", m_sink.index + 1, (unsigned long)sub.Data1,
+               m_nv12 ? (m_bt709 ? L" (NV12, BT.709)" : L" (NV12, BT.601)") : L"", w, h, (long)m_stride);
         m_logBuffer = true;
         cur->Release();
         if (!m_frameW || !m_frameH) return MF_E_INVALIDMEDIATYPE;
@@ -498,14 +535,20 @@ private:
         m_audioLastErr = S_OK;
         if (m_audioMode != AudioOff)
         {
+            HRESULT ahr = CreateReader(path, false, &m_audioReader);
+            if (SUCCEEDED(ahr))
+            {
+                m_audioReader->SetStreamSelection((DWORD)MF_SOURCE_READER_ALL_STREAMS, FALSE);
+                ahr = m_audioReader->SetStreamSelection((DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, TRUE);
+            }
             IMFMediaType* at = nullptr;
-            HRESULT ahr = MFCreateMediaType(&at);
+            if (SUCCEEDED(ahr)) ahr = MFCreateMediaType(&at);
             if (SUCCEEDED(ahr)) ahr = at->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio);
             if (SUCCEEDED(ahr)) ahr = at->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_Float);
-            if (SUCCEEDED(ahr)) ahr = m_reader->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, nullptr, at);
+            if (SUCCEEDED(ahr)) ahr = m_audioReader->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, nullptr, at);
             if (at) at->Release();
             IMFMediaType* ac = nullptr;
-            if (SUCCEEDED(ahr)) ahr = m_reader->GetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, &ac);
+            if (SUCCEEDED(ahr)) ahr = m_audioReader->GetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, &ac);
             if (SUCCEEDED(ahr))
             {
                 m_audioCh = MFGetAttributeUINT32(ac, MF_MT_AUDIO_NUM_CHANNELS, 0);
@@ -516,7 +559,11 @@ private:
             else if (ahr != (HRESULT)MF_E_INVALIDSTREAMNUMBER)
                 AppLog(L"camera %d: the video's sound cannot be decoded (0x%08lX)", m_sink.index + 1, (unsigned long)ahr);
         }
-        if (!m_audioStream) m_reader->SetStreamSelection((DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, FALSE);
+        if (!m_audioStream && m_audioReader)
+        {
+            m_audioReader->Release();
+            m_audioReader = nullptr;
+        }
         m_audioEnded = !m_audioStream;
         m_audioStarted = false;
         bool audioOk = m_audioStream && OpenAudioDevice(true);
@@ -581,8 +628,11 @@ private:
         m_nextVideo = m_shown = nullptr;
         if (m_pending) free(m_pending);
         m_pending = nullptr;
+        m_pendingCap = 0;           // (kept before: the next file then had no buffer and dropped all its sound)
         m_pendingFrames = m_pendingPos = 0;
         m_audio.Close();
+        if (m_audioReader) m_audioReader->Release();
+        m_audioReader = nullptr;
         if (m_reader) m_reader->Release();
         m_reader = nullptr;
     }
@@ -613,10 +663,77 @@ private:
         return false;
     }
 
+    // The crop area of an NV12 frame (Y plane, then the interleaved U/V plane at pitch * frame height) as BGRA.
+    void ConvertNV12(const BYTE* base, LONG pitch, DWORD len)
+    {
+        size_t need = (size_t)m_cropW * m_cropH;
+        if (need > m_rgbCap)
+        {
+            free(m_rgb);
+            m_rgb = (ULONG*)malloc(need * 4);
+            m_rgbCap = m_rgb ? need : 0;
+            if (!m_rgb) return;
+        }
+        if ((size_t)pitch * m_frameH + (size_t)pitch * ((m_frameH + 1) / 2) > len) return;
+        const BYTE* uvBase = base + (size_t)pitch * m_frameH;
+        // fixed point (16 bits): Y scale and the chroma factors of the matrix / range
+        int ys = m_fullRange ? 65536 : 76309, yo = m_fullRange ? 0 : 16;
+        int rv, gu, gv, bu;
+        if (m_bt709) { rv = m_fullRange ? 103206 : 117489; gu = m_fullRange ? 12276 : 13975; gv = m_fullRange ? 30679 : 34925; bu = m_fullRange ? 121609 : 138438; }
+        else         { rv = m_fullRange ? 91881 : 104597;  gu = m_fullRange ? 22554 : 25675; gv = m_fullRange ? 46802 : 53279; bu = m_fullRange ? 116130 : 132201; }
+        for (UINT32 y = 0; y < m_cropH; y++)
+        {
+            UINT32 sy = y + m_cropY;
+            const BYTE* yr = base + (size_t)sy * pitch + m_cropX;
+            const BYTE* uv = uvBase + (size_t)(sy / 2) * pitch + (m_cropX & ~1u);
+            ULONG* out = m_rgb + (size_t)y * m_cropW;
+            for (UINT32 x = 0; x < m_cropW; x++)
+            {
+                UINT32 c = ((x + (m_cropX & 1)) & ~1u);
+                int u = uv[c] - 128, v = uv[c + 1] - 128;
+                int yy = (yr[x] - yo) * ys;
+                int r = (yy + rv * v + 32768) >> 16;
+                int g = (yy - gu * u - gv * v + 32768) >> 16;
+                int b = (yy + bu * u + 32768) >> 16;
+                r = r < 0 ? 0 : (r > 255 ? 255 : r);
+                g = g < 0 ? 0 : (g > 255 ? 255 : g);
+                b = b < 0 ? 0 : (b > 255 ? 255 : b);
+                out[x] = 0xFF000000u | ((ULONG)r << 16) | ((ULONG)g << 8) | (ULONG)b;
+            }
+        }
+    }
+
     void Present(IMFSample* sample, ULONG* px, int w, int h)
     {
         IMFMediaBuffer* buf = nullptr;
         if (FAILED(sample->ConvertToContiguousBuffer(&buf))) return;
+        if (m_nv12)
+        {
+            IMF2DBuffer* nb = nullptr;
+            BYTE* p = nullptr;
+            LONG pitch = m_stride;
+            DWORD max = 0, len = 0;
+            bool locked2d = SUCCEEDED(buf->QueryInterface(IID_PPV_ARGS(&nb))) && SUCCEEDED(nb->Lock2D(&p, &pitch));
+            if (locked2d) buf->GetCurrentLength(&len);
+            if (locked2d && pitch > 0 && len < (DWORD)(pitch * (m_frameH + m_frameH / 2))) len = (DWORD)(pitch * (m_frameH + (m_frameH + 1) / 2));
+            if (!locked2d && SUCCEEDED(buf->Lock(&p, &max, &len))) pitch = m_stride;
+            else if (!locked2d) p = nullptr;
+            if (p)
+            {
+                if (m_logBuffer)
+                {
+                    AppLog(L"camera %d: video frame: NV12, pitch %ld, length %lu", m_sink.index + 1, (long)pitch, len);
+                    m_logBuffer = false;
+                }
+                ConvertNV12(p, pitch, len);
+                if (m_rgb) FitPixels((const BYTE*)m_rgb, (int)m_cropW, (int)m_cropH, (LONG)(m_cropW * 4), px, w, h);
+                if (locked2d) nb->Unlock2D();
+                else buf->Unlock();
+            }
+            if (nb) nb->Release();
+            buf->Release();
+            return;
+        }
         IMF2DBuffer* b2 = nullptr;
         BYTE* scan0 = nullptr;
         LONG pitch = 0;
@@ -667,10 +784,13 @@ private:
                 DWORD stream = 0, flags = 0;
                 LONGLONG ts = 0;
                 IMFSample* sample = nullptr;
-                HRESULT hr = m_reader->ReadSample((DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, 0, &stream, &flags, &ts, &sample);
+                HRESULT hr = m_audioReader->ReadSample((DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, 0, &stream, &flags, &ts, &sample);
                 if (FAILED(hr) || (flags & (MF_SOURCE_READERF_ENDOFSTREAM | MF_SOURCE_READERF_ERROR)))
                 {
                     if (sample) sample->Release();
+                    if (FAILED(hr) || (flags & MF_SOURCE_READERF_ERROR))
+                        AppLog(L"camera %d: sound read error 0x%08lX (flags 0x%lX) at %.1f s", m_sink.index + 1, (unsigned long)hr,
+                               flags, ts / 10000000.0);
                     m_audioEnded = true;
                     return;
                 }
@@ -743,6 +863,10 @@ private:
     DWORD   m_retryAt = GetTickCount();
 
     IMFSourceReader* m_reader = nullptr;
+    IMFSourceReader* m_audioReader = nullptr;   // the same file, sound only
+    bool    m_nv12 = false, m_bt709 = true, m_fullRange = false;
+    ULONG*  m_rgb = nullptr;                    // an NV12 frame converted (crop size)
+    size_t  m_rgbCap = 0;
     UINT32  m_frameW = 0, m_frameH = 0, m_cropX = 0, m_cropY = 0, m_cropW = 0, m_cropH = 0;
     LONG    m_stride = 0;
     ULONG   m_fps = 0;
