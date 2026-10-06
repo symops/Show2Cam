@@ -172,6 +172,128 @@ static void SetDriverLogFile()
                     (DWORD)((wcslen(path) + 1) * sizeof(wchar_t)));
 }
 
+// ---------------------------------------------------------------------------
+// One device per camera (ROOT\Show2Cam, class Image): the camera is the device's Device Parameters\CameraIndex.
+
+static const GUID kClassImage = { 0x6bdd1fc6, 0x810f, 0x11d0, { 0xbe, 0xc7, 0x08, 0x00, 0x2b, 0xe2, 0x09, 0x2f } };
+
+static int DeviceCameraIndex(HDEVINFO set, SP_DEVINFO_DATA* info)
+{
+    HKEY k = SetupDiOpenDevRegKey(set, info, DICS_FLAG_GLOBAL, 0, DIREG_DEV, KEY_READ);
+    if (k == INVALID_HANDLE_VALUE) return -1;
+    DWORD v = 0, size = sizeof(v);
+    int index = RegGetValueW(k, nullptr, L"CameraIndex", RRF_RT_REG_DWORD, nullptr, &v, &size) == ERROR_SUCCESS && v < 10 ? (int)v : -1;
+    RegCloseKey(k);
+    return index;
+}
+
+static bool SetDeviceCameraIndex(HDEVINFO set, SP_DEVINFO_DATA* info, int index)
+{
+    HKEY k = SetupDiCreateDevRegKeyW(set, info, DICS_FLAG_GLOBAL, 0, DIREG_DEV, nullptr, nullptr);
+    if (k == INVALID_HANDLE_VALUE) return false;
+    DWORD v = (DWORD)index;
+    bool ok = RegSetValueExW(k, L"CameraIndex", 0, REG_DWORD, (const BYTE*)&v, sizeof(v)) == ERROR_SUCCESS;
+    RegCloseKey(k);
+    return ok;
+}
+
+bool SetupSetCameraCount(int count, bool installDriver, bool* rebootNeeded, SetupLog log, void* ctx)
+{
+    *rebootNeeded = false;
+    if (count < 1 || count > 10) return false;
+    HDEVINFO set = SetupDiGetClassDevsW(nullptr, nullptr, nullptr, DIGCF_ALLCLASSES);
+    if (set == INVALID_HANDLE_VALUE) return false;
+    // The existing devices and their cameras; a device without one (installed before one device per camera, or a
+    // duplicate) gets the lowest free number.
+    bool used[10] = {};
+    int devIndex[64], devCount = 0, unassigned[64], unCount = 0;
+    SP_DEVINFO_DATA info = { sizeof(info) };
+    for (DWORD i = 0; SetupDiEnumDeviceInfo(set, i, &info) && devCount < 64; i++)
+    {
+        if (!HasHardwareId(set, &info)) continue;
+        int cam = DeviceCameraIndex(set, &info);
+        if (cam >= 0 && !used[cam]) used[cam] = true;
+        else unassigned[unCount++] = (int)i;
+        devIndex[devCount++] = (int)i;
+    }
+    for (int u = 0; u < unCount; u++)
+    {
+        SP_DEVINFO_DATA d = { sizeof(d) };
+        if (!SetupDiEnumDeviceInfo(set, (DWORD)unassigned[u], &d)) continue;
+        int cam = 0;
+        while (cam < 10 && used[cam]) cam++;
+        if (cam >= 10) cam = 9;
+        used[cam] = true;
+        SetDeviceCameraIndex(set, &d, cam);
+        AppLog(L"camera devices: existing device -> camera %d", cam + 1);
+    }
+    bool ok = true;
+    // Too many: the devices of the cameras above the count are removed.
+    for (int j = 0; j < devCount; j++)
+    {
+        SP_DEVINFO_DATA d = { sizeof(d) };
+        if (!SetupDiEnumDeviceInfo(set, (DWORD)devIndex[j], &d)) continue;
+        int cam = DeviceCameraIndex(set, &d);
+        if (cam < count) continue;
+        if (!SetupDiCallClassInstaller(DIF_REMOVE, set, &d))
+        {
+            LogError(log, ctx, TR(L"не удалось удалить устройство"), GetLastError());
+            ok = false;
+        }
+        SP_DEVINSTALL_PARAMS_W dip = { sizeof(dip) };
+        if (SetupDiGetDeviceInstallParamsW(set, &d, &dip) && (dip.Flags & (DI_NEEDREBOOT | DI_NEEDRESTART))) *rebootNeeded = true;
+        AppLog(L"camera devices: camera %d removed", cam + 1);
+        used[cam] = false;
+    }
+    SetupDiDestroyDeviceInfoList(set);
+    // Missing: a new device per camera (with the driver from the driver store when asked).
+    for (int cam = 0; cam < count; cam++)
+    {
+        if (used[cam]) continue;
+        HDEVINFO nset = SetupDiCreateDeviceInfoList(&kClassImage, nullptr);
+        if (nset == INVALID_HANDLE_VALUE)
+        {
+            ok = false;
+            continue;
+        }
+        SP_DEVINFO_DATA d = { sizeof(d) };
+        wchar_t hwid[64] = {};
+        wcscpy(hwid, kHardwareId);      // REG_MULTI_SZ: string + extra terminator (array is zeroed)
+        DWORD hwidBytes = (DWORD)((wcslen(hwid) + 2) * sizeof(wchar_t));
+        bool created = SetupDiCreateDeviceInfoW(nset, L"Image", &kClassImage, nullptr, nullptr, DICD_GENERATE_ID, &d) &&
+                       SetupDiSetDeviceRegistryPropertyW(nset, &d, SPDRP_HARDWAREID, (BYTE*)hwid, hwidBytes) &&
+                       SetupDiCallClassInstaller(DIF_REGISTERDEVICE, nset, &d) && SetDeviceCameraIndex(nset, &d, cam);
+        DWORD err = GetLastError();
+        if (!created)
+        {
+            LogError(log, ctx, TR(L"не удалось создать устройство"), err);
+            ok = false;
+        }
+        else
+        {
+            AppLog(L"camera devices: device for camera %d created", cam + 1);
+            if (installDriver)
+            {
+                BOOL reboot = FALSE;
+                // DiInstallDevice (newdev.dll, Windows 7+; not in the MinGW import library): the best driver of
+                // the driver store on this one device, the other cameras are not touched.
+                typedef BOOL(WINAPI * DiInstallDeviceFn)(HWND, HDEVINFO, PSP_DEVINFO_DATA, PSP_DRVINFO_DATA_W, DWORD, PBOOL);
+                DiInstallDeviceFn diInstallDevice =
+                    (DiInstallDeviceFn)GetProcAddress(LoadLibraryW(L"newdev.dll"), "DiInstallDevice");
+                if (!diInstallDevice || !diInstallDevice(nullptr, nset, &d, nullptr, 0, &reboot))
+                {
+                    LogError(log, ctx, TR(L"не удалось установить драйвер"), GetLastError());
+                    ok = false;
+                }
+                if (reboot) *rebootNeeded = true;
+            }
+        }
+        SetupDiDestroyDeviceInfoList(nset);
+    }
+    S2cSetParam(L"CameraCount", (DWORD)count);
+    return ok;
+}
+
 bool SetupInstallDriver(const wchar_t* infArg, bool* rebootNeeded, SetupLog log, void* ctx)
 {
     *rebootNeeded = false;
@@ -182,40 +304,11 @@ bool SetupInstallDriver(const wchar_t* infArg, bool* rebootNeeded, SetupLog log,
         return false;
     }
 
-    // Create the root-enumerated device node once.
-    if (SetupDeviceCount() == 0)
-    {
-        GUID classGuid;
-        wchar_t className[64];          // MAX_CLASS_NAME_LEN is 32
-        if (!SetupDiGetINFClassW(inf, &classGuid, className, 64, nullptr))
-        {
-            LogError(log, ctx, TR(L"не удалось прочитать класс устройства из INF"), GetLastError());
-            return false;
-        }
-        HDEVINFO set = SetupDiCreateDeviceInfoList(&classGuid, nullptr);
-        if (set == INVALID_HANDLE_VALUE)
-        {
-            LogError(log, ctx, L"SetupDiCreateDeviceInfoList", GetLastError());
-            return false;
-        }
-        SP_DEVINFO_DATA info;
-        info.cbSize = sizeof(info);
-        wchar_t hwid[64] = {};
-        wcscpy(hwid, kHardwareId);      // REG_MULTI_SZ: string + extra terminator (array is zeroed)
-        DWORD hwidBytes = (DWORD)((wcslen(hwid) + 2) * sizeof(wchar_t));
-
-        bool ok = SetupDiCreateDeviceInfoW(set, className, &classGuid, nullptr, nullptr, DICD_GENERATE_ID, &info) &&
-                  SetupDiSetDeviceRegistryPropertyW(set, &info, SPDRP_HARDWAREID, (BYTE*)hwid, hwidBytes) &&
-                  SetupDiCallClassInstaller(DIF_REGISTERDEVICE, set, &info);
-        DWORD err = GetLastError();
-        SetupDiDestroyDeviceInfoList(set);
-        if (!ok)
-        {
-            LogError(log, ctx, TR(L"не удалось создать устройство"), err);
-            return false;
-        }
-        Log(log, ctx, TR(L"Создано устройство %ls."), kHardwareId);
-    }
+    // One root-enumerated device per camera (the number of cameras in the driver settings, 1 by default).
+    int count = (int)S2cGetParam(L"CameraCount", 1);
+    if (count < 1 || count > 10) count = 1;
+    bool unused = false;
+    if (!SetupSetCameraCount(count, false, &unused, log, ctx)) return false;
 
     SetDriverLogFile();
     Log(log, ctx, TR(L"Установка драйвера… Если Windows спросит про издателя, выберите «Все равно установить»."));

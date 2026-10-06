@@ -403,48 +403,6 @@ static NTSTATUS S2C_CB SetName(_In_ PIRP Irp, _In_ PKSIDENTIFIER Request, _Inout
     return STATUS_SUCCESS;
 }
 
-// The number of cameras: done on a system worker thread (it takes the device mutex, which a property handler holding
-// the filter's control mutex must not wait for).
-struct S2C_COUNT_WORK
-{
-    PKSDEVICE    Device;
-    PIO_WORKITEM Item;
-    ULONG        Count;
-};
-
-static VOID NTAPI CountWork(_In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PVOID Context)
-{
-    UNREFERENCED_PARAMETER(DeviceObject);
-    S2C_COUNT_WORK* w = (S2C_COUNT_WORK*)Context;
-    NTSTATUS status = S2cDeviceSetCount(w->Device, w->Count);
-    S2cLog("Camera count %lu -> 0x%08lX", w->Count, (ULONG)status);
-    S2cLogFlush();
-    IoFreeWorkItem(w->Item);
-    ExFreePoolWithTag(w, S2C_POOLTAG);
-}
-
-static NTSTATUS S2C_CB SetCount(_In_ PIRP Irp, _In_ PKSIDENTIFIER Request, _Inout_ PVOID Data)
-{
-    UNREFERENCED_PARAMETER(Request);
-    PKSFILTER filter = KsGetFilterFromIrp(Irp);
-    if (!filter || PropertyDataSize(Irp) < sizeof(ULONG)) return STATUS_INVALID_PARAMETER;
-    ULONG count = *(const ULONG*)Data;
-    if (count < 1 || count > S2C_MAX_CAMERAS) return STATUS_INVALID_PARAMETER;
-    PKSDEVICE device = KsFilterGetDevice(filter);
-    S2C_COUNT_WORK* w = (S2C_COUNT_WORK*)ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(S2C_COUNT_WORK), S2C_POOLTAG);
-    if (!w) return STATUS_INSUFFICIENT_RESOURCES;
-    w->Device = device;
-    w->Count = count;
-    w->Item = IoAllocateWorkItem(device->FunctionalDeviceObject);
-    if (!w->Item)
-    {
-        ExFreePoolWithTag(w, S2C_POOLTAG);
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
-    IoQueueWorkItem(w->Item, (PIO_WORKITEM_ROUTINE)CountWork, DelayedWorkQueue, w);
-    return STATUS_SUCCESS;
-}
-
 static const KSPROPERTY_ITEM kProperties[] = {
     { S2C_PROPERTY_FRAME, { nullptr }, sizeof(KSPROPERTY), sizeof(S2C_FRAME_HEADER), { (PFNKSHANDLER)SetFrame },
       nullptr, 0, nullptr, nullptr, 0 },
@@ -453,8 +411,6 @@ static const KSPROPERTY_ITEM kProperties[] = {
     { S2C_PROPERTY_FORMAT, { nullptr }, sizeof(KSPROPERTY), sizeof(S2C_FORMAT), { (PFNKSHANDLER)SetFormat },
       nullptr, 0, nullptr, nullptr, 0 },
     { S2C_PROPERTY_NAME, { nullptr }, sizeof(KSPROPERTY), sizeof(S2C_NAME), { (PFNKSHANDLER)SetName },
-      nullptr, 0, nullptr, nullptr, 0 },
-    { S2C_PROPERTY_COUNT, { nullptr }, sizeof(KSPROPERTY), sizeof(ULONG), { (PFNKSHANDLER)SetCount },
       nullptr, 0, nullptr, nullptr, 0 },
 };
 static const KSPROPERTY_SET kPropertySets[] = {
@@ -608,9 +564,9 @@ static void ApplyName(S2C_CAMERA* c, PCWSTR Name)
         IoSetDeviceInterfacePropertyData(&alias, &kInterfaceFriendlyName, 0, 0, DEVPROP_TYPE_STRING, bytes, (PVOID)Name);
         RtlFreeUnicodeString(&alias);
     }
-    // The device itself is named after camera 1: some programs (e.g. SearchInform's camera module) take a DirectShow
-    // camera only when its name is also the name of a device (as with one-camera drivers such as e2eSoft VCam).
-    if (c->Index == 0 && c->Pdo)
+    // The device (one per camera) has the camera's name: some programs (e.g. SearchInform's camera module) take a
+    // DirectShow camera only when its name is also the name of a device (as with one-camera drivers, e2eSoft VCam).
+    if (c->Pdo)
     {
         NTSTATUS ds = IoSetDevicePropertyData(c->Pdo, &kDeviceFriendlyName, 0, PLUGPLAY_PROPERTY_PERSISTENT, DEVPROP_TYPE_STRING,
                                               bytes, (PVOID)Name);
@@ -632,7 +588,7 @@ void S2cCameraApplySavedName(_In_ S2C_CAMERA* Camera)
     q[0].DefaultType = REG_SZ << RTL_QUERY_REGISTRY_TYPECHECK_SHIFT;
     if (NT_SUCCESS(RtlQueryRegistryValues(RTL_REGISTRY_SERVICES, L"Show2Cam\\Parameters", q, nullptr, nullptr)) && buffer[0])
         ApplyName(Camera, buffer);
-    else if (Camera->Index == 0)
+    else
         ApplyName(Camera, nullptr);         // the default name, also as the device's name
 }
 

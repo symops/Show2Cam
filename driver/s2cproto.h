@@ -9,12 +9,9 @@
 //                               the camera open (STATUS_DEVICE_BUSY otherwise). Kept in the driver settings.
 //   S2C_PROPERTY_NAME   (SET)  S2C_NAME: the camera's name in Windows (FriendlyName of its device interfaces);
 //                               empty = "Show2Cam Camera N". Kept in the driver settings.
-//   S2C_PROPERTY_COUNT  (SET)  ULONG 1..10: the number of cameras, changed at once without a device restart (the
-//                               cameras above it disappear from the programs' lists; one in use works on until
-//                               closed). Kept in the driver settings (CameraCount).
 // {6F1C2A9E-3B57-4E0C-9D1A-5C2E7B3F8A41}
 #define STATIC_PROPSETID_Show2Cam 0x6f1c2a9e, 0x3b57, 0x4e0c, 0x9d, 0x1a, 0x5c, 0x2e, 0x7b, 0x3f, 0x8a, 0x41
-enum { S2C_PROPERTY_FRAME = 0, S2C_PROPERTY_STATUS = 1, S2C_PROPERTY_FORMAT = 2, S2C_PROPERTY_NAME = 3, S2C_PROPERTY_COUNT = 4 };
+enum { S2C_PROPERTY_FRAME = 0, S2C_PROPERTY_STATUS = 1, S2C_PROPERTY_FORMAT = 2, S2C_PROPERTY_NAME = 3 };
 #define S2C_NAME_CHARS 64
 #define S2C_MIN_WIDTH  160
 #define S2C_MIN_HEIGHT 120

@@ -70,9 +70,6 @@ struct S2C_DEVICE
     S2C_CAMERA* Cameras[S2C_MAX_CAMERAS];
 };
 
-// device.cpp: turns cameras 1..Count on (creating them if needed) and the others off. Takes the device mutex.
-NTSTATUS S2cDeviceSetCount(_In_ PKSDEVICE Device, _In_ ULONG Count);
-
 // camera.cpp
 NTSTATUS S2cCameraCreate(_In_ ULONG Index, _In_ ULONG Width, _In_ ULONG Height, _In_ ULONG Fps, _Out_ S2C_CAMERA** Camera);
 void     S2cCameraFree(_In_ S2C_CAMERA* Camera);

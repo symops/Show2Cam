@@ -26,6 +26,7 @@
 #include <fcntl.h>
 #include "../driver/version.h"
 #include "../driver/s2cproto.h"     // the driver's property set
+#include "setupcore.h"              // one device per camera
 
 static const wchar_t kHardwareId[] = L"ROOT\\Show2Cam";
 static const wchar_t kParams[] = L"SYSTEM\\CurrentControlSet\\Services\\Show2Cam\\Parameters";
@@ -142,7 +143,15 @@ static int CmdInstall()
         file[MAX_PATH + 15] = 0;
         RegSetKeyValueW(HKEY_LOCAL_MACHINE, kParams, L"LogFile", REG_SZ, file, (DWORD)((wcslen(file) + 1) * sizeof(wchar_t)));
     }
-    if (ForEachDevice([](HDEVINFO, SP_DEVINFO_DATA*) {}) == 0)
+    // One device per camera (CameraCount, 1 by default), created before the driver is installed on all of them.
+    {
+        DWORD count = 1, size = sizeof(count);
+        RegGetValueW(HKEY_LOCAL_MACHINE, kParams, L"CameraCount", RRF_RT_REG_DWORD, nullptr, &count, &size);
+        bool unused = false;
+        if (count < 1 || count > 10) count = 1;
+        if (!SetupSetCameraCount((int)count, false, &unused, nullptr, nullptr)) Out(L"warning: not every camera device was created");
+    }
+    if (false)
     {
         GUID cls;
         wchar_t className[64];
@@ -490,13 +499,12 @@ int wmain(int argc, wchar_t** argv)
         if (n < 1 || n > 10) Out(L"error: 1..10");
         else
         {
-            // The driver changes it at once (no device restart); an older driver: setting + restart.
-            HANDLE cam = OpenCamera(1);
-            ULONG count = (ULONG)n;
-            bool now = cam != INVALID_HANDLE_VALUE && Property(cam, S2C_PROPERTY_COUNT, KSPROPERTY_TYPE_SET, &count, sizeof(count), nullptr);
-            if (cam != INVALID_HANDLE_VALUE) CloseHandle(cam);
-            if (now) Out(L"cameras: %d (changed by the driver, no restart)", n);
-            rc = now ? 0 : (SetParam(L"CameraCount", (DWORD)n) && RestartDevice() ? 0 : 1);
+            // One device per camera: the missing ones are created (with the driver), those above removed.
+            bool reboot = false;
+            bool ok = SetupSetCameraCount(n, true, &reboot, nullptr, nullptr);
+            Out(L"cameras: %d%ls%ls", n, ok ? L"" : L" (with errors)", reboot ? L", Windows asks for a restart" : L"");
+            rc = ok ? 0 : 1;
+
         }
     }
     else if (!_wcsicmp(cmd, L"size") && (argc == 5 || argc == 6))

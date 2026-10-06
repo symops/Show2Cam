@@ -259,6 +259,7 @@ The file does not look like Show2Cam settings.
 Settings loaded from %ls
 Export settings…
 Import settings…
+not determined
 [driver] the driver log is empty: the driver has never started
 [driver] ---- driver log (DriverLog) ----
 [setupapi] cannot open %ls (%lu)

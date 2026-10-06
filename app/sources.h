@@ -18,7 +18,7 @@ struct CamConfig
     wchar_t text[256] = L"";
     wchar_t imageFolder[MAX_PATH] = L"";     // empty: the "images" folder next to the program
     wchar_t videoFolder[MAX_PATH] = L"";     // empty: the "mp4" folder next to the program
-    wchar_t url[512] = L"";
+    wchar_t url[512] = L"http://127.0.0.1:8080";    // MJPEG stream address
     int     audioMode = AudioSpeak2Mic;
     wchar_t audioDevice[256] = L"";          // endpoint id for AudioDevice
     ULONG   width = 0, height = 0;           // 0: as the source

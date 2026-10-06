@@ -6,8 +6,8 @@
 //   Camera<N>Height   even, 120..2160 (default 720)
 //   Camera<N>Fps      1..60 (default 30)
 //   Camera<N>Name     REG_SZ, the camera's name (default "Show2Cam Camera N")
-// All of them are also changed at run time by the Show2Cam program through the camera's property set
-// (S2C_PROPERTY_COUNT / S2C_PROPERTY_FORMAT / S2C_PROPERTY_NAME): no device restart.
+// One device per camera (Device Parameters\CameraIndex); size, rate and name are also changed at run time by the
+// Show2Cam program through the camera's property set (S2C_PROPERTY_FORMAT / S2C_PROPERTY_NAME).
 #include "common.h"
 #include "log.h"
 #include "version.h"
@@ -38,6 +38,29 @@ static void FreeCameras(S2C_DEVICE* d)
     }
 }
 
+static NTSTATUS EnableCamera(PKSDEVICE Device, S2C_DEVICE* d, ULONG i, BOOLEAN on);
+
+// The camera of this device: Device Parameters\CameraIndex (0-based), 0 when not set.
+static ULONG ReadDeviceIndex(PKSDEVICE Device)
+{
+    ULONG index = 0;
+    HANDLE key;
+    if (NT_SUCCESS(IoOpenDeviceRegistryKey(Device->PhysicalDeviceObject, PLUGPLAY_REGKEY_DEVICE, KEY_READ, &key)))
+    {
+        UNICODE_STRING name;
+        RtlInitUnicodeString(&name, L"CameraIndex");
+        UCHAR buf[sizeof(KEY_VALUE_PARTIAL_INFORMATION) + sizeof(ULONG)];
+        ULONG got = 0;
+        if (NT_SUCCESS(ZwQueryValueKey(key, &name, KeyValuePartialInformation, buf, sizeof(buf), &got)))
+        {
+            auto* v = (KEY_VALUE_PARTIAL_INFORMATION*)buf;
+            if (v->Type == REG_DWORD && v->DataLength == sizeof(ULONG)) index = *(ULONG*)v->Data;
+        }
+        ZwClose(key);
+    }
+    return index < S2C_MAX_CAMERAS ? index : 0;
+}
+
 static NTSTATUS S2C_CB DeviceStart(_In_ PKSDEVICE Device, _In_ PIRP Irp, _In_opt_ PCM_RESOURCE_LIST Translated,
                                    _In_opt_ PCM_RESOURCE_LIST Untranslated)
 {
@@ -53,19 +76,21 @@ static NTSTATUS S2C_CB DeviceStart(_In_ PKSDEVICE Device, _In_ PIRP Irp, _In_opt
     }
     if (d->FactoriesCreated) return STATUS_SUCCESS;        // restarted after a stop: the cameras still exist
 
-    ULONG count = Clamp(ReadDword(L"CameraCount", 1), 1, S2C_MAX_CAMERAS);
-    S2cLog("StartDevice: Show2Cam %s, %lu camera(s)", S2C_VER_STR, count);
-    NTSTATUS status = S2cDeviceSetCount(Device, count);
-    ULONG created = 0;
-    for (ULONG i = 0; i < S2C_MAX_CAMERAS; i++)
-        if (d->Cameras[i] && d->Cameras[i]->Enabled) created++;
+    // One device per camera (as one-camera drivers: programs such as SearchInform take a camera only when a device has
+    // its name): which one is in the device's own settings (Device Parameters\CameraIndex, set by the installer).
+    ULONG index = ReadDeviceIndex(Device);
+    S2cLog("StartDevice: Show2Cam %s, camera %lu", S2C_VER_STR, index + 1);
+    KsAcquireDevice(Device);
+    NTSTATUS status = EnableCamera(Device, d, index, TRUE);
+    KsReleaseDevice(Device);
+    ULONG created = NT_SUCCESS(status) ? 1 : 0;
+    d->CameraCount = created;
     d->FactoriesCreated = created > 0;
-    S2cLog("StartDevice: %lu of %lu camera(s) created, status 0x%08lX", created, count, (ULONG)status);
+    S2cLog("StartDevice: camera %lu -> 0x%08lX", index + 1, (ULONG)status);
     S2cLogSetValue(L"StartStatus", (ULONG)status);
     S2cLogSetValue(L"CamerasCreated", created);
     S2cLogFlush();
-    // A camera that failed is skipped; the device still starts with the others.
-    return created ? STATUS_SUCCESS : status;
+    return status;
 }
 
 // One camera on (created the first time: filter factory, device interfaces, saved name, format cache) or off (its
@@ -115,24 +140,6 @@ static NTSTATUS EnableCamera(PKSDEVICE Device, S2C_DEVICE* d, ULONG i, BOOLEAN o
     else
         S2cLog("Camera %lu: off", i + 1);
     return STATUS_SUCCESS;
-}
-
-NTSTATUS S2cDeviceSetCount(_In_ PKSDEVICE Device, _In_ ULONG Count)
-{
-    S2C_DEVICE* d = (S2C_DEVICE*)Device->Context;
-    if (!d) return STATUS_DEVICE_NOT_READY;
-    Count = Clamp(Count, 1, S2C_MAX_CAMERAS);
-    NTSTATUS result = STATUS_SUCCESS;
-    KsAcquireDevice(Device);
-    for (ULONG i = 0; i < S2C_MAX_CAMERAS; i++)
-    {
-        NTSTATUS status = EnableCamera(Device, d, i, i < Count);
-        if (!NT_SUCCESS(status) && NT_SUCCESS(result)) result = status;
-    }
-    d->CameraCount = Count;
-    KsReleaseDevice(Device);
-    S2cLogSetValue(L"CameraCount", Count);
-    return result;
 }
 
 static void S2C_CB DeviceRemove(_In_ PKSDEVICE Device, _In_ PIRP Irp)

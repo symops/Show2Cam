@@ -13,6 +13,7 @@
 #include "lang.h"
 #include "applog.h"
 #include "devctl.h"
+#include "setupcore.h"
 #include "ready.h"
 #include "autostart.h"
 #include "../driver/version.h"
@@ -497,7 +498,7 @@ static void UsersText(const CamRunStatus& s, wchar_t* out, size_t len)
     if (frameServer > 0)
         for (int i = 0; i < g_appsNowCount; i++)
             if (_wcsicmp(g_appsNow[i], L"Show2Cam.exe") != 0) AddName(out, len, g_appsNow[i]);
-    if (!out[0]) wcsncpy(out, TR(L"используется"), len - 1);
+    if (!out[0]) wcsncpy(out, TR(L"не определено"), len - 1);     // in use, by whom Windows does not tell
     out[len - 1] = 0;
 }
 
@@ -623,6 +624,7 @@ static void UpdateListRow(int i)
     wchar_t users[300], state[320];
     UsersText(c.status, users, 300);
     if (!c.status.deviceOpen) wcscpy(state, TR(L"нет связи"));
+    else if (users[0] && wcscmp(users, TR(L"не определено")) == 0) wcscpy(state, TR(L"● используется"));
     else if (users[0]) _snwprintf(state, 320, L"● %ls", users);
     else wcscpy(state, TR(L"○ не используется"));
     state[319] = 0;
@@ -704,7 +706,7 @@ static void LayoutParamRow(int kind)
     ShowWindow(Ctl(IDC_AUDIO), kind == SourceVideo ? SW_SHOW : SW_HIDE);
     SetText(IDC_L_PARAM, kind == SourceText ? TR(L"Текст:") : (kind == SourceStream ? TR(L"Адрес:") : TR(L"Папка:")));
     SendMessageW(Ctl(IDC_PARAM), EM_SETCUEBANNER, TRUE,
-                 (LPARAM)(kind == SourceStream ? L"http://10.0.28.101:8001" : L""));
+                 (LPARAM)(kind == SourceStream ? L"http://127.0.0.1:8080" : L""));
 }
 
 static void UpdatePlayButton()
@@ -901,6 +903,7 @@ static void OnSourceChanged()
     KillTimer(g_wnd, TIMER_PARAM);
     ApplyParam();                                   // what was typed for the old source
     g_cams[g_sel].config.kind = kind;
+    if (kind == SourceStream && !g_cams[g_sel].config.url[0]) wcscpy(g_cams[g_sel].config.url, L"http://127.0.0.1:8080");
     ApplyConfig(g_sel);
     AddEventF(TR(L"Камера «%ls»: источник — %ls."), g_cams[g_sel].info.name, SourceName(kind));
     ShowSelected();
@@ -1165,12 +1168,13 @@ static bool IsElevated()
 }
 
 // 0 ok, 2 driver not installed, 3 device not found, 4 restart failed, 5 reboot needed
+// One device per camera: the missing devices are created (with the driver), those above removed; the cameras that
+// stay are not touched.
 static int ApplyCount(int count)
 {
-    if (!S2cSetParam(L"CameraCount", (DWORD)count)) return 2;
-    bool found = false, reboot = false;
-    bool ok = S2cRestartDevice(&found, &reboot);
-    int rc = !found ? 3 : (!ok ? 4 : (reboot ? 5 : 0));
+    bool reboot = false;
+    bool ok = SetupSetCameraCount(count, true, &reboot, nullptr, nullptr);
+    int rc = !ok ? 4 : (reboot ? 5 : 0);
     AppLog(L"camera count %d -> result %d", count, rc);
     return rc;
 }
@@ -1206,29 +1210,15 @@ static void OnCountApply()
 {
     int want = (int)ComboData(IDC_COUNT);
     if (want < 1) return;
-    // The driver changes the number of cameras at once (no device restart, no administrator rights): the cameras that
-    // stay keep running.
-    HANDLE h = g_camCount ? CamOpen(g_cams[0].info.path) : INVALID_HANDLE_VALUE;
-    ULONG count = (ULONG)want;
-    bool ok = h != INVALID_HANDLE_VALUE && CamSetCount(h, count);
-    DWORD err = ok ? 0 : GetLastError();
-    if (h != INVALID_HANDLE_VALUE) CloseHandle(h);
-    AppLog(L"camera count %d through the driver: %ls (%lu)", want, ok ? L"ok" : L"not possible", err);
-    if (ok)
-    {
-        AddEventF(TR(L"Количество камер: %d."), want);
-        SetTimer(g_wnd, TIMER_RESCAN, 800, nullptr);
-        return;
-    }
-    // An older driver: setting + device restart (administrator rights).
-    // The panel's own camera handles would keep the device from restarting.
-    StopRunners();
-    g_camCount = 0;
-    g_sel = -1;
-    FillList();
-    ShowSelected();
-    SetText(IDC_CAM_STATUS, TR(L"Перезапуск устройства Show2Cam…"));
-    UpdateWindow(g_wnd);
+    // Devices are added / removed (administrator rights); the cameras that stay keep running. A camera being removed
+    // is released first (the panel's own handles would keep its device).
+    for (int i = 0; i < g_camCount; i++)
+        if (g_cams[i].info.index >= want)
+        {
+            ClosePreview(i);
+            RunnerStop(g_cams[i].runner);
+            g_cams[i].runner = nullptr;
+        }
     int rc = g_elevated ? ApplyCount(want) : ApplyCountElevated(want);
     switch (rc)
     {
@@ -1409,13 +1399,8 @@ static void ImportFrom(const wchar_t* path)
     // The number of cameras (the driver changes it at once).
     if (count != none && count >= 1 && count <= S2C_MAX_CAMERAS_UI && (int)count != g_camCount && g_camCount)
     {
-        HANDLE hc = CamOpen(g_cams[0].info.path);
-        if (hc != INVALID_HANDLE_VALUE)
-        {
-            if (CamSetCount(hc, count)) AddEventF(TR(L"Количество камер: %d."), (int)count);
-            CloseHandle(hc);
-        }
         ComboSelectData(IDC_COUNT, (LPARAM)count);
+        OnCountApply();
     }
     AddEventF(TR(L"Настройки загружены из %ls"), path);
     ScanCameras(false);
@@ -1572,7 +1557,7 @@ static void Layout()
     Place(IDC_COUNT_APPLY, 260, 225, 140, 27);
     ListColumns();
 
-    Place(IDC_GROUP2, 12, 272, 576, 262);
+    Place(IDC_GROUP2, 12, 272, 576, 280);
     Place(IDC_L_NAME, 24, 296, 100, 20);   Place(IDC_NAME, 130, 292, 282, 23);   Place(IDC_RENAME, 420, 291, 152, 27);
     Place(IDC_L_SOURCE, 24, 330, 100, 20); Place(IDC_SOURCE, 130, 326, 282, 300);
     Place(IDC_L_PARAM, 24, 364, 100, 20);  Place(IDC_PARAM, 130, 360, 282, 23);
@@ -1580,14 +1565,14 @@ static void Layout()
     Place(IDC_L_AUDIO, 24, 398, 100, 20);  Place(IDC_AUDIO, 130, 394, 442, 300);
     Place(IDC_L_RES, 24, 432, 100, 20);    Place(IDC_RES, 130, 428, 170, 300);
     Place(IDC_L_FPS, 304, 432, 140, 20);   Place(IDC_FPS, 450, 428, 122, 300);
-    Place(IDC_CAM_STATUS, 24, 462, 548, 34);
-    Place(IDC_TEST, 24, 498, 160, 28);     Place(IDC_PLAY, 192, 498, 120, 28);
-    Place(IDC_SELFVIEW, 330, 500, 242, 24);
+    Place(IDC_CAM_STATUS, 24, 460, 548, 52);
+    Place(IDC_TEST, 24, 516, 160, 28);     Place(IDC_PLAY, 192, 516, 120, 28);
+    Place(IDC_SELFVIEW, 330, 518, 242, 24);
     if (g_sel >= 0) LayoutParamRow(g_cams[g_sel].config.kind);
 
-    Place(IDC_EVENTS, 24, 544, 512, 300);
-    Place(IDC_CLEARLOG, 542, 542, 32, 26);
-    Place(IDC_AUTOSTART, 24, 576, 548, 22);
+    Place(IDC_EVENTS, 24, 562, 512, 300);
+    Place(IDC_CLEARLOG, 542, 560, 32, 26);
+    Place(IDC_AUTOSTART, 24, 594, 548, 22);
     if (g_eventsWidest) FitEventList(nullptr);
 }
 
@@ -1641,6 +1626,7 @@ static void CreateControls()
         ComboAdd(IDC_COUNT, t, n);
     }
     Create(L"BUTTON", TR(L"Применить"), BS_PUSHBUTTON | WS_TABSTOP, IDC_COUNT_APPLY);
+    if (!g_elevated) SendMessageW(Ctl(IDC_COUNT_APPLY), BCM_SETSHIELD, 0, TRUE);
 
     Create(L"BUTTON", TR(L"Камера"), BS_GROUPBOX, IDC_GROUP2);
     Create(L"STATIC", TR(L"Имя:"), 0, IDC_L_NAME);
@@ -1678,7 +1664,7 @@ static void CreateControls()
         _snwprintf(t, 12, L"%lu", r);
         ComboAdd(IDC_FPS, t, (LPARAM)r);
     }
-    Create(L"STATIC", L"", 0, IDC_CAM_STATUS);
+    Create(L"STATIC", L"", SS_EDITCONTROL | SS_NOPREFIX, IDC_CAM_STATUS);   // up to 3 lines, long paths wrap
     Create(L"BUTTON", TR(L"Проверка"), BS_PUSHBUTTON | WS_TABSTOP, IDC_TEST);
     Create(L"BUTTON", TR(L"Пауза"), BS_PUSHBUTTON | WS_TABSTOP, IDC_PLAY);
     Create(L"BUTTON", TR(L"Самотрансляция"), BS_AUTOCHECKBOX | WS_TABSTOP, IDC_SELFVIEW);
@@ -2129,7 +2115,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show)
     RegisterClassExW(&wc);
 
     UINT dpi = GetDpiForSystem();
-    RECT r = { 0, 0, MulDiv(600, (int)dpi, 96), MulDiv(608, (int)dpi, 96) };
+    RECT r = { 0, 0, MulDiv(600, (int)dpi, 96), MulDiv(626, (int)dpi, 96) };
     DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
     AdjustWindowRectExForDpi(&r, style, FALSE, WS_EX_CONTROLPARENT, dpi);
     wchar_t title[160];

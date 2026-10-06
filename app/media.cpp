@@ -317,14 +317,35 @@ void RenderTextScreen(ULONG* dst, int w, int h, const wchar_t* text)
         FillBlack(dst, w, h);
         return;
     }
-    // The Show2Cam colours (violet -> cyan, as the icon) at 80 %: a light picture (programs that check frames for a covered
-    // lens, e.g. SearchInform, take a dark one as empty); the white text has a shadow.
+    // The Show2Cam colours (violet -> cyan, as the icon) with texture, like a real camera's picture: soft diagonal bands,
+    // a few large light spots and fine noise. Programs that check frames for a covered lens (e.g. SearchInform compares
+    // a few points of every frame) take an even background as an empty frame; the white text has a shadow.
+    int band = (w + h) / 7 > 8 ? (w + h) / 7 : 8;
+    struct { int x, y, r; } spots[4] = { { w / 6, h / 4, h / 3 }, { w * 4 / 5, h / 5, h / 4 }, { w * 2 / 3, h * 4 / 5, h * 2 / 5 },
+                                          { w / 4, h * 5 / 6, h / 5 } };
+    ULONG seed = 0x2545F491u;
     for (int y = 0; y < h; y++)
         for (int x = 0; x < w; x++)
         {
             int t = (int)(((LONGLONG)y * 650 / (h > 1 ? h - 1 : 1)) + ((LONGLONG)x * 350 / (w > 1 ? w - 1 : 1)));   // 0..1000
-            int r = (108 * (1000 - t) + 0 * t) / 1000, g = (59 * (1000 - t) + 194 * t) / 1000, b = (255 * (1000 - t) + 255 * t) / 1000;
-            dib.bits[(SIZE_T)y * w + x] = (ULONG)((r * 80 / 100) << 16 | (g * 80 / 100) << 8 | (b * 80 / 100));
+            int r = (108 * (1000 - t)) / 1000, g = (59 * (1000 - t) + 194 * t) / 1000, b = 255;
+            // bands: brightness 60..100 % (triangle wave along the diagonal)
+            int phase = (x + y) % (2 * band);
+            int k = 600 + 400 * (phase < band ? phase : 2 * band - phase) / band;      // 600..1000
+            // light spots: up to +35 %
+            for (auto& sp : spots)
+            {
+                LONGLONG dx = x - sp.x, dy = y - sp.y, d2 = dx * dx + dy * dy, r2 = (LONGLONG)sp.r * sp.r;
+                if (d2 < r2) k += (int)(350 * (r2 - d2) / r2);
+            }
+            // fine noise (+-12)
+            seed = seed * 1664525u + 1013904223u;
+            int n = (int)((seed >> 24) % 25) - 12;
+            int R = r * k / 1000 + n, G = g * k / 1000 + n, B = b * k / 1000 + n;
+            R = R < 0 ? 0 : (R > 255 ? 255 : R);
+            G = G < 0 ? 0 : (G > 255 ? 255 : G);
+            B = B < 0 ? 0 : (B > 255 ? 255 : B);
+            dib.bits[(SIZE_T)y * w + x] = (ULONG)(R << 16 | G << 8 | B);
         }
     DrawFitted(dib.dc, text, w / 20, w - w / 20, h / 10, h - h / 5, h * 28 / 100, FW_SEMIBOLD, RGB(255, 255, 255), true);
     GdiFlush();

@@ -9,7 +9,7 @@ sizes (1920×1080 … 320×240) at 1–60 fps; the device is in the Image class,
 ## Control panel (Show2Cam.exe)
 
 * **Cameras** — the list of the cameras with their source, format and who uses each one right now ("self-view", the
-  program's name, or "in use" when Windows does not tell); the number of cameras (1–10; the driver changes it at once, no restart, no administrator rights).
+  program's name, or "in use" when Windows does not tell); the number of cameras (1–10; one Windows device per camera, as one-camera drivers: devices are added / removed with administrator rights, the other cameras keep running).
 * **The selected camera**
   * **Name** — the name programs show; renaming needs no administrator rights (the driver keeps it).
   * **Source**

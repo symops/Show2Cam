@@ -27,7 +27,6 @@ bool CamGetStatus(HANDLE cam, S2C_STATUS* status);
 // ERROR_SUCCESS, ERROR_BUSY (the camera is in use: the size can't change now) or another error.
 DWORD CamSetFormat(HANDLE cam, ULONG width, ULONG height, ULONG fps);
 bool CamSetName(HANDLE cam, const wchar_t* name);     // empty = default name
-bool CamSetCount(HANDLE cam, ULONG count);           // number of cameras 1..10 (any camera's handle)
 
 // A picture for S2C_PROPERTY_FRAME: the header followed by width*height BGRA pixels (top-down).
 struct CamFrame
