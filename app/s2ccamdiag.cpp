@@ -24,6 +24,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <wchar.h>
+#include <wctype.h>
 #include "camdev.h"
 #include "../driver/version.h"
 
@@ -417,6 +418,164 @@ static void DirectShow(bool run)
 // ---------------------------------------------------------------------------
 // 4. Media Foundation
 
+// What a program using OpenCV (default backend: Media Foundation) gets: the camera opened at 640x480 with the
+// reader converting to RGB32, frames read for 3 s; the last one is measured (black share, mean brightness) and saved
+// as a BMP next to the log.
+static wchar_t g_logDir[MAX_PATH];
+
+static void Snapshot(IMFActivate* dev, UINT32 index, const wchar_t* name)
+{
+    DWORD t0 = GetTickCount();
+    IMFMediaSource* src = nullptr;
+    IMFSourceReader* rd = nullptr;
+    IMFAttributes* attr = nullptr;
+    HRESULT hr = dev->ActivateObject(IID_PPV_ARGS(&src));
+    if (SUCCEEDED(hr)) hr = MFCreateAttributes(&attr, 1);
+    if (SUCCEEDED(hr)) hr = attr->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, TRUE);
+    if (SUCCEEDED(hr)) hr = MFCreateSourceReaderFromMediaSource(src, attr, &rd);
+    if (attr) attr->Release();
+    if (FAILED(hr))
+    {
+        Out(L"      snapshot: open 0x%08lX", (unsigned long)hr);
+        if (src) { src->Shutdown(); src->Release(); }
+        return;
+    }
+    // the native 640x480 format (YUY2 preferred), else the current one
+    wchar_t chosen[48] = L"current";
+    for (DWORD t = 0; t < 80; t++)
+    {
+        IMFMediaType* mt = nullptr;
+        if (FAILED(rd->GetNativeMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, t, &mt))) break;
+        UINT32 w = 0, h = 0;
+        GUID sub = {};
+        MFGetAttributeSize(mt, MF_MT_FRAME_SIZE, &w, &h);
+        mt->GetGUID(MF_MT_SUBTYPE, &sub);
+        bool take = w == 640 && h == 480 && (wcscmp(chosen, L"current") == 0 || IsEqualGUID(sub, MFVideoFormat_YUY2));
+        if (take && SUCCEEDED(rd->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, nullptr, mt)))
+        {
+            Fourcc(sub, chosen);
+            wcscat(chosen, L" 640x480");
+        }
+        mt->Release();
+    }
+    IMFMediaType* out = nullptr;
+    hr = MFCreateMediaType(&out);
+    if (SUCCEEDED(hr)) out->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+    if (SUCCEEDED(hr)) out->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
+    if (SUCCEEDED(hr)) hr = rd->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, nullptr, out);
+    if (out) out->Release();
+    UINT32 w = 0, h = 0;
+    LONG stride = 0;
+    IMFMediaType* cur = nullptr;
+    if (SUCCEEDED(rd->GetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, &cur)))
+    {
+        MFGetAttributeSize(cur, MF_MT_FRAME_SIZE, &w, &h);
+        stride = (LONG)MFGetAttributeUINT32(cur, MF_MT_DEFAULT_STRIDE, w * 4);
+        cur->Release();
+    }
+    if ((stride < 0 ? -stride : stride) < (LONG)(w * 4)) stride = stride < 0 ? -(LONG)(w * 4) : (LONG)(w * 4);
+    if (FAILED(hr) || !w || !h)
+    {
+        Out(L"      snapshot: RGB32 output 0x%08lX", (unsigned long)hr);
+        rd->Release();
+        src->Shutdown();
+        src->Release();
+        return;
+    }
+    int frames = 0;
+    DWORD first = 0;
+    IMFSample* last = nullptr;
+    HRESULT rhr = S_OK;
+    DWORD start = GetTickCount();
+    while (GetTickCount() - start < 3000 + (first ? 0 : 30000))
+    {
+        DWORD stream = 0, flags = 0;
+        LONGLONG ts = 0;
+        IMFSample* smp = nullptr;
+        rhr = rd->ReadSample((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, &stream, &flags, &ts, &smp);
+        if (smp)
+        {
+            if (!first) { first = GetTickCount() - t0; start = GetTickCount(); }
+            frames++;
+            if (last) last->Release();
+            last = smp;
+        }
+        if (FAILED(rhr) || (flags & MF_SOURCE_READERF_ERROR)) break;
+    }
+    if (!last)
+    {
+        Out(L"      snapshot %ls: NO FRAME (0x%08lX)", chosen, (unsigned long)rhr);
+    }
+    else
+    {
+        IMFMediaBuffer* buf = nullptr;
+        IMF2DBuffer* b2 = nullptr;
+        BYTE* top = nullptr;
+        LONG pitch = 0;
+        BYTE* p = nullptr;
+        bool locked2d = false;
+        if (SUCCEEDED(last->ConvertToContiguousBuffer(&buf)))
+        {
+            if (SUCCEEDED(buf->QueryInterface(IID_PPV_ARGS(&b2))) && SUCCEEDED(b2->Lock2D(&top, &pitch))) locked2d = true;
+            else if (SUCCEEDED(buf->Lock(&p, nullptr, nullptr)))
+            {
+                pitch = stride;
+                top = stride < 0 ? p + (SIZE_T)(h - 1) * (SIZE_T)(-stride) : p;
+            }
+        }
+        if (top)
+        {
+            ULONGLONG black = 0, sum = 0;
+            for (UINT32 y = 0; y < h; y++)
+            {
+                const BYTE* row = top + (LONG_PTR)y * pitch;
+                for (UINT32 x = 0; x < w; x++)
+                {
+                    int v = (row[x * 4] + row[x * 4 + 1] + row[x * 4 + 2]) / 3;
+                    sum += (ULONGLONG)v;
+                    if (v < 8) black++;
+                }
+            }
+            // the picture as a BMP (bottom-up rows)
+            wchar_t file[MAX_PATH], safe[64];
+            int k = 0;
+            for (const wchar_t* c = name; *c && k < 60; c++) safe[k++] = (iswalnum(*c) ? *c : L'_');
+            safe[k] = 0;
+            _snwprintf(file, MAX_PATH, L"%ls\\snap-%u-%ls.bmp", g_logDir, index, safe);
+            file[MAX_PATH - 1] = 0;
+            FILE* f = _wfopen(file, L"wb");
+            if (f)
+            {
+                BITMAPFILEHEADER fh = {};
+                BITMAPINFOHEADER ih = {};
+                ih.biSize = sizeof(ih);
+                ih.biWidth = (LONG)w;
+                ih.biHeight = (LONG)h;
+                ih.biPlanes = 1;
+                ih.biBitCount = 32;
+                ih.biSizeImage = w * h * 4;
+                fh.bfType = 0x4D42;
+                fh.bfOffBits = sizeof(fh) + sizeof(ih);
+                fh.bfSize = fh.bfOffBits + ih.biSizeImage;
+                fwrite(&fh, sizeof(fh), 1, f);
+                fwrite(&ih, sizeof(ih), 1, f);
+                for (UINT32 y = h; y-- > 0;) fwrite(top + (LONG_PTR)y * pitch, 1, w * 4, f);
+                fclose(f);
+            }
+            Out(L"      snapshot %ls -> RGB32 %ux%u: first frame %lu ms after opening, %d frames in 3 s, black %.1f %%, mean %.0f, %ls",
+                chosen, w, h, first, frames, 100.0 * black / ((double)w * h), (double)sum / ((double)w * h), f ? file : L"(not saved)");
+            if (locked2d) b2->Unlock2D();
+            else buf->Unlock();
+        }
+        if (b2) b2->Release();
+        if (buf) buf->Release();
+        last->Release();
+    }
+    rd->Release();
+    src->Shutdown();
+    src->Release();
+}
+
 static void MediaFoundation(bool run)
 {
     Out(L"");
@@ -479,6 +638,7 @@ static void MediaFoundation(bool run)
                 rd->Release();
             }
             if (src) { src->Shutdown(); src->Release(); }
+            Snapshot(devs[i], i, name ? name : L"camera");
         }
         CoTaskMemFree(name);
         CoTaskMemFree(link);
@@ -521,6 +681,7 @@ int wmain(int argc, wchar_t** argv)
         CreateDirectoryW(path, nullptr);
         wcscat(path, L"\\logs");
         CreateDirectoryW(path, nullptr);
+        wcscpy(g_logDir, path);
         wcscat(path, Bitness()[1] == L'6' ? L"\\camdiag-x64.log" : L"\\camdiag-x86.log");
         g_log = _wfopen(path, L"w, ccs=UTF-8");
     }
