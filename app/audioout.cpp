@@ -65,6 +65,9 @@ bool FindSpeak2MicSpeaker(RenderDevice* out)
             *out = list[i];
             return true;
         }
+#ifdef S2C_UI_TEST
+    if (n > 0) { *out = list[0]; return true; }     // sound tests under Wine (no Speak2Mic there); never in a release
+#endif
     return false;
 }
 

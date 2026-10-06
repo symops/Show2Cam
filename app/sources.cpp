@@ -277,7 +277,14 @@ public:
             m_audioName[0] = 0;
         }
 
-        bool audioDone = !m_audio.IsOpen() || (m_audioEnded && !m_pendingFrames && m_audio.QueuedFrames() == 0);
+        bool audioDone = !m_audio.IsOpen() || (m_audioEnded && m_pendingPos >= m_pendingFrames && m_audio.QueuedFrames() == 0);
+        // A safety net: the picture has ended and the sound does not finish within 3 s (a broken / longer sound track).
+        if (m_videoEnded && !m_videoEndTick) m_videoEndTick = now ? now : 1;
+        if (m_videoEnded && !audioDone && now - m_videoEndTick > 3000)
+        {
+            AppLog(L"camera %d: the sound of %ls does not end, next file", m_sink.index + 1, m_current);
+            audioDone = true;
+        }
         if (m_videoEnded && audioDone)
         {
             AppLog(L"camera %d: video %ls ended", m_sink.index + 1, m_current);
@@ -466,6 +473,7 @@ private:
         m_audioEnded = !audioOk;
         m_audioStarted = false;
         m_videoEnded = false;
+        m_videoEndTick = 0;
         wcscpy(m_current, path);
 
         // The clock starts at the first frame's time.
@@ -643,6 +651,7 @@ private:
     IMFSample* m_shown = nullptr;
     LONGLONG m_nextVideoTs = 0;
     bool    m_videoEnded = true, m_audioEnded = true, m_audioStarted = false;
+    DWORD   m_videoEndTick = 0;
 
     AudioOut m_audio;
     float*  m_pending = nullptr;
