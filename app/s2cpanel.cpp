@@ -42,7 +42,7 @@ enum { IDM_TRAY_OPEN = 40001, IDM_TRAY_EXIT };
 // State
 
 static HINSTANCE g_inst;
-static HWND      g_wnd, g_preview;
+static HWND      g_wnd;
 static HFONT     g_font, g_fontBold;
 static HICON     g_toolIcons[2];          // reset / clear log (resources 10, 11)
 static UINT      g_dpi = 96;
@@ -55,12 +55,12 @@ struct Cam
     CameraRunner* runner;
     CamRunStatus  status;
     bool          audioMissingLogged;
+    HWND          preview;                // its "Check" window (several may be open at once)
+    Picture       previewPic;
 };
 static Cam  g_cams[S2C_MAX_CAMERAS_UI];
 static int  g_camCount;
 static int  g_sel = -1;                   // selected camera (index into g_cams)
-static int  g_previewCam = -1;            // camera shown in the preview window
-static Picture g_previewPic;
 static RenderDevice g_audioDevs[64];
 static int  g_audioDevCount;
 
@@ -400,13 +400,14 @@ static void ApplyConfig(int i)
     if (g_cams[i].runner) RunnerConfigure(g_cams[i].runner, g_cams[i].config);
 }
 
-static void ClosePreview();
+static void CloseAllPreviews();
 static void ShowSelected();
 static void FillList();
+static void PreviewTitle(int i);
 
 static void StopRunners()
 {
-    ClosePreview();
+    CloseAllPreviews();
     for (int i = 0; i < g_camCount; i++)
     {
         RunnerStop(g_cams[i].runner);
@@ -560,7 +561,7 @@ static void UpdatePlayButton()
     bool ok = g_sel >= 0;
     SetText(IDC_PLAY, ok && g_cams[g_sel].config.paused ? TR(L"Играть") : TR(L"Пауза"));
     EnableWindow(Ctl(IDC_PLAY), ok);
-    SetText(IDC_TEST, ok && g_previewCam == g_sel && g_preview ? TR(L"Закрыть проверку") : TR(L"Проверка"));
+    SetText(IDC_TEST, ok && g_cams[g_sel].preview ? TR(L"Закрыть проверку") : TR(L"Проверка"));
     EnableWindow(Ctl(IDC_TEST), ok);
 }
 
@@ -797,7 +798,11 @@ static void OnRename()
     ScanCameras(false);                              // reads the names back
     if (ok) AddEventF(TR(L"Камера «%ls» переименована в «%ls»."), old, g_sel >= 0 ? g_cams[g_sel].info.name : b);
     else AddEventF(TR(L"Не удалось переименовать камеру (код %lu)."), err);
-    for (int i = 0; i < g_camCount; i++) UpdateListRow(i);
+    for (int i = 0; i < g_camCount; i++)
+    {
+        UpdateListRow(i);
+        PreviewTitle(i);
+    }
     ShowSelected();
 }
 
@@ -845,32 +850,47 @@ static void OnOpenFolder()
 // ---------------------------------------------------------------------------
 // Preview window ("Check"): the frames the selected camera sends, live
 
-static void PreviewTitle()
+static void PreviewTitle(int i)
 {
-    if (!g_preview || g_previewCam < 0) return;
+    if (i < 0 || i >= g_camCount || !g_cams[i].preview) return;
     wchar_t t[200];
-    _snwprintf(t, 200, TR(L"Проверка — %ls"), g_cams[g_previewCam].info.name);
+    _snwprintf(t, 200, TR(L"Проверка — %ls"), g_cams[i].info.name);
     t[199] = 0;
-    SetWindowTextW(g_preview, t);
+    SetWindowTextW(g_cams[i].preview, t);
 }
 
-static void ClosePreview()
+static void ClosePreview(int i)
 {
-    if (g_previewCam >= 0 && g_previewCam < g_camCount && g_cams[g_previewCam].runner)
-        RunnerSetPreview(g_cams[g_previewCam].runner, false);
-    g_previewCam = -1;
-    g_previewPic.Free();
-    if (g_preview)
+    if (i < 0 || i >= g_camCount) return;
+    Cam& c = g_cams[i];
+    if (c.runner) RunnerSetPreview(c.runner, false);
+    c.previewPic.Free();
+    if (c.preview)
     {
-        HWND w = g_preview;
-        g_preview = nullptr;
+        HWND w = c.preview;
+        c.preview = nullptr;
         DestroyWindow(w);
     }
     if (g_wnd) UpdatePlayButton();
 }
 
+static void CloseAllPreviews()
+{
+    for (int i = 0; i < g_camCount; i++) ClosePreview(i);
+}
+
+static int OpenPreviews()
+{
+    int n = 0;
+    for (int i = 0; i < g_camCount; i++)
+        if (g_cams[i].preview) n++;
+    return n;
+}
+
 static LRESULT CALLBACK PreviewProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
+    int i = (int)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+    Picture* pic = i >= 0 && i < g_camCount && g_cams[i].preview == hwnd ? &g_cams[i].previewPic : nullptr;
     switch (msg)
     {
     case WM_ERASEBKGND:
@@ -883,9 +903,9 @@ static LRESULT CALLBACK PreviewProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         GetClientRect(hwnd, &rc);
         int W = rc.right, H = rc.bottom;
         HBRUSH black = (HBRUSH)GetStockObject(BLACK_BRUSH);
-        if (g_previewPic.px && W > 0 && H > 0)
+        if (pic && pic->px && W > 0 && H > 0)
         {
-            int pw = g_previewPic.w, ph = g_previewPic.h, w = W, h = H;
+            int pw = pic->w, ph = pic->h, w = W, h = H;
             if ((LONGLONG)pw * H > (LONGLONG)ph * W) h = (int)((LONGLONG)ph * W / pw);
             else w = (int)((LONGLONG)pw * H / ph);
             int x = (W - w) / 2, y = (H - h) / 2;
@@ -897,7 +917,7 @@ static LRESULT CALLBACK PreviewProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             bi.bmiHeader.biBitCount = 32;
             SetStretchBltMode(dc, HALFTONE);
             SetBrushOrgEx(dc, 0, 0, nullptr);
-            StretchDIBits(dc, x, y, w, h, 0, 0, pw, ph, g_previewPic.px, &bi, DIB_RGB_COLORS, SRCCOPY);
+            StretchDIBits(dc, x, y, w, h, 0, 0, pw, ph, pic->px, &bi, DIB_RGB_COLORS, SRCCOPY);
             RECT bars[4] = { { 0, 0, W, y }, { 0, y + h, W, H }, { 0, y, x, y + h }, { x + w, y, W, y + h } };
             for (RECT& b : bars) FillRect(dc, &b, black);
         }
@@ -914,41 +934,38 @@ static LRESULT CALLBACK PreviewProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         return 0;
     }
     case WM_CLOSE:
-        ClosePreview();
-        return 0;
-    case WM_DESTROY:
-        if (g_preview == hwnd) g_preview = nullptr;
+        if (pic) ClosePreview(i);
+        else DestroyWindow(hwnd);
         return 0;
     }
     return DefWindowProcW(hwnd, msg, wp, lp);
 }
 
+// "Check": opens (or closes) the preview window of the selected camera; the other cameras' windows stay open.
 static void OnTest()
 {
     if (g_sel < 0) return;
-    if (g_preview && g_previewCam == g_sel)
+    Cam& c = g_cams[g_sel];
+    if (c.preview)
     {
-        ClosePreview();
+        ClosePreview(g_sel);
         return;
     }
-    if (g_previewCam >= 0 && g_previewCam < g_camCount) RunnerSetPreview(g_cams[g_previewCam].runner, false);
-    g_previewPic.Free();
-    g_previewCam = g_sel;
-    if (!g_preview)
-    {
-        RECT r = { 0, 0, S(640), S(360) };
-        DWORD style = WS_OVERLAPPEDWINDOW;
-        AdjustWindowRectExForDpi(&r, style, FALSE, 0, g_dpi);
-        RECT main;
-        GetWindowRect(g_wnd, &main);
-        g_preview = CreateWindowExW(0, L"S2cPreview", L"", style, main.right + S(8), main.top, r.right - r.left, r.bottom - r.top,
-                                    g_wnd, nullptr, g_inst, nullptr);
-        ShowWindow(g_preview, SW_SHOWNOACTIVATE);
-    }
-    PreviewTitle();
-    InvalidateRect(g_preview, nullptr, FALSE);
-    RunnerSetPreview(g_cams[g_sel].runner, true);
-    AppLog(L"preview of camera %d", g_cams[g_sel].info.index + 1);
+    c.previewPic.Free();
+    RECT r = { 0, 0, S(640), S(360) };
+    DWORD style = WS_OVERLAPPEDWINDOW;
+    AdjustWindowRectExForDpi(&r, style, FALSE, 0, g_dpi);
+    RECT main;
+    GetWindowRect(g_wnd, &main);
+    int step = S(28) * OpenPreviews();          // cascade the windows
+    c.preview = CreateWindowExW(0, L"S2cPreview", L"", style, main.right + S(8) + step, main.top + step, r.right - r.left,
+                                r.bottom - r.top, g_wnd, nullptr, g_inst, nullptr);
+    if (!c.preview) return;
+    SetWindowLongPtrW(c.preview, GWLP_USERDATA, (LONG_PTR)g_sel);
+    PreviewTitle(g_sel);
+    ShowWindow(c.preview, SW_SHOWNOACTIVATE);
+    RunnerSetPreview(c.runner, true);
+    AppLog(L"preview of camera %d (%d open)", c.info.index + 1, OpenPreviews());
     UpdatePlayButton();
 }
 
@@ -1052,7 +1069,11 @@ static void OnResetAll()
         ApplyConfig(i);
     }
     ScanCameras(false);
-    for (int i = 0; i < g_camCount; i++) UpdateListRow(i);
+    for (int i = 0; i < g_camCount; i++)
+    {
+        UpdateListRow(i);
+        PreviewTitle(i);
+    }
     ShowSelected();
     AddEvent(TR(L"Все настройки сброшены к стандартным."));
 }
@@ -1066,7 +1087,7 @@ static void OnCamEvent(int i, int ev)
     Cam& c = g_cams[i];
     if (ev == EvPreviewFrame)
     {
-        if (g_preview && g_previewCam == i && RunnerGetPreviewFrame(c.runner, &g_previewPic)) InvalidateRect(g_preview, nullptr, FALSE);
+        if (c.preview && RunnerGetPreviewFrame(c.runner, &c.previewPic)) InvalidateRect(c.preview, nullptr, FALSE);
         return;
     }
     RunnerGetStatus(c.runner, &c.status);
@@ -1328,7 +1349,8 @@ static void ToTray()
     if (!g_inTray) TrayIcon(NIM_ADD);
     g_inTray = true;
     ShowWindow(g_wnd, SW_HIDE);
-    if (g_preview) ShowWindow(g_preview, SW_HIDE);
+    for (int i = 0; i < g_camCount; i++)
+        if (g_cams[i].preview) ShowWindow(g_cams[i].preview, SW_HIDE);
     AppLog(L"panel minimized to the tray");
 }
 
@@ -1336,7 +1358,8 @@ static void FromTray()
 {
     ShowWindow(g_wnd, SW_SHOW);
     if (IsIconic(g_wnd)) ShowWindow(g_wnd, SW_RESTORE);
-    if (g_preview) ShowWindow(g_preview, SW_SHOWNOACTIVATE);
+    for (int i = 0; i < g_camCount; i++)
+        if (g_cams[i].preview) ShowWindow(g_cams[i].preview, SW_SHOWNOACTIVATE);
     SetForegroundWindow(g_wnd);
     if (g_inTray) TrayIcon(NIM_DELETE);
     g_inTray = false;
@@ -1423,7 +1446,14 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             FillList();
             ShowSelected();
         }
-        if (GetEnvironmentVariableW(L"S2C_TEST_PREVIEW", nullptr, 0)) PostMessageW(hwnd, WM_COMMAND, MAKEWPARAM(IDC_TEST, BN_CLICKED), 0);
+        wchar_t pv[8] = L"";
+        if (GetEnvironmentVariableW(L"S2C_TEST_PREVIEW", pv, 8) && !wcscmp(pv, L"all"))
+            for (int i = 0; i < g_camCount; i++)
+            {
+                g_sel = i;
+                OnTest();
+            }
+        else if (pv[0]) PostMessageW(hwnd, WM_COMMAND, MAKEWPARAM(IDC_TEST, BN_CLICKED), 0);
 #endif
         return 0;
     }
