@@ -893,7 +893,7 @@ static void ActionImages()
     }
     // every format together, with a broken picture and a text file among them: changes every 5 s
     wcscpy(cfg.imageFolder, g_media.allImages);
-    Out(L"[images] camera %d: %d formats + a broken picture, 13 s", cam.index + 1, g_media.imageCount);
+    Out(L"[images] camera %d: every generated format + broken pictures, 13 s", cam.index + 1);
     CameraRunner* r = StartSource(cam, cfg, &c);
     if (!r) return;
     bool seen[8] = {};
@@ -912,7 +912,7 @@ static void ActionImages()
     }
     Check(samples >= 10, L"%d samples", samples);
     Check(distinct >= 2, L"%d different pictures shown", distinct);
-    Check(unknown <= 1, L"%d sample(s) showed no test picture (broken / text file not skipped?)", unknown);
+    Check(unknown == 0, L"%d sample(s) showed no test picture (a broken file or the text file not skipped at once?)", unknown);
     StopSource(r, cam, &c);
 }
 

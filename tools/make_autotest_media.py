@@ -195,9 +195,55 @@ def make_s2c(out):
         run(args)
         colors = 1 if seconds < 1 else 3
         manifest.append('video|%s|%d|%d|%d' % (name, colors, 1 if aargs else 0, optional))
+    make_broken(out, manifest)
     with open(os.path.join(out, 'manifest.txt'), 'w') as f:
         f.write('\n'.join(manifest) + '\n')
     return manifest
+
+
+def make_broken(out, manifest):
+    """Broken files Windows must refuse (a new random choice and cut on every build): pictures and clips the sources
+    have to skip, next to good ones. Only damage Windows really refuses - cut JPEG / GIF decode partly and are not used."""
+    rnd = random.Random()
+    good_png = os.path.join(tempfile.gettempdir(), 'atm_good.png')
+    picture(COLORS[0]).save(good_png)
+    png = open(good_png, 'rb').read()
+    clip = open(os.path.join(out, 'mp4-h264-mp3.mp4'), 'rb').read()      # moov at the end (ffmpeg's default)
+
+    def junk(n):
+        return bytes(rnd.getrandbits(8) for _ in range(n))
+
+    images = [
+        ('broken-empty.jpg', lambda: b''),
+        ('broken-text.png', lambda: b'this is not a picture\r\n' * 20),
+        ('broken-cut-%d.png' % rnd.randint(20, 70), None),
+        ('broken-header-junk.png', lambda: png[:33] + junk(rnd.randint(500, 4000))),
+        ('broken-random.webp', lambda: junk(rnd.randint(1000, 8000))),
+        ('broken-random.tif', lambda: b'II*\0' + junk(rnd.randint(500, 3000))),
+        ('broken-bmp-size.bmp', lambda: b'BM' + struct.pack('<IHHI', 70, 0, 0, 54) +
+            struct.pack('<IiiHHIIiiII', 40, 60000, 60000, 1, 32, 0, 0, 0, 0, 0, 0) + junk(16)),
+    ]
+    clips = [
+        ('broken-empty.mp4', lambda: b''),
+        ('broken-text.avi', lambda: b'RIFF?? not a video, just text\r\n' * 30),
+        ('broken-random.mkv', lambda: b'\x1aE\xdf\xa3' + junk(rnd.randint(2000, 20000))),
+        ('broken-cut-%d.mp4' % rnd.randint(5, 60), None),
+        ('broken-header-junk.mov', lambda: clip[:32] + junk(rnd.randint(2000, 20000))),
+        ('broken-random.wmv', lambda: junk(rnd.randint(2000, 20000))),
+    ]
+    picked_i = rnd.sample(images, rnd.randint(4, len(images)))
+    picked_c = rnd.sample(clips, rnd.randint(3, len(clips)))
+    for name, make in picked_i + picked_c:
+        if make is None:
+            cut = int(name.split('-')[2].split('.')[0])
+            src = png if name.endswith('.png') else clip
+            data = src[:len(src) * cut // 100]
+        else:
+            data = make()
+        with open(os.path.join(out, name), 'wb') as f:
+            f.write(data)
+        kind = 'broken-image' if (name, make) in picked_i else 'broken-video'
+        manifest.append('%s|%s|-' % (kind, name))
 
 
 def write_rc(folder, manifest, first_id):

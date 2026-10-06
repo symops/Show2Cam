@@ -436,7 +436,8 @@ static void AddSamples(TestMedia* m, TestLog log, TestLog warn)
         LogF(log, L"  no built-in samples");
         return;
     }
-    int images = 0, videos = 0, missing = 0;
+    int images = 0, videos = 0, missing = 0, brokenPictures = 0, brokenClips = 0;
+    wchar_t goodClip[MAX_PATH] = L"", goodName[128] = L"", brokenFolder[MAX_PATH] = L"";
     const char* p = text;
     const char* end = text + size;
     for (int id = 501; p < end; id++)
@@ -467,12 +468,33 @@ static void AddSamples(TestMedia* m, TestLog log, TestLog warn)
         _snwprintf(sub, 160, L"sample-%ls", wfile);
         for (wchar_t* q = sub; *q; q++)
             if (*q == L'.') *q = L'-';
-        Join(folder, m->root, sub);
-        CreateDirectoryW(folder, nullptr);
+        bool brokenImage = !strcmp(kind, "broken-image"), brokenVideo = !strcmp(kind, "broken-video");
+        if (brokenImage) wcscpy(folder, m->allImages);          // among the good pictures
+        else if (brokenVideo)
+        {
+            Join(folder, m->root, L"videos-broken");          // broken clips + one good one
+            if (!brokenClips) CreateDirectoryW(folder, nullptr);
+        }
+        else
+        {
+            Join(folder, m->root, sub);
+            CreateDirectoryW(folder, nullptr);
+        }
         Join(path, folder, wfile);
         if (!ResourceToFile(id, path))
         {
             LogF(log, L"  sample %ls not written", wfile);
+            continue;
+        }
+        if (brokenImage)
+        {
+            brokenPictures++;
+            continue;
+        }
+        if (brokenVideo)
+        {
+            if (!brokenClips) wcscpy(brokenFolder, folder);
+            brokenClips++;
             continue;
         }
         if (!strcmp(kind, "image") && m->imageCount < 16)
@@ -512,6 +534,11 @@ static void AddSamples(TestMedia* m, TestLog log, TestLog warn)
                     continue;
                 }
             }
+            if ((!a3 && !goodClip[0]) || !_wcsicmp(wfile, L"mp4-h264-mp3.mp4"))
+            {
+                wcscpy(goodClip, path);
+                wcsncpy(goodName, wfile, 127);
+            }
             TestVideo& v = m->videos[m->videoCount++];
             wcscpy(v.folder, folder);
             wcsncpy(v.name, wfile, 63);
@@ -523,7 +550,23 @@ static void AddSamples(TestMedia* m, TestLog log, TestLog warn)
             videos++;
         }
     }
-    LogF(log, L"  built-in samples: %d picture(s), %d clip(s)%ls", images, videos, missing ? L" (some skipped, see WARN)" : L"");
+    // The broken clips' folder gets one good clip: the source must skip the others and play it.
+    if (brokenClips && goodClip[0] && m->videoCount < 48)
+    {
+        wchar_t copy[MAX_PATH];
+        Join(copy, brokenFolder, goodName);
+        if (CopyFileW(goodClip, copy, FALSE))
+        {
+            TestVideo& v = m->videos[m->videoCount++];
+            wcscpy(v.folder, brokenFolder);
+            _snwprintf(v.name, 64, L"%d broken clips + %ls", brokenClips, goodName);
+            v.name[63] = 0;
+            v.sound = true;
+            v.channels = 2;
+        }
+    }
+    LogF(log, L"  built-in samples: %d picture(s), %d clip(s), broken: %d picture(s) among the good ones, %d clip(s)%ls", images,
+         videos, brokenPictures, brokenClips, missing ? L" (some skipped, see WARN)" : L"");
 }
 
 // Folders of earlier runs whose program no longer runs (closed with the window's close box: no time to clean up).

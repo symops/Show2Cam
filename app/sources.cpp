@@ -392,10 +392,33 @@ private:
 
     bool OpenNext()
     {
-        for (int attempt = 0; attempt < 5; attempt++)
+        DWORD now = GetTickCount();
+        if ((int)(now - m_badReset) >= 0)
+        {
+            m_badCount = 0;                     // files may have been replaced: tried again after a minute
+            m_badReset = now + 60000;
+        }
+        // Files Windows cannot play are remembered for a minute and not picked again meanwhile (with several broken
+        // ones in the folder the good one was often not reached within the attempts: error screen for 5 s).
+        for (int attempt = 0; attempt < 24; attempt++)
         {
             wchar_t path[MAX_PATH];
-            if (!PickRandomFile(m_folder, MediaVideo, m_last, path))
+            bool found = PickRandomFile(m_folder, MediaVideo, m_last, path);
+            bool bad = false;
+            for (int b = 0; found && b < m_badCount && !bad; b++) bad = _wcsicmp(m_bad[b], path) == 0;
+            if (bad)
+            {
+                if (attempt < 23) continue;
+                found = false;                  // every file left is one that cannot be played
+            }
+            if (!found && m_badCount)
+            {
+                m_state = StateError;
+                m_sink.Post(EvVideoError);
+                m_retryAt = GetTickCount() + 5000;
+                return false;
+            }
+            if (!found)
             {
                 if (m_state != StateNoFiles) m_sink.Post(EvNoFiles);
                 m_state = StateNoFiles;
@@ -413,7 +436,8 @@ private:
                 m_sink.Post(EvVideoFile);
                 return true;
             }
-            AppLog(L"camera %d: cannot play %ls (0x%08lX)", m_sink.index + 1, path, (unsigned long)hr);
+            AppLog(L"camera %d: cannot play %ls (0x%08lX; skipped for a minute)", m_sink.index + 1, path, (unsigned long)hr);
+            if (m_badCount < 16) wcscpy(m_bad[m_badCount++], path);
             _snwprintf(m_detail, 256, L"%ls (0x%08lX)", FileName(path), (unsigned long)hr);
             m_detail[255] = 0;
             CloseFile();
@@ -909,6 +933,9 @@ private:
 
     AudioOut m_audio;
     bool    m_audioStream = false;          // the file's sound track is decoded (it has one and sound is on)
+    wchar_t m_bad[16][MAX_PATH];            // files Windows could not play (skipped for a minute)
+    int     m_badCount = 0;
+    DWORD   m_badReset = GetTickCount() + 60000;
     UINT32  m_audioRate = 0, m_audioCh = 0;
     DWORD   m_audioRetryAt = 0;
     HRESULT m_audioLastErr = S_OK;
