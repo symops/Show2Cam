@@ -17,6 +17,7 @@
 #include "autostart.h"
 #include "../driver/version.h"
 #include <commctrl.h>
+#include <commdlg.h>
 #include <shellapi.h>
 #include <shobjidl.h>
 #include <mfapi.h>
@@ -29,7 +30,7 @@ enum
     IDC_GROUP1, IDC_LIST, IDC_L_COUNT, IDC_COUNT, IDC_COUNT_APPLY,
     IDC_GROUP2, IDC_L_NAME, IDC_NAME, IDC_RENAME, IDC_L_SOURCE, IDC_SOURCE, IDC_L_PARAM, IDC_PARAM, IDC_BROWSE, IDC_OPENFOLDER,
     IDC_L_AUDIO, IDC_AUDIO, IDC_L_RES, IDC_RES, IDC_L_FPS, IDC_FPS, IDC_CAM_STATUS, IDC_TEST, IDC_PLAY, IDC_SELFVIEW,
-    IDC_EVENTS, IDC_CLEARLOG, IDC_AUTOSTART,
+    IDC_EVENTS, IDC_CLEARLOG, IDC_AUTOSTART, IDC_EXPORT, IDC_IMPORT,
 };
 
 enum { TIMER_STATUS = 1, TIMER_PARAM = 2, TIMER_RESCAN = 3 };
@@ -44,7 +45,7 @@ enum { IDM_TRAY_OPEN = 40001, IDM_TRAY_EXIT };
 static HINSTANCE g_inst;
 static HWND      g_wnd;
 static HFONT     g_font, g_fontBold;
-static HICON     g_toolIcons[2];          // reset / clear log (resources 10, 11)
+static HICON     g_toolIcons[4];          // reset / clear log / export / import (resources 10..13)
 static UINT      g_dpi = 96;
 static bool      g_elevated, g_updating;
 
@@ -526,6 +527,9 @@ static void StopRunners()
     }
 }
 
+// Names imported for cameras that appear later (the imported number of cameras is reached a moment after).
+static wchar_t g_pendingName[S2C_MAX_CAMERAS_UI][S2C_NAME_CHARS];
+
 // Looks for the cameras again; restarts the runners when they changed. Returns the number of cameras.
 static int ScanCameras(bool log)
 {
@@ -561,6 +565,19 @@ static int ScanCameras(bool log)
         if (g_cams[i].info.index == keepSel) g_sel = i;
     for (int i = keep; i < n; i++)
     {
+        int idx = found[i].index;
+        if (idx >= 0 && idx < S2C_MAX_CAMERAS_UI && g_pendingName[idx][0])
+        {
+            // a name imported for a camera that was not there yet
+            HANDLE h = CamOpen(found[i].path);
+            if (h != INVALID_HANDLE_VALUE)
+            {
+                const wchar_t* want = wcscmp(g_pendingName[idx], L"-") ? g_pendingName[idx] : L"";
+                if (CamSetName(h, want)) wcsncpy(found[i].name, want[0] ? want : found[i].name, S2C_NAME_CHARS - 1);
+                CloseHandle(h);
+            }
+            g_pendingName[idx][0] = 0;
+        }
         Cam& c = g_cams[i];
         c.info = found[i];
         LoadConfig(c.info.index, &c.config);
@@ -1225,6 +1242,193 @@ static void OnCountApply()
 }
 
 // ---------------------------------------------------------------------------
+// Settings file (export / import), as in Speak2Mic: everything except the interface language.
+//   [Show2Cam]  Version, CameraCount
+//   [Camera<N>] Name, Source, Text, ImageFolder, VideoFolder, Url, AudioMode, AudioDevice, Width, Height, Fps, Paused,
+//               SelfView
+// UTF-16 INI (WritePrivateProfileString keeps Unicode when the file starts with a UTF-16 BOM).
+
+static bool AskFileName(bool save, wchar_t* path)
+{
+    wchar_t filter[160];
+    _snwprintf(filter, 150, L"%ls", TR(L"Файлы настроек Show2Cam (*.ini)"));
+    filter[149] = 0;
+    size_t n = wcslen(filter) + 1;
+    wcscpy(filter + n, L"*.ini");
+    filter[n + 6] = 0;
+    OPENFILENAMEW ofn = {};
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = g_wnd;
+    ofn.lpstrFilter = filter;
+    ofn.lpstrFile = path;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.lpstrDefExt = L"ini";
+    ofn.Flags = OFN_NOCHANGEDIR | (save ? OFN_OVERWRITEPROMPT : (OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST));
+    return save ? GetSaveFileNameW(&ofn) != FALSE : GetOpenFileNameW(&ofn) != FALSE;
+}
+
+static void ExportTo(const wchar_t* path);
+static void ImportFrom(const wchar_t* path);
+
+static void OnExport()
+{
+    wchar_t path[MAX_PATH] = L"Show2Cam.ini";
+    if (AskFileName(true, path)) ExportTo(path);
+}
+
+static void OnImport()
+{
+    wchar_t path[MAX_PATH] = L"";
+    if (AskFileName(false, path)) ImportFrom(path);
+}
+
+static void ExportTo(const wchar_t* path)
+{
+    HANDLE f = CreateFileW(path, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (f == INVALID_HANDLE_VALUE)
+    {
+        AddEventF(TR(L"Не удалось сохранить настройки (код %lu)."), GetLastError());
+        return;
+    }
+    const WORD bom = 0xFEFF;
+    DWORD written = 0;
+    WriteFile(f, &bom, sizeof(bom), &written, nullptr);
+    CloseHandle(f);
+
+    wchar_t v[64];
+    auto put = [&](const wchar_t* sec, const wchar_t* key, const wchar_t* value) { WritePrivateProfileStringW(sec, key, value, path); };
+    auto num = [&](const wchar_t* sec, const wchar_t* key, unsigned long value) { _snwprintf(v, 64, L"%lu", value); put(sec, key, v); };
+    put(L"Show2Cam", L"Version", L"" S2C_VER_STR);
+    num(L"Show2Cam", L"CameraCount", (unsigned long)(g_camCount ? g_camCount : (int)S2cGetParam(L"CameraCount", 1)));
+    for (int i = 0; i < g_camCount; i++)
+    {
+        const Cam& c = g_cams[i];
+        wchar_t sec[16];
+        _snwprintf(sec, 16, L"Camera%d", c.info.index + 1);
+        put(sec, L"Name", c.info.name);
+        num(sec, L"Source", (unsigned long)c.config.kind);
+        put(sec, L"Text", c.config.text);
+        put(sec, L"ImageFolder", c.config.imageFolder);
+        put(sec, L"VideoFolder", c.config.videoFolder);
+        put(sec, L"Url", c.config.url);
+        num(sec, L"AudioMode", (unsigned long)c.config.audioMode);
+        put(sec, L"AudioDevice", c.config.audioDevice);
+        num(sec, L"Width", c.config.width);
+        num(sec, L"Height", c.config.height);
+        num(sec, L"Fps", c.config.fps);
+        num(sec, L"Paused", c.config.paused ? 1 : 0);
+        num(sec, L"SelfView", c.config.selfView ? 1 : 0);
+    }
+    bool ok = WritePrivateProfileStringW(nullptr, nullptr, nullptr, path) != FALSE;     // flush
+    AppLog(L"settings exported to %ls", path);
+    if (ok || GetFileAttributesW(path) != INVALID_FILE_ATTRIBUTES) AddEventF(TR(L"Настройки сохранены в %ls"), path);
+    else AddEventF(TR(L"Не удалось сохранить настройки (код %lu)."), GetLastError());
+}
+
+static void ImportFrom(const wchar_t* path)
+{
+    const UINT none = 0xFFFFFFFF;
+    auto num = [&](const wchar_t* sec, const wchar_t* key) { return (UINT)GetPrivateProfileIntW(sec, key, (INT)none, path); };
+    auto str = [&](const wchar_t* sec, const wchar_t* key, wchar_t* out, DWORD len) {
+        wchar_t buf[MAX_PATH] = L"\x01";
+        GetPrivateProfileStringW(sec, key, L"\x01", buf, MAX_PATH, path);
+        if (buf[0] == 1) return false;           // not in the file
+        wcsncpy(out, buf, len - 1);
+        out[len - 1] = 0;
+        return true;
+    };
+    UINT count = num(L"Show2Cam", L"CameraCount");
+    bool any = count != none;
+    for (int n = 1; n <= S2C_MAX_CAMERAS_UI && !any; n++)
+    {
+        wchar_t sec[16];
+        _snwprintf(sec, 16, L"Camera%d", n);
+        any = num(sec, L"Source") != none;
+    }
+    if (!any)
+    {
+        AddEvent(TR(L"Файл не похож на настройки Show2Cam."));
+        return;
+    }
+    AppLog(L"settings import from %ls", path);
+
+    // Every camera in the file: its settings (kept for a camera that is not there yet) and its name.
+    for (int n = 1; n <= S2C_MAX_CAMERAS_UI; n++)
+    {
+        wchar_t sec[16];
+        _snwprintf(sec, 16, L"Camera%d", n);
+        if (num(sec, L"Source") == none) continue;
+        CamConfig c;
+        LoadConfig(n - 1, &c);
+        UINT k = num(sec, L"Source");
+        if (k < SourceKindCount) c.kind = (int)k;
+        str(sec, L"Text", c.text, 256);
+        str(sec, L"ImageFolder", c.imageFolder, MAX_PATH);
+        str(sec, L"VideoFolder", c.videoFolder, MAX_PATH);
+        str(sec, L"Url", c.url, 512);
+        k = num(sec, L"AudioMode");
+        if (k <= AudioDevice) c.audioMode = (int)k;
+        str(sec, L"AudioDevice", c.audioDevice, 256);
+        UINT w = num(sec, L"Width"), h = num(sec, L"Height"), fps = num(sec, L"Fps");
+        if (w == 0 || h == 0) c.width = c.height = 0;
+        else if (w != none && h != none && w >= S2C_MIN_WIDTH && w <= S2C_MAX_WIDTH && h >= S2C_MIN_HEIGHT && h <= S2C_MAX_HEIGHT)
+        {
+            c.width = w & ~1u;
+            c.height = h & ~1u;
+        }
+        if (fps != none && fps <= S2C_MAX_FPS) c.fps = fps;
+        k = num(sec, L"Paused");
+        if (k <= 1) c.paused = k == 1;
+        k = num(sec, L"SelfView");
+        if (k <= 1) c.selfView = k == 1;
+        SaveConfig(n - 1, c);
+        wchar_t name[S2C_NAME_CHARS] = L"";
+        bool hasName = str(sec, L"Name", name, S2C_NAME_CHARS);
+        int i = -1;
+        for (int j = 0; j < g_camCount; j++)
+            if (g_cams[j].info.index == n - 1) i = j;
+        if (i >= 0)
+        {
+            g_cams[i].config = c;
+            ApplyConfig(i);
+            if (hasName && wcscmp(name, g_cams[i].info.name) != 0)
+            {
+                HANDLE hc = CamOpen(g_cams[i].info.path);
+                if (hc != INVALID_HANDLE_VALUE)
+                {
+                    CamSetName(hc, name);
+                    CloseHandle(hc);
+                }
+            }
+        }
+        else if (hasName)
+        {
+            wcsncpy(g_pendingName[n - 1], name[0] ? name : L"-", S2C_NAME_CHARS - 1);    // when the camera appears
+        }
+    }
+    // The number of cameras (the driver changes it at once).
+    if (count != none && count >= 1 && count <= S2C_MAX_CAMERAS_UI && (int)count != g_camCount && g_camCount)
+    {
+        HANDLE hc = CamOpen(g_cams[0].info.path);
+        if (hc != INVALID_HANDLE_VALUE)
+        {
+            if (CamSetCount(hc, count)) AddEventF(TR(L"Количество камер: %d."), (int)count);
+            CloseHandle(hc);
+        }
+        ComboSelectData(IDC_COUNT, (LPARAM)count);
+    }
+    AddEventF(TR(L"Настройки загружены из %ls"), path);
+    ScanCameras(false);
+    for (int i = 0; i < g_camCount; i++)
+    {
+        UpdateListRow(i);
+        PreviewTitle(i);
+    }
+    ShowSelected();
+    SetTimer(g_wnd, TIMER_RESCAN, 800, nullptr);
+}
+
+// ---------------------------------------------------------------------------
 // Reset everything: every camera back to its text "Camera N", sizes "as the source", default names
 
 static void OnResetAll()
@@ -1330,9 +1534,9 @@ static void Place(int id, int x, int y, int w, int h)
 
 static void ApplyToolIcons()
 {
-    const int ids[2] = { IDC_RESET_ALL, IDC_CLEARLOG };
+    const int ids[4] = { IDC_RESET_ALL, IDC_CLEARLOG, IDC_EXPORT, IDC_IMPORT };
     int size = MulDiv(20, (int)g_dpi, 96);
-    for (int i = 0; i < 2; i++)
+    for (int i = 0; i < 4; i++)
     {
         HICON old = g_toolIcons[i];
         g_toolIcons[i] = (HICON)LoadImageW(g_inst, MAKEINTRESOURCEW(10 + i), IMAGE_ICON, size, size, 0);
@@ -1359,7 +1563,7 @@ static void ListColumns()
 
 static void Layout()
 {
-    Place(IDC_RESET_ALL, 12, 7, 32, 28);
+    Place(IDC_RESET_ALL, 12, 7, 32, 28);   Place(IDC_EXPORT, 48, 7, 32, 28);   Place(IDC_IMPORT, 84, 7, 32, 28);
     Place(IDC_L_LANG, 300, 12, 120, 20);   Place(IDC_LANG, 428, 8, 160, 400);
 
     Place(IDC_GROUP1, 12, 42, 576, 222);
@@ -1408,6 +1612,8 @@ static void AddTip(HWND tip, int id, const wchar_t* text)
 static void CreateControls()
 {
     Create(L"BUTTON", TR(L"Сбросить все настройки"), BS_PUSHBUTTON | BS_ICON | WS_TABSTOP, IDC_RESET_ALL);
+    Create(L"BUTTON", TR(L"Экспорт настроек…"), BS_PUSHBUTTON | BS_ICON | WS_TABSTOP, IDC_EXPORT);
+    Create(L"BUTTON", TR(L"Импорт настроек…"), BS_PUSHBUTTON | BS_ICON | WS_TABSTOP, IDC_IMPORT);
     Create(L"STATIC", TR(L"Язык:"), SS_RIGHT, IDC_L_LANG);
     Create(WC_COMBOBOXW, L"", CBS_DROPDOWNLIST | WS_TABSTOP | WS_VSCROLL, IDC_LANG);
     LangFillCombo(Ctl(IDC_LANG));
@@ -1486,6 +1692,8 @@ static void CreateControls()
     if (tip)
     {
         AddTip(tip, IDC_RESET_ALL, TR(L"Сбросить все настройки"));
+        AddTip(tip, IDC_EXPORT, TR(L"Экспорт настроек…"));
+        AddTip(tip, IDC_IMPORT, TR(L"Импорт настроек…"));
         AddTip(tip, IDC_CLEARLOG, TR(L"Очистить журнал событий"));
         AddTip(tip, IDC_TEST, TR(L"Окно с тем, что сейчас показывает камера"));
         AddTip(tip, IDC_SELFVIEW, TR(L"Панель сама использует камеру, как обычная программа: Windows показывает камеру включённой"));
@@ -1639,6 +1847,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             FillList();
             ShowSelected();
         }
+        wchar_t io[MAX_PATH];
+        if (GetEnvironmentVariableW(L"S2C_TEST_EXPORT", io, MAX_PATH)) ExportTo(io);
+        if (GetEnvironmentVariableW(L"S2C_TEST_IMPORT", io, MAX_PATH)) ImportFrom(io);
         wchar_t pv[8] = L"";
         if (GetEnvironmentVariableW(L"S2C_TEST_PREVIEW", pv, 8) && !wcscmp(pv, L"all"))
         {
@@ -1778,6 +1989,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             else if (id == IDC_SELFVIEW) OnSelfView();
             else if (id == IDC_COUNT_APPLY) OnCountApply();
             else if (id == IDC_RESET_ALL) OnResetAll();
+            else if (id == IDC_EXPORT) OnExport();
+            else if (id == IDC_IMPORT) OnImport();
             else if (id == IDC_CLEARLOG) ClearEvents();
             else if (id == IDC_AUTOSTART)
             {

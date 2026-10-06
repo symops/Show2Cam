@@ -252,3 +252,10 @@ Zelfuitzending
 Het paneel gebruikt de camera zelf zoals een gewoon programma: Windows toont de camera als ingeschakeld
 in gebruik
 in gebruik: %ls
+Show2Cam-instellingenbestanden (*.ini)
+Kan de instellingen niet opslaan (code %lu).
+Instellingen opgeslagen in %ls
+Het bestand lijkt geen Show2Cam-instellingen te bevatten.
+Instellingen geladen uit %ls
+Instellingen exporteren…
+Instellingen importeren…

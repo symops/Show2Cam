@@ -9,7 +9,7 @@ sizes (1920×1080 … 320×240) at 1–60 fps; the device is in the Image class,
 ## Control panel (Show2Cam.exe)
 
 * **Cameras** — the list of the cameras with their source, format and who uses each one right now ("self-view", the
-  program's name, or "in use" when Windows does not tell); the number of cameras (1–10; a device restart, asks for administrator rights).
+  program's name, or "in use" when Windows does not tell); the number of cameras (1–10; the driver changes it at once, no restart, no administrator rights).
 * **The selected camera**
   * **Name** — the name programs show; renaming needs no administrator rights (the driver keeps it).
   * **Source**
@@ -28,6 +28,8 @@ sizes (1920×1080 … 320×240) at 1–60 fps; the device is in the Image class,
     camera stack): for Windows the camera is really in use (the "camera in use" indicator, Settings → Privacy →
     Camera), as if someone were watching it. The size / frame rate can still change: the panel closes its own use
     for that moment.
+* Settings export / import (an .ini file, as Speak2Mic): the number of cameras and every camera's name, source,
+  folders, address, sound, size, frame rate, pause and self-view.
 * Event list, start with Windows in the tray (on by default: the cameras show their sources while the panel runs;
   without it they show the driver's test pattern), 17 languages.
 

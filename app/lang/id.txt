@@ -252,3 +252,10 @@ Siaran mandiri
 Panel sendiri memakai kamera seperti program biasa: Windows menampilkan kamera sebagai menyala
 sedang dipakai
 dipakai oleh: %ls
+File pengaturan Show2Cam (*.ini)
+Tidak dapat menyimpan pengaturan (kode %lu).
+Pengaturan disimpan ke %ls
+File ini tidak tampak seperti pengaturan Show2Cam.
+Pengaturan dimuat dari %ls
+Ekspor pengaturan…
+Impor pengaturan…

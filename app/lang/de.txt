@@ -252,3 +252,10 @@ Eigenübertragung
 Die Systemsteuerung verwendet die Kamera selbst wie ein normales Programm: Windows zeigt die Kamera als eingeschaltet
 in Verwendung
 in Verwendung: %ls
+Show2Cam-Einstellungsdateien (*.ini)
+Einstellungen können nicht gespeichert werden (Code %lu).
+Einstellungen gespeichert in %ls
+Die Datei sieht nicht wie Show2Cam-Einstellungen aus.
+Einstellungen geladen aus %ls
+Einstellungen exportieren…
+Einstellungen importieren…

@@ -22,7 +22,7 @@ $TRIPLE-gcc -municode -mwindows -static -s -o "$O/Show2Cam-Setup.exe" "$T/s2cset
 $TRIPLE-gcc -municode -mwindows -static -s -o "$O/Show2Cam.exe" "$T/s2cpanel.o" "$T/sources.o" "$T/selfview.o" "$T/media.o" "$T/audioout.o" \
     "$T/camdev.o" "$T/cxxrt.o" "$T/devctl.o" "$T/applog.o" "$T/lang.o" "$T/s2cpanel.res.o" \
     -lmf -lmfplat -lmfreadwrite -lmfuuid -lwindowscodecs -lwinhttp -lcrypt32 -lbcrypt -lsetupapi -lnewdev -lcfgmgr32 -lcomctl32 \
-    -lshell32 -lgdi32 -ladvapi32 -luser32 -lole32 -loleaut32 -luuid -lpropsys
+    -lshell32 -lgdi32 -ladvapi32 -luser32 -lole32 -loleaut32 -luuid -lpropsys -lcomdlg32
 $TRIPLE-gcc -municode -static -s -o "$O/s2ccamdiag.exe" "$T/s2ccamdiag.o" "$T/camdev.o" "$T/s2ccamdiag.res.o" \
     -lstrmiids -lmf -lmfplat -lmfreadwrite -lmfuuid -lavicap32 -lsetupapi -lshell32 -ladvapi32 -lole32 -loleaut32 -luuid
 $TRIPLE-gcc -municode -static -s -o "$O/s2cinstall.exe" "$T/s2cinstall.o" "$T/s2cinstall.res.o" \

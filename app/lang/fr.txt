@@ -252,3 +252,10 @@ Auto-diffusion
 Le panneau utilise lui-même la caméra comme un programme ordinaire : Windows affiche la caméra comme allumée
 utilisée
 utilisée par : %ls
+Fichiers de réglages Show2Cam (*.ini)
+Impossible d'enregistrer les réglages (code %lu).
+Réglages enregistrés dans %ls
+Ce fichier ne ressemble pas à des réglages Show2Cam.
+Réglages chargés depuis %ls
+Exporter les réglages…
+Importer les réglages…

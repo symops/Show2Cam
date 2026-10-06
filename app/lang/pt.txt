@@ -252,3 +252,10 @@ Autotransmissão
 O painel usa a câmera ele mesmo, como um programa comum: o Windows mostra a câmera ligada
 em uso
 em uso: %ls
+Arquivos de configurações do Show2Cam (*.ini)
+Não foi possível salvar as configurações (código %lu).
+Configurações salvas em %ls
+O arquivo não parece conter configurações do Show2Cam.
+Configurações carregadas de %ls
+Exportar configurações…
+Importar configurações…

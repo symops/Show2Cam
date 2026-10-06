@@ -252,3 +252,10 @@ Tự phát
 Bảng điều khiển tự dùng camera như một chương trình thông thường: Windows hiển thị camera đang bật
 đang dùng
 đang dùng: %ls
+Tệp cài đặt Show2Cam (*.ini)
+Không lưu được cài đặt (mã %lu).
+Đã lưu cài đặt vào %ls
+Tệp này không giống cài đặt Show2Cam.
+Đã tải cài đặt từ %ls
+Xuất cài đặt…
+Nhập cài đặt…

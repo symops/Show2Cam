@@ -252,3 +252,10 @@ Kendi yayını
 Panel kamerayı sıradan bir program gibi kendisi kullanır: Windows kamerayı açık gösterir
 kullanımda
 kullanımda: %ls
+Show2Cam ayar dosyaları (*.ini)
+Ayarlar kaydedilemedi (kod %lu).
+Ayarlar %ls dosyasına kaydedildi
+Dosya Show2Cam ayarlarına benzemiyor.
+Ayarlar %ls dosyasından yüklendi
+Ayarları dışa aktar…
+Ayarları içe aktar…

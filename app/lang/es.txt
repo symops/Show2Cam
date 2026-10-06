@@ -252,3 +252,10 @@ Autotransmisión
 El panel usa la cámara él mismo, como un programa normal: Windows muestra la cámara encendida
 en uso
 en uso: %ls
+Archivos de ajustes de Show2Cam (*.ini)
+No se pudieron guardar los ajustes (código %lu).
+Ajustes guardados en %ls
+El archivo no parece contener ajustes de Show2Cam.
+Ajustes cargados desde %ls
+Exportar ajustes…
+Importar ajustes…

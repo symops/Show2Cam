@@ -5,6 +5,8 @@
 1 ICON "s2cpanel.ico"
 10 ICON "reset.ico"
 11 ICON "clear.ico"
+12 ICON "export.ico"
+13 ICON "import.ico"
 
 VS_VERSION_INFO VERSIONINFO
 FILEVERSION     S2C_VER_MAJOR, S2C_VER_MINOR, S2C_VER_BUILD, S2C_VER_REV

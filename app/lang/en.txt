@@ -252,6 +252,13 @@ Self-view
 The panel itself uses the camera like an ordinary program: Windows shows the camera as on
 in use
 in use: %ls
+Show2Cam settings files (*.ini)
+Cannot save the settings (code %lu).
+Settings saved to %ls
+The file does not look like Show2Cam settings.
+Settings loaded from %ls
+Export settings…
+Import settings…
 [driver] the driver log is empty: the driver has never started
 [driver] ---- driver log (DriverLog) ----
 [setupapi] cannot open %ls (%lu)

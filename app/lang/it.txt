@@ -252,3 +252,10 @@ Autotrasmissione
 Il pannello usa da sé la telecamera come un normale programma: Windows mostra la telecamera accesa
 in uso
 in uso: %ls
+File di impostazioni Show2Cam (*.ini)
+Impossibile salvare le impostazioni (codice %lu).
+Impostazioni salvate in %ls
+Il file non sembra contenere impostazioni di Show2Cam.
+Impostazioni caricate da %ls
+Esporta impostazioni…
+Importa impostazioni…
