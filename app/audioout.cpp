@@ -1,5 +1,6 @@
 // Sound of the video files (see audioout.h).
 #include "audioout.h"
+#include "applog.h"
 #include <mmdeviceapi.h>
 #include <audioclient.h>
 #include <functiondiscoverykeys_devpkey.h>
@@ -175,7 +176,14 @@ bool AudioOut::Write(const float* samples, UINT32 frames)
 
 void AudioOut::Start()
 {
-    if (m_client && !m_started && SUCCEEDED(m_client->Start())) m_started = true;
+    if (!m_client || m_started) return;
+    HRESULT hr = m_client->Start();
+    if (SUCCEEDED(hr)) m_started = true;
+    else
+    {
+        AppLog(L"sound output: start failed (0x%08lX)", (unsigned long)hr);
+        if (hr == AUDCLNT_E_DEVICE_INVALIDATED) m_failed = true;
+    }
 }
 
 void AudioOut::Stop()

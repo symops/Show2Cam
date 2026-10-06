@@ -565,6 +565,17 @@ private:
 
     void CloseFile()
     {
+        if (m_audioStream && m_reader && m_audioRate)
+        {
+            // What became of the file's sound (diagnostics: "no sound on camera N").
+            double r = m_audioRate;
+            AppLog(L"camera %d: sound of %ls: %.1f s written to \"%ls\", %.1f s dropped late, %.1f s without a device, "
+                   L"%lu write error(s), started %ls, track %u Hz %u ch", m_sink.index + 1, FileName(m_current), m_statWritten / r,
+                   m_audioName[0] ? m_audioName : L"-", m_statLate / r, m_statNoDevice / r, m_statWriteErrors,
+                   m_audioStarted ? L"yes" : L"NO", m_audioRate, m_audioCh);
+        }
+        m_statWritten = m_statLate = m_statNoDevice = 0;
+        m_statWriteErrors = 0;
         if (m_nextVideo) m_nextVideo->Release();
         if (m_shown) m_shown->Release();
         m_nextVideo = m_shown = nullptr;
@@ -694,11 +705,13 @@ private:
             if (at > t + kAudioLead) return;
             if (!m_audio.IsOpen())
             {
+                m_statNoDevice += m_pendingFrames - m_pendingPos;
                 m_pendingPos = m_pendingFrames;     // no device now: dropped in step with the picture
                 continue;
             }
             if (at + (LONGLONG)(m_pendingFrames - m_pendingPos) * 10000000 / m_audioRate < t - 2000000)
             {
+                m_statLate += m_pendingFrames - m_pendingPos;
                 m_pendingPos = m_pendingFrames;     // more than 200 ms late (e.g. after a stall): dropped
                 continue;
             }
@@ -706,8 +719,13 @@ private:
             if (!room) return;
             UINT32 n = m_pendingFrames - m_pendingPos;
             if (n > room) n = room;
-            if (!m_audio.Write(m_pending + (SIZE_T)m_pendingPos * ch, n)) return;
+            if (!m_audio.Write(m_pending + (SIZE_T)m_pendingPos * ch, n))
+            {
+                m_statWriteErrors++;
+                return;
+            }
             m_pendingPos += n;
+            m_statWritten += n;
             if (!m_audioStarted)
             {
                 m_audioStarted = true;
@@ -740,6 +758,8 @@ private:
     UINT32  m_audioRate = 0, m_audioCh = 0;
     DWORD   m_audioRetryAt = 0;
     HRESULT m_audioLastErr = S_OK;
+    ULONGLONG m_statWritten = 0, m_statLate = 0, m_statNoDevice = 0;     // sound frames of the current file
+    ULONG   m_statWriteErrors = 0;
     float*  m_pending = nullptr;
     UINT32  m_pendingCap = 0, m_pendingFrames = 0, m_pendingPos = 0;
     LONGLONG m_pendingTs = 0;
