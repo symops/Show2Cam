@@ -317,13 +317,14 @@ void RenderTextScreen(ULONG* dst, int w, int h, const wchar_t* text)
         FillBlack(dst, w, h);
         return;
     }
-    // The Show2Cam colours (violet -> cyan, as the icon), darkened so white text reads well.
+    // The Show2Cam colours (violet -> cyan, as the icon) at 80 %: a light picture (programs that check frames for a covered
+    // lens, e.g. SearchInform, take a dark one as empty); the white text has a shadow.
     for (int y = 0; y < h; y++)
         for (int x = 0; x < w; x++)
         {
             int t = (int)(((LONGLONG)y * 650 / (h > 1 ? h - 1 : 1)) + ((LONGLONG)x * 350 / (w > 1 ? w - 1 : 1)));   // 0..1000
             int r = (108 * (1000 - t) + 0 * t) / 1000, g = (59 * (1000 - t) + 194 * t) / 1000, b = (255 * (1000 - t) + 255 * t) / 1000;
-            dib.bits[(SIZE_T)y * w + x] = (ULONG)((r * 45 / 100) << 16 | (g * 45 / 100) << 8 | (b * 45 / 100));
+            dib.bits[(SIZE_T)y * w + x] = (ULONG)((r * 80 / 100) << 16 | (g * 80 / 100) << 8 | (b * 80 / 100));
         }
     DrawFitted(dib.dc, text, w / 20, w - w / 20, h / 10, h - h / 5, h * 28 / 100, FW_SEMIBOLD, RGB(255, 255, 255), true);
     GdiFlush();

@@ -739,20 +739,21 @@ void S2cRenderFrame(_In_ S2C_CAMERA* c, _In_ const KS_VIDEOINFOHEADER* Info, _Ou
     ExAcquireFastMutex(&c->Lock);
     const ULONG* pic = c->Picture;
     ULONG pw = c->PictureWidth, ph = c->PictureHeight;
-    // Nearest-neighbour scaling of the picture into the output size (the program sends the camera's own size; a
-    // program may have chosen another one): fitted with black bars when the aspect ratio differs.
-    ULONG rx = 0, ry = 0, rw = w, rh = h;
+    // Nearest-neighbour scaling of the picture to the output size (the program sends the camera's own size; a
+    // program may have chosen another one). Another aspect ratio fills the frame, cropped at the sides or at top and
+    // bottom as real webcams do: black bars would make the picture look dark to programs that check frames for a
+    // covered lens (e.g. SearchInform takes a frame with too few bright points as empty).
+    ULONG sx = 0, sy = 0, sw = pw, sh = ph;
     if (pic && pw && ph)
     {
-        if ((ULONGLONG)pw * h > (ULONGLONG)ph * w) rh = (ULONG)((ULONGLONG)ph * w / pw);
-        else rw = (ULONG)((ULONGLONG)pw * h / ph);
-        if (!rw) rw = 1;
-        if (!rh) rh = 1;
-        rx = (w - rw) / 2;
-        ry = (h - rh) / 2;
+        if ((ULONGLONG)pw * h > (ULONGLONG)ph * w) sw = (ULONG)((ULONGLONG)ph * w / h);      // wider: crop the sides
+        else sh = (ULONG)((ULONGLONG)pw * h / w);                                           // taller: crop top/bottom
+        if (!sw) sw = 1;
+        if (!sh) sh = 1;
+        sx = (pw - sw) / 2;
+        sy = (ph - sh) / 2;
     }
-    #define SRC(x, y) (pic ? (((x) >= rx && (x) < rx + rw && (y) >= ry && (y) < ry + rh) \
-                              ? pic[(SIZE_T)(((y) - ry) * ph / rh) * pw + ((x) - rx) * pw / rw] : 0xFF000000) \
+    #define SRC(x, y) (pic ? pic[(SIZE_T)(sy + (y) * sh / h) * pw + sx + (x) * sw / w] \
                            : PatternPixel((x), (y), w, h, c->Index, FrameNumber))
 
     if (fourcc == FOURCC('Y', 'U', 'Y', '2') && DstSize >= w * h * 2)
