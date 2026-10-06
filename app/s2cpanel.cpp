@@ -37,6 +37,7 @@ enum
 enum { TIMER_STATUS = 1, TIMER_RESCAN = 3 };
 #define WM_APP_CAMEVENT (WM_APP + 30)
 #define WM_APP_TRAY     (WM_APP + 31)
+#define WM_APP_SWITCH   (WM_APP + 32)     // wParam: the camera to switch to after asking about unsaved settings
 enum { IDM_TRAY_OPEN = 40001, IDM_TRAY_EXIT };
 #define S2C_USER_KEY L"Software\\Show2Cam"
 
@@ -49,6 +50,7 @@ static HFONT     g_font, g_fontBold;
 static HICON     g_toolIcons[4];          // reset / clear log / export / import (resources 10..13)
 static UINT      g_dpi = 96;
 static bool      g_elevated, g_updating;
+static int       g_switchTo = -1;      // a camera switch waiting for the "save changes?" answer
 
 struct Cam
 {
@@ -1922,8 +1924,30 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 #ifdef S2C_UI_TEST
         else if (wp == 99)
         {
+            // a real mouse click on another camera's row (as the user does); a "save changes?" box gets Cancel
             KillTimer(hwnd, 99);
-            ListView_SetItemState(Ctl(IDC_LIST), g_sel == 0 ? 1 : 0, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+            RECT rc;
+            ListView_GetItemRect(Ctl(IDC_LIST), g_sel == 0 ? 1 : 0, &rc, LVIR_LABEL);
+            POINT pt = { (rc.left + rc.right) / 2, (rc.top + rc.bottom) / 2 };
+            ClientToScreen(Ctl(IDC_LIST), &pt);
+            SetCursorPos(pt.x, pt.y);
+            INPUT in[2] = {};
+            in[0].type = in[1].type = INPUT_MOUSE;
+            in[0].mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
+            in[1].mi.dwFlags = MOUSEEVENTF_LEFTUP;
+            SendInput(2, in, sizeof(INPUT));
+            if (GetEnvironmentVariableW(L"S2C_TEST_CANCEL", nullptr, 0)) SetTimer(hwnd, 98, 700, nullptr);
+        }
+        else if (wp == 98)
+        {
+            static int cancels;
+            HWND box = FindWindowW(L"#32770", L"Show2Cam");
+            if (box && cancels < 5)
+            {
+                AppLog(L"test: save question %d -> Cancel", ++cancels);
+                PostMessageW(box, WM_COMMAND, IDCANCEL, 0);
+            }
+            AppLog(L"test: selected camera %d", g_sel + 1);
         }
 #endif
         else if (wp == TIMER_RESCAN)
@@ -1947,6 +1971,22 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         }
         break;
 
+    case WM_APP_SWITCH:
+    {
+        int to = (int)wp;
+        bool go = AskSaveEdits();                   // Cancel: the previous camera stays selected
+        g_switchTo = -1;
+        if (go && to >= 0 && to < g_camCount && to != g_sel)
+        {
+            g_updating = true;
+            ListView_SetItemState(Ctl(IDC_LIST), to, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+            ListView_EnsureVisible(Ctl(IDC_LIST), to, FALSE);
+            g_updating = false;
+            g_sel = to;
+            ShowSelected();
+        }
+        return 0;
+    }
     case WM_APP_TRAY:
         if (lp == WM_LBUTTONUP || lp == WM_LBUTTONDBLCLK) FromTray();
         else if (lp == WM_RBUTTONUP || lp == WM_CONTEXTMENU) TrayMenu();
@@ -1961,19 +2001,28 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             return 0;
         }
         if (h->idFrom == IDC_LIST && h->code == NM_CUSTOMDRAW) return ListCustomDraw((NMLVCUSTOMDRAW*)lp);
+        if (h->idFrom == IDC_LIST && h->code == LVN_ITEMCHANGING && !g_updating && g_sel >= 0)
+        {
+            // Unsaved settings: the selection does not move now. The question is asked after the list has finished
+            // with the click (asking inside the click made the list select the clicked camera again after Cancel,
+            // and the question came twice).
+            NMLISTVIEW* nm = (NMLISTVIEW*)lp;
+            bool selChange = (nm->uChanged & LVIF_STATE) && ((nm->uOldState ^ nm->uNewState) & LVIS_SELECTED);
+            if (selChange && nm->iItem >= 0 && (g_switchTo >= 0 || EditDirty()))
+            {
+                if ((nm->uNewState & LVIS_SELECTED) && nm->iItem != g_sel && g_switchTo < 0)
+                {
+                    g_switchTo = nm->iItem;
+                    PostMessageW(hwnd, WM_APP_SWITCH, (WPARAM)nm->iItem, 0);
+                }
+                return TRUE;
+            }
+        }
         if (h->idFrom == IDC_LIST && h->code == LVN_ITEMCHANGED && !g_updating)
         {
             NMLISTVIEW* nm = (NMLISTVIEW*)lp;
             if ((nm->uNewState & LVIS_SELECTED) && nm->iItem >= 0 && nm->iItem != g_sel)
             {
-                if (!AskSaveEdits())
-                {
-                    // Cancel: the previous camera stays selected
-                    g_updating = true;
-                    ListView_SetItemState(Ctl(IDC_LIST), g_sel, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
-                    g_updating = false;
-                    return 0;
-                }
                 g_sel = nm->iItem;
                 ShowSelected();
             }
