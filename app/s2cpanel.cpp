@@ -2071,8 +2071,16 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     }
 
     case WM_CLOSE:
-        if (g_inTray) FromTray();                // (from the tray menu: the question needs the window)
-        if (!AskSaveEdits()) return 0;           // Cancel: the panel stays open
+        if (wp == S2C_CLOSE_FOR_SETUP)
+        {
+            // The installer closes the panel to replace its files: no question, unsaved settings are kept (applied).
+            if (EditDirty()) OnCamApply();
+        }
+        else
+        {
+            if (g_inTray) FromTray();            // (from the tray menu: the question needs the window)
+            if (!AskSaveEdits()) return 0;       // Cancel: the panel stays open
+        }
         if (g_inTray) TrayIcon(NIM_DELETE);
         g_inTray = false;
         KillTimer(hwnd, TIMER_STATUS);

@@ -7,6 +7,9 @@
 #include <windows.h>
 #include <wchar.h>
 
+// WM_CLOSE wParam with which the installer closes a running control panel (no questions, see s2cpanel.cpp).
+#define S2C_CLOSE_FOR_SETUP 0x53324331
+
 #define S2C_RUN_KEY   L"Software\\Microsoft\\Windows\\CurrentVersion\\Run"
 #define S2C_RUN_VALUE L"Show2Cam"
 
