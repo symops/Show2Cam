@@ -16,9 +16,19 @@
 //   sources    the panel's sources (text, generator) drive a camera: frames not empty, the generator moves
 //   stress     open / close a camera many times
 //   cli        s2cctl.exe with random commands: exit codes and the resulting state
+//   text       random texts (Latin, Cyrillic, CJK, long) on the Text source: the picture is not empty and follows the text
+//   images     pictures made in every format Windows encodes (PNG, JPEG, BMP, GIF, TIFF, JPEG XR): each one shown
+//              with its colour; all together with a broken picture and a text file: they change, the junk is skipped
+//   videos     clips made in several containers / codecs (MP4 H.264 + AAC stereo / 5.1 / silent, 3GP, WMV + WMA, the
+//              MP4 as .mov / .m4v / .divx, a broken file next to a good one): the moving colour fields are shown, and
+//              on the second pass the 1 kHz tone arrives on Speak2Mic Microphone (when Speak2Mic is installed)
+//   mjpeg      a local MJPEG server: the stream's picture, a colour change, an outage ("No signal", reconnect), and
+//              Basic authentication from the address
+// The media are made in %TEMP%\s2cautotest-<pid> at the start and removed at the end, the server stopped.
 // Everything is restored at the end (also after Ctrl+C). Every check is logged as PASS / FAIL / WARN to
 // %ProgramData%\Show2Cam\logs\autotest.log; exit code 1 if anything failed.
 #include "camcfg.h"
+#include "atmedia.h"
 #include "camdev.h"
 #include "applog.h"
 #include "devctl.h"
@@ -711,6 +721,295 @@ static void ActionStress()
     Check(WaitClosed(cam, 5000), L"not in use afterwards");
 }
 
+
+// ---------------------------------------------------------------------------
+// Generated media (atmedia.h): text, pictures of every format, video clips, a local MJPEG server
+
+static TestMedia g_media;
+static bool      g_haveMedia, g_mjOk;
+static USHORT    g_mjPort;
+
+static void MediaLog(const wchar_t* line) { Out(L"%ls", line); }
+
+// The average colour of a 9x9 patch (compression noise).
+static ULONG AvgColor(const Capture& c, double fx, double fy)
+{
+    int cx = (int)(fx * c.w), cy = (int)(fy * c.h), n = 0;
+    unsigned r = 0, g = 0, b = 0;
+    for (int y = cy - 4; y <= cy + 4; y++)
+        for (int x = cx - 4; x <= cx + 4; x++)
+        {
+            if (x < 0 || y < 0 || x >= (int)c.w || y >= (int)c.h) continue;
+            ULONG p = c.px[(size_t)y * c.w + x];
+            r += (p >> 16) & 255;
+            g += (p >> 8) & 255;
+            b += p & 255;
+            n++;
+        }
+    if (!n) return 0;
+    return ((r / n) << 16) | ((g / n) << 8) | (b / n);
+}
+
+// Which of the first `count` test colours it is (-1: none within the tolerance).
+static int ColorIndex(ULONG got, int count, int tol)
+{
+    for (int i = 0; i < count; i++)
+        if (Near(got, kTestColors[i], tol)) return i;
+    return -1;
+}
+
+// The newest frame (the reader's queue drained).
+static bool Fresh(Capture* c, int frames = 3)
+{
+    for (int i = 0; i < frames; i++)
+        if (FAILED(CaptureRead(c))) return false;
+    return true;
+}
+
+// A source of the panel on the camera, and the camera opened as programs open it.
+static CameraRunner* StartSource(const CamInfo& cam, const CamConfig& cfg, Capture* c)
+{
+    if (!WaitClosed(cam, 3000))
+    {
+        Warn(L"camera %d is in use by another program: skipped", cam.index + 1);
+        return nullptr;
+    }
+    CameraRunner* r = RunnerStart(cam.index, cam.path, cfg, nullptr, 0);
+    if (!Check(r != nullptr, L"source started")) return nullptr;
+    S2C_STATUS st = {};
+    for (int t = 0; t < 60 && !(Status(cam, &st) && st.SourceWidth && st.Width == cfg.width && st.Height == cfg.height); t++) Sleep(100);
+    HRESULT hr = CaptureOpen(cam, c);
+    if (!Check(SUCCEEDED(hr), L"camera opened (0x%08lX)", (unsigned long)hr))
+    {
+        RunnerStop(r);
+        return nullptr;
+    }
+    return r;
+}
+
+static void StopSource(CameraRunner* r, const CamInfo& cam, Capture* c)
+{
+    c->Close();
+    RunnerStop(r);
+    WaitClosed(cam, 5000);
+}
+
+static CamConfig TestConfig(int index, int kind)
+{
+    CamConfig cfg;
+    CamConfigDefault(index, &cfg);
+    cfg.kind = kind;
+    cfg.width = kTestW;
+    cfg.height = kTestH;
+    cfg.fps = 15;
+    cfg.audioMode = AudioSpeak2Mic;
+    return cfg;
+}
+
+static void RandomText(wchar_t* out, size_t len)
+{
+    static const wchar_t* kTexts[] = { L"Autotest", L"Проверка камеры Show2Cam", L"日本語のテキスト · 中文字幕", L"Ünïcödé — ñ ç ø ß",
+                                       L"1234567890", L"Камера №%d: съешь же ещё этих мягких французских булок", L"A", L"%d" };
+    int k = Rand(0, (int)(sizeof(kTexts) / sizeof(kTexts[0])));
+    if (k == (int)(sizeof(kTexts) / sizeof(kTexts[0])))
+    {
+        // a long one (wraps)
+        size_t n = 0;
+        while (n + 12 < len && n < 200) n += _snwprintf(out + n, len - n, L"слово%d word ", Rand(0, 99));
+        return;
+    }
+    _snwprintf(out, len, kTexts[k], Rand(1, 9999));
+    out[len - 1] = 0;
+}
+
+static void ActionTextGen()
+{
+    CamInfo cam;
+    if (!PickCam(&cam)) return;
+    CamConfig a = TestConfig(cam.index, SourceText), b = a;
+    RandomText(a.text, 256);
+    do RandomText(b.text, 256); while (!wcscmp(a.text, b.text));
+    Out(L"[text] camera %d: \"%ls\" then \"%ls\"", cam.index + 1, a.text, b.text);
+    Capture c;
+    CameraRunner* r = StartSource(cam, a, &c);
+    if (!r) return;
+    ULONG* first = nullptr;
+    if (Check(Fresh(&c), L"frames read"))
+    {
+        Check(NotEmpty(c), L"text picture not empty");
+        first = new ULONG[(size_t)c.w * c.h];
+        memcpy(first, c.px, (size_t)c.w * c.h * 4);
+        RunnerConfigure(r, b);
+        Sleep(1000);
+        if (Check(Fresh(&c, 5), L"frames read after the change"))
+        {
+            Check(NotEmpty(c), L"new text picture not empty");
+            double d = Difference(first, c.px, (size_t)c.w * c.h);
+            Check(d > 1.0, L"the picture changed with the text (mean difference %.1f)", d);
+        }
+    }
+    delete[] first;
+    StopSource(r, cam, &c);
+}
+
+static void ActionImages()
+{
+    if (!g_media.imageCount) return;
+    CamInfo cam;
+    if (!PickCam(&cam)) return;
+    CamConfig cfg = TestConfig(cam.index, SourceImages);
+    Capture c;
+    if (Rand(0, 2))
+    {
+        const TestImage& img = g_media.images[Rand(0, g_media.imageCount - 1)];
+        wcscpy(cfg.imageFolder, img.folder);
+        Out(L"[images] camera %d: one %ls picture", cam.index + 1, img.format);
+        CameraRunner* r = StartSource(cam, cfg, &c);
+        if (!r) return;
+        Sleep(1000);
+        if (Check(Fresh(&c), L"frames read"))
+        {
+            ULONG got = AvgColor(c, 0.5, 0.5);
+            Check(Near(got, img.color, 40), L"%ls picture shown: centre %06lX (made %06lX)", img.format, got, img.color);
+            Check(NotEmpty(c), L"picture not empty");
+        }
+        StopSource(r, cam, &c);
+        return;
+    }
+    // every format together, with a broken picture and a text file among them: changes every 5 s
+    wcscpy(cfg.imageFolder, g_media.allImages);
+    Out(L"[images] camera %d: %d formats + a broken picture, 13 s", cam.index + 1, g_media.imageCount);
+    CameraRunner* r = StartSource(cam, cfg, &c);
+    if (!r) return;
+    bool seen[8] = {};
+    int samples = 0, unknown = 0, distinct = 0;
+    for (int t = 0; t < 13 && !g_stop; t++)
+    {
+        Sleep(800);
+        if (!Fresh(&c)) break;
+        samples++;
+        ULONG got = AvgColor(c, 0.5, 0.5);
+        int k = -1;
+        for (int i = 0; i < g_media.imageCount && k < 0; i++)
+            if (Near(got, g_media.images[i].color, 40)) k = i;
+        if (k < 0) unknown++;
+        else if (!seen[k]) { seen[k] = true; distinct++; }
+    }
+    Check(samples >= 10, L"%d samples", samples);
+    Check(distinct >= 2, L"%d different pictures shown", distinct);
+    Check(unknown <= 1, L"%d sample(s) showed no test picture (broken / text file not skipped?)", unknown);
+    StopSource(r, cam, &c);
+}
+
+static void ActionVideos()
+{
+    if (!g_media.videoCount) return;
+    CamInfo cam;
+    if (!PickCam(&cam)) return;
+    const TestVideo& v = g_media.videos[Rand(0, g_media.videoCount - 1)];
+    CamConfig cfg = TestConfig(cam.index, SourceVideo);
+    wcscpy(cfg.videoFolder, v.folder);
+    Out(L"[videos] camera %d: %ls (%ls)", cam.index + 1, v.name, v.sound ? (v.channels == 6 ? L"5.1 sound" : L"sound") : L"no sound");
+    Capture c;
+    CameraRunner* r = StartSource(cam, cfg, &c);
+    if (!r) return;
+    // the picture over the first pass, the sound during the second one (it used to stop after the first)
+    bool seen[4] = {};
+    int samples = 0, matched = 0, distinct = 0;
+    DWORD start = GetTickCount();
+    auto sample = [&](DWORD until) {
+        while (GetTickCount() - start < until && !g_stop)
+        {
+            if (!Fresh(&c, 2)) return;
+            samples++;
+            int k = ColorIndex(AvgColor(c, 0.5, 0.6), 4, 45);
+            if (k >= 0)
+            {
+                matched++;
+                if (!seen[k]) { seen[k] = true; distinct++; }
+            }
+        }
+    };
+    sample((DWORD)(kClipSeconds * 1000) + 700);
+    MicResult mic = {};
+    if (v.sound) MicMeasure(1500, &mic);
+    sample((DWORD)(kClipSeconds * 2000) + 1500);
+    Check(samples >= 10 && matched * 10 >= samples * 8, L"clip colours shown: %d of %d samples", matched, samples);
+    Check(distinct >= 3, L"the picture moves (%d of 4 colour fields seen)", distinct);
+    if (v.sound)
+    {
+        if (!mic.found) Warn(L"Speak2Mic Microphone not found: the clip's sound not checked");
+        else if (FAILED(mic.hr)) Warn(L"Speak2Mic Microphone cannot be recorded (0x%08lX)", (unsigned long)mic.hr);
+        else
+        {
+            Check(mic.rms > 0.003, L"sound on the second pass: level %.4f (microphone muted or at 0 %% in Speak2Mic?)", mic.rms);
+            if (mic.rms > 0.003)
+            {
+                if (mic.tone > 0.3) Check(true, L"the clip's 1 kHz tone: %.0f %% of the sound", mic.tone * 100);
+                else Warn(L"the 1 kHz tone is only %.0f %% of the sound (something else plays into the cable?)", mic.tone * 100);
+            }
+        }
+    }
+    StopSource(r, cam, &c);
+}
+
+// Waits until the camera's centre is that colour (or, `notColor`, is not it any more).
+static bool WaitColor(Capture* c, ULONG color, DWORD ms, bool notColor = false)
+{
+    DWORD start = GetTickCount();
+    while (GetTickCount() - start < ms && !g_stop)
+    {
+        if (!Fresh(c, 2)) return false;
+        bool same = Near(AvgColor(*c, 0.5, 0.5), color, 40);
+        if (same != notColor) return true;
+    }
+    return false;
+}
+
+static void ActionMjpeg()
+{
+    if (!g_mjOk) return;
+    CamInfo cam;
+    if (!PickCam(&cam)) return;
+    int mode = Rand(0, 2);           // 0: colour change, 1: server outage and reconnect, 2: authentication
+    if (mode == 2 && !MjpegStart(&g_mjPort, true))
+    {
+        Warn(L"MJPEG test server with authentication not started");
+        return;
+    }
+    CamConfig cfg = TestConfig(cam.index, SourceStream);
+    _snwprintf(cfg.url, 512, mode == 2 ? L"http://s2c:test@127.0.0.1:%u/" : L"http://127.0.0.1:%u/", g_mjPort);
+    ULONG a = kTestColors[Rand(0, 7)];
+    MjpegSetColor(a);
+    Out(L"[mjpeg] camera %d: %ls, %ls", cam.index + 1, cfg.url, mode == 0 ? L"colour change" : mode == 1 ? L"outage" : L"authentication");
+    Capture c;
+    CameraRunner* r = StartSource(cam, cfg, &c);
+    if (r)
+    {
+        ULONGLONG sent = MjpegFramesSent();
+        bool shown = Check(WaitColor(&c, a, 8000), L"stream picture shown (colour %06lX)", a);
+        Check(MjpegFramesSent() > sent, L"the server sent pictures (%lu client(s))", (unsigned long)MjpegClients());
+        if (shown && mode == 0)
+        {
+            ULONG b;
+            do b = kTestColors[Rand(0, 7)]; while (b == a);
+            MjpegSetColor(b);
+            Check(WaitColor(&c, b, 4000), L"the new stream colour %06lX within 4 s", b);
+        }
+        else if (shown && mode == 1)
+        {
+            USHORT port = g_mjPort;
+            MjpegStop();
+            Check(WaitColor(&c, a, 16000, true), L"\"No signal\" within 16 s after the server stopped");
+            g_mjOk = MjpegStart(&port, false);
+            if (!g_mjOk || port != g_mjPort) Warn(L"MJPEG test server not restarted on port %u", g_mjPort);
+            else Check(WaitColor(&c, a, 12000), L"reconnected within 12 s after the server came back");
+        }
+        StopSource(r, cam, &c);
+    }
+    if (mode == 2) g_mjOk = MjpegStart(&g_mjPort, false);
+}
+
 static int RunCtl(const wchar_t* args)
 {
     wchar_t exe[MAX_PATH];
@@ -984,6 +1283,12 @@ int wmain(int argc, wchar_t** argv)
     }
     Snapshot snap;
     TakeSnapshot(&snap);
+    // the test media: made now, removed at the end
+    g_haveMedia = TestMediaCreate(&g_media, MediaLog);
+    g_mjPort = 0;
+    g_mjOk = MjpegStart(&g_mjPort, false);
+    if (g_mjOk) Out(L"MJPEG test server: http://127.0.0.1:%u/", g_mjPort);
+    else Warn(L"MJPEG test server not started: stream checks skipped");
     Out(L"Start: %d camera(s)", snap.count);
     for (int i = 0; i < S2C_MAX_CAMERAS_UI; i++)
         if (snap.names[i][0]) Out(L"  camera %d \"%ls\" %lux%lu %lu fps", i + 1, snap.names[i], snap.w[i], snap.h[i], snap.fps[i]);
@@ -993,6 +1298,8 @@ int wmain(int argc, wchar_t** argv)
         { ActionPicture, 20, L"picture" }, { ActionPattern, 8, L"pattern" }, { ActionFormat, 14, L"format" },
         { ActionSizes, 8, L"sizes" }, { ActionRename, 12, L"rename" }, { ActionCount, 5, L"count" },
         { ActionSources, 10, L"sources" }, { ActionStress, 6, L"stress" }, { ActionCli, 15, L"cli" },
+        { ActionTextGen, 8, L"text" }, { ActionImages, 10, L"images" }, { ActionVideos, 12, L"videos" },
+        { ActionMjpeg, 10, L"mjpeg" },
     };
     int total = 0;
     for (auto& a : actions) total += a.weight;
@@ -1021,6 +1328,9 @@ int wmain(int argc, wchar_t** argv)
         }
     }
     Out(L"");
+    MjpegStop();
+    TestMediaDelete(&g_media);
+    Out(L"Test media removed.");
     Restore(snap);
     if (panelWasRunning) RestartPanel();
     Out(L"");

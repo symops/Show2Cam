@@ -56,7 +56,11 @@ here. Log: `ctl.log`.
 see the cameras (Media Foundation) — a picture of four coloured quarters read back (colours, orientation, size, in use
 while open), the test pattern not "empty", random formats (set, offered first, invalid ones refused), the usual webcam
 sizes and 640×480 at 3 fps, random names (camera, device FriendlyName), random camera counts (one device per camera),
-the panel's sources (text, generator), open/close stress and `s2cctl` commands. It closes the control panel, restores
+the panel's sources (text, generator), open/close stress and `s2cctl` commands; and with media it generates in
+`%TEMP%\s2cautotest-<pid>` (removed at the end): random texts, pictures in every format Windows encodes (PNG, JPEG,
+BMP, GIF, TIFF, JPEG XR; plus a broken one), video clips (MP4 H.264 + AAC stereo / 5.1 / silent, 3GP, WMV + WMA, the MP4
+as .mov / .m4v / .divx, a broken file) whose 1 kHz tone is measured on Speak2Mic Microphone on the second pass, and a
+local MJPEG server (colour change, outage and reconnect, Basic authentication). It closes the control panel, restores
 everything at the end (also after Ctrl+C) and starts the panel again. PASS / FAIL / WARN in `autotest.log`; exit code
 1 if anything failed.
 

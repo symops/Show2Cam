@@ -44,6 +44,10 @@ struct S2C_PIN
     ULONGLONG           LastBuffer;     // QPC time (100 ns) of the last buffer from the client
     BOOLEAN             StarveLogged;   // "no buffer for 5 s" was logged
     BOOLEAN             Running;
+    // Stall diagnostics (a program waiting for frames that do not come): checked by the timer itself.
+    volatile LONG       TimerFires, ProcessCalls;
+    volatile LONGLONG   LastProcess, LastFrame;    // QPC time (100 ns since RunStart)
+    BOOLEAN             StallLogged;
 };
 
 static ULONGLONG QpcNow100ns(S2C_PIN* p)
@@ -57,7 +61,23 @@ static ULONGLONG QpcNow100ns(S2C_PIN* p)
 static VOID NTAPI FrameTimer(_In_ PEX_TIMER Timer, _In_opt_ PVOID Context)
 {
     UNREFERENCED_PARAMETER(Timer);
-    KsPinAttemptProcessing((PKSPIN)Context, TRUE);     // Process runs at PASSIVE_LEVEL on a worker
+    PKSPIN pin = (PKSPIN)Context;
+    S2C_PIN* p = (S2C_PIN*)pin->Context;
+    if (p && p->Running)
+    {
+        InterlockedIncrement(&p->TimerFires);
+        // No frame for 3 s while running: what the pin is waiting for (logged once until frames come again).
+        ULONGLONG now = QpcNow100ns(p);
+        if (!p->StallLogged && now > 30000000ULL && now - (ULONGLONG)p->LastFrame > 30000000ULL)
+        {
+            p->StallLogged = TRUE;
+            S2cLog("Camera %lu: no frame for 3 s to process %lu: timer fired %ld, Process called %ld (last %llu ms ago), "
+                   "last buffer %llu ms ago, frames %llu", p->Camera->Index + 1, p->Pid, p->TimerFires, p->ProcessCalls,
+                   (now - (ULONGLONG)p->LastProcess) / 10000, (now - p->LastBuffer) / 10000, p->FramesDone);
+            S2cLogFlush();
+        }
+    }
+    KsPinAttemptProcessing(pin, TRUE);     // Process runs at PASSIVE_LEVEL on a worker
 }
 
 static NTSTATUS S2C_CB PinCreate(_In_ PKSPIN Pin, _In_ PIRP Irp)
@@ -149,6 +169,9 @@ static NTSTATUS S2C_CB PinSetDeviceState(_In_ PKSPIN Pin, _In_ KSSTATE ToState, 
         p->Interval = (ULONGLONG)period;
         p->RunStart = KeQueryPerformanceCounter(&p->QpcFrequency);
         p->FramesDone = 0;
+        p->TimerFires = p->ProcessCalls = 0;
+        p->LastFrame = p->LastProcess = 0;
+        p->StallLogged = FALSE;
         p->Running = TRUE;
         InterlockedIncrement(&c->Streaming);
         ExSetTimer(p->Timer, -period, period, nullptr);
@@ -162,8 +185,10 @@ static NTSTATUS S2C_CB PinSetDeviceState(_In_ PKSPIN Pin, _In_ KSSTATE ToState, 
     S2cLog("Camera %lu: state %d -> %d (process %lu)", c->Index + 1, (int)FromState, (int)ToState, p->Pid);
     if (ToState == KSSTATE_RUN)
     {
-        p->FirstLogged = p->SmallLogged = p->StarveLogged = FALSE;
+        p->FirstLogged = p->SmallLogged = p->StarveLogged = p->StallLogged = FALSE;
         p->LastBuffer = 0;
+        p->LastFrame = p->LastProcess = 0;
+        p->TimerFires = p->ProcessCalls = 0;
     }
     S2cLogFlush();
     return STATUS_SUCCESS;
@@ -212,6 +237,8 @@ static NTSTATUS S2C_CB PinProcess(_In_ PKSPIN Pin)
     S2C_CAMERA* c = p->Camera;
     ULONGLONG interval = p->Interval ? p->Interval : 10000000ULL / (c->Fps ? c->Fps : 30);
     ULONGLONG now = QpcNow100ns(p);
+    InterlockedIncrement(&p->ProcessCalls);
+    p->LastProcess = (LONGLONG)now;
     ULONGLONG due = now / interval + 1;                             // frames that should exist by now
     if (p->FramesDone >= due) return STATUS_SUCCESS;
 
@@ -254,8 +281,8 @@ static NTSTATUS S2C_CB PinProcess(_In_ PKSPIN Pin)
     if (!p->FirstLogged)
     {
         p->FirstLogged = TRUE;
-        S2cLog("Camera %lu: first frame to process %lu: %lu of %lu bytes", c->Index + 1, p->Pid, used,
-               leading->OffsetOut.Remaining);
+        S2cLog("Camera %lu: first frame to process %lu: %lu of %lu bytes, %llu ms after run (timer fired %ld, Process called %ld)",
+               c->Index + 1, p->Pid, used, leading->OffsetOut.Remaining, now / 10000, p->TimerFires, p->ProcessCalls);
         S2cLogFlush();
     }
     header->PresentationTime.Time = (LONGLONG)(p->FramesDone * interval);
@@ -273,6 +300,13 @@ static NTSTATUS S2C_CB PinProcess(_In_ PKSPIN Pin)
         fi->DropCount = c->FramesDropped;
     }
     p->FramesDone++;
+    p->LastFrame = (LONGLONG)now;
+    if (p->StallLogged)
+    {
+        p->StallLogged = FALSE;
+        S2cLog("Camera %lu: frames to process %lu again", c->Index + 1, p->Pid);
+        S2cLogFlush();
+    }
     S2C_ADD64(c->FramesDelivered, 1);
     KsStreamPointerAdvanceOffsetsAndUnlock(leading, 0, used, TRUE);  // TRUE: hand the buffer back with this frame
     return STATUS_SUCCESS;

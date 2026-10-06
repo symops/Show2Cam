@@ -111,13 +111,13 @@ void S2cLog(_In_z_ _Printf_format_string_ const char* Format, ...)
     KeReleaseSpinLock(&g_logLock, irql);
 }
 
-static void FlushNow();
+static void FlushNow(BOOLEAN registry);
 
 static VOID NTAPI FlushWork(_In_ PDEVICE_OBJECT Device, _In_opt_ PVOID Context)
 {
     UNREFERENCED_PARAMETER(Device);
     InterlockedExchange(&g_flushQueued, 0);         // lines logged from now on queue another flush
-    FlushNow();
+    FlushNow(FALSE);
     IoFreeWorkItem((PIO_WORKITEM)Context);
 }
 
@@ -136,7 +136,7 @@ void S2cLogFlush()
 
 void S2cLogFlushNow()
 {
-    FlushNow();
+    FlushNow(TRUE);
 }
 
 void S2cLogSetDevice(_In_ PDEVICE_OBJECT Device, _In_ BOOLEAN Present)
@@ -156,7 +156,9 @@ void S2cLogSetDevice(_In_ PDEVICE_OBJECT Device, _In_ BOOLEAN Present)
     KeReleaseSpinLock(&g_devLock, irql);
 }
 
-static void FlushNow()
+// registry: also the DriverLog value (128 KB; only at start / removal: writing it often loads registry filters such as
+// DLP agents', which watch the very programs that open cameras).
+static void FlushNow(BOOLEAN registry)
 {
     if (KeGetCurrentIrql() != PASSIVE_LEVEL || !g_logDirty)
     {
@@ -186,7 +188,7 @@ static void FlushNow()
     g_logDirty = FALSE;
     KeReleaseSpinLock(&g_logLock, irql);
 
-    RtlWriteRegistryValue(RTL_REGISTRY_SERVICES, S2C_PARAMS_KEY, L"DriverLog", REG_SZ, w, (wl + 1) * sizeof(WCHAR));
+    if (registry) RtlWriteRegistryValue(RTL_REGISTRY_SERVICES, S2C_PARAMS_KEY, L"DriverLog", REG_SZ, w, (wl + 1) * sizeof(WCHAR));
     ExFreePoolWithTag(w, S2C_POOLTAG);
 
     KeWaitForSingleObject(&g_fileLock, Executive, KernelMode, FALSE, nullptr);
