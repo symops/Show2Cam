@@ -79,3 +79,9 @@ open('dist/Show2Cam-Setup.exe', 'wb').write(launcher + cab + b'S2CPAYLD' + struc
 PY
 rm -f dist/payload.cab
 ls -la dist/Show2Cam-Setup.exe
+
+# Link maps of this build (a crash line names module + offset; the maps name the function), kept per version.
+VER=$(sed -n 's/#define S2C_VER_STR *"\(.*\)"/\1/p' driver/version.h)
+mkdir -p "maps/$VER/x64" "maps/$VER/x86"
+cp app/*.map "maps/$VER/x64/" 2>/dev/null || true
+cp app/x86/*.map "maps/$VER/x86/" 2>/dev/null || true

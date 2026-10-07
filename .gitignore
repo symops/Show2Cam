@@ -22,3 +22,4 @@ app/autotest_media.rc
 
 # link maps (crash offsets -> functions)
 *.map
+maps/
