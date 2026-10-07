@@ -130,7 +130,8 @@ public:
             // screen for a second: dark frames programs drop).
             for (int attempt = 0; attempt < 12; attempt++)
             {
-                if (!PickRandomFile(m_folder, MediaImages, m_current, next)) break;
+                // After a few broken picks the current picture may be taken again (it may be the only good one).
+                if (!PickRandomFile(m_folder, MediaImages, attempt < 6 ? m_current : nullptr, next)) break;
                 bool bad = false;
                 for (int b = 0; b < m_badCount && !bad; b++) bad = _wcsicmp(m_bad[b], next) == 0;
                 if (!bad)
@@ -403,7 +404,9 @@ private:
         for (int attempt = 0; attempt < 24; attempt++)
         {
             wchar_t path[MAX_PATH];
-            bool found = PickRandomFile(m_folder, MediaVideo, m_last, path);
+            // After a few broken picks the file just played may be taken again (it may be the only good one: with it
+            // excluded only broken ones were left and the error screen came for 5 s).
+            bool found = PickRandomFile(m_folder, MediaVideo, attempt < 8 ? m_last : nullptr, path);
             bool bad = false;
             for (int b = 0; found && b < m_badCount && !bad; b++) bad = _wcsicmp(m_bad[b], path) == 0;
             if (bad)
@@ -761,6 +764,28 @@ private:
         }
     }
 
+    void SwitchToRgb32()
+    {
+        m_switchToRgb = false;
+        IMFMediaType* t = nullptr;
+        HRESULT hr = MFCreateMediaType(&t);
+        if (SUCCEEDED(hr)) hr = t->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+        if (SUCCEEDED(hr)) hr = t->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
+        if (SUCCEEDED(hr)) hr = m_reader->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, nullptr, t);
+        if (t) t->Release();
+        IMFMediaType* cur = nullptr;
+        if (SUCCEEDED(hr)) hr = m_reader->GetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, &cur);
+        if (SUCCEEDED(hr))
+        {
+            m_nv12 = false;
+            m_stride = (LONG)MFGetAttributeUINT32(cur, MF_MT_DEFAULT_STRIDE, m_frameW * 4);
+            if ((m_stride < 0 ? -m_stride : m_stride) < (LONG)(m_frameW * 4)) m_stride = m_stride < 0 ? -(LONG)(m_frameW * 4) : (LONG)(m_frameW * 4);
+            m_logBuffer = true;
+            cur->Release();
+        }
+        AppLog(L"camera %d: video output now RGB32: 0x%08lX", m_sink.index + 1, (unsigned long)hr);
+    }
+
     void Present(IMFSample* sample, ULONG* px, int w, int h)
     {
         IMFMediaBuffer* buf = nullptr;
@@ -784,6 +809,14 @@ private:
                 if (m_logBuffer) AppLog(L"camera %d: video frame: NV12 with pitch %ld not supported", m_sink.index + 1, (long)pitch);
                 m_logBuffer = false;
             }
+            else if (p && (size_t)pitch * m_frameH + (size_t)pitch * ((m_frameH + 1) / 2) > len)
+            {
+                // Not an NV12 frame of this size although the type says so (the AV1 decoder: pitch 1280 for 320 px,
+                // one plane only): the reader converts to RGB32 from now on.
+                AppLog(L"camera %d: video frame: NV12 expected, got pitch %ld and %lu bytes for %ux%u - switching to RGB32",
+                       m_sink.index + 1, (long)pitch, len, m_frameW, m_frameH);
+                m_switchToRgb = true;
+            }
             else if (p)
             {
                 if (m_logBuffer)
@@ -798,6 +831,7 @@ private:
             else if (p) buf->Unlock();
             if (nb) nb->Release();
             buf->Release();
+            if (m_switchToRgb) SwitchToRgb32();
             return;
         }
         IMF2DBuffer* b2 = nullptr;
@@ -930,7 +964,7 @@ private:
 
     IMFSourceReader* m_reader = nullptr;
     IMFSourceReader* m_audioReader = nullptr;   // the same file, sound only
-    bool    m_nv12 = false, m_bt709 = true, m_fullRange = false;
+    bool    m_nv12 = false, m_bt709 = true, m_fullRange = false, m_switchToRgb = false;
     ULONG*  m_rgb = nullptr;                    // an NV12 frame converted (crop size)
     size_t  m_rgbCap = 0;
     UINT32  m_frameW = 0, m_frameH = 0, m_cropX = 0, m_cropY = 0, m_cropW = 0, m_cropH = 0;

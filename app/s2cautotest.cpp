@@ -145,6 +145,26 @@ static bool Status(const CamInfo& cam, S2C_STATUS* st)
     return ok;
 }
 
+// Who has the camera open now ("" when nobody): the program names the driver saw.
+static ULONG CameraUsers(const CamInfo& cam, wchar_t* who, size_t len)
+{
+    who[0] = 0;
+    S2C_STATUS st;
+    if (!Status(cam, &st)) return 0;
+    for (int u = 0; u < S2C_MAX_USERS; u++)
+    {
+        if (!st.UserPids[u]) continue;
+        wchar_t one[64];
+        WCHAR name[33];
+        wcsncpy(name, st.UserNames[u], 32);
+        name[32] = 0;
+        _snwprintf(one, 64, L"%ls%ls (pid %lu)", who[0] ? L", " : L"", name[0] ? name : L"?", st.UserPids[u]);
+        one[63] = 0;
+        wcsncat(who, one, len - wcslen(who) - 1);
+    }
+    return st.PinsOpen;
+}
+
 static DWORD SetFormat(const CamInfo& cam, ULONG w, ULONG h, ULONG fps)
 {
     HANDLE c = CamOpen(cam.path);
@@ -173,13 +193,14 @@ static bool SendPattern(const CamInfo& cam)
 }
 
 // Waits until no program has the camera open.
-static bool WaitClosed(const CamInfo& cam, DWORD ms)
+// Waits until at most `others` programs have the camera open (those that had it before the test opened it).
+static bool WaitClosed(const CamInfo& cam, DWORD ms, ULONG others = 0)
 {
     DWORD start = GetTickCount();
     S2C_STATUS st;
     do
     {
-        if (Status(cam, &st) && st.PinsOpen == 0) return true;
+        if (Status(cam, &st) && st.PinsOpen <= others) return true;
         Sleep(100);
     } while (GetTickCount() - start < ms);
     return false;
@@ -486,6 +507,10 @@ static void ActionPicture()
     S2C_STATUS st;
     if (!Check(Status(cam, &st), L"camera %d: status", cam.index + 1)) return;
     Out(L"[picture] camera %d \"%ls\", %lux%lu %lu fps", cam.index + 1, cam.name, st.Width, st.Height, st.Fps);
+    {
+        wchar_t who[400];
+        if (CameraUsers(cam, who, 400)) Out(L"  info camera %d already open in: %ls", cam.index + 1, who);
+    }
     HANDLE h = CamOpen(cam.path);
     CamFrame frame;
     bool sent = h != INVALID_HANDLE_VALUE && frame.Resize(st.Width, st.Height);
@@ -528,7 +553,8 @@ static void ActionPicture()
               L"format change refused while open (%lu)", err);
     }
     c.Close();
-    Check(WaitClosed(cam, 5000), L"not in use after closing");
+    Check(WaitClosed(cam, 5000, st.PinsOpen), st.PinsOpen ? L"back to the %lu program(s) that had it open before" :
+          L"not in use after closing", st.PinsOpen);
     SendPattern(cam);
 }
 
@@ -560,7 +586,9 @@ static void ActionFormat()
     Out(L"[format] camera %d: %lux%lu %lu fps", cam.index + 1, w, h, fps);
     if (!WaitClosed(cam, 3000))
     {
-        Warn(L"camera %d is in use by another program: skipped", cam.index + 1);
+        wchar_t who[400];
+        CameraUsers(cam, who, 400);
+        Warn(L"camera %d is in use by another program (%ls): skipped", cam.index + 1, who[0] ? who : L"?");
         return;
     }
     DWORD err = SetFormat(cam, w, h, fps);
@@ -626,14 +654,16 @@ static void ActionSizes()
     hr = CaptureOpen(cam, &c, 640, 480, 3);
     if (FAILED(hr))
     {
-        Warn(L"640x480 at 3 fps not accepted by Media Foundation (0x%08lX)", (unsigned long)hr);
+        // Media Foundation's camera source keeps to the rates of its listed types; programs that ask for another one
+        // (SearchInform: 3 fps) use DirectShow, where the driver takes 1-60 fps.
+        Out(L"  info 640x480 at 3 fps: Media Foundation keeps the listed frame rates (0x%08lX)", (unsigned long)hr);
         return;
     }
     LONGLONG t0 = 0;
     hr = CaptureRead(&c);
     if (SUCCEEDED(hr)) t0 = c.ts;
     if (SUCCEEDED(hr)) hr = CaptureRead(&c);
-    if (Check(SUCCEEDED(hr) && c.w == 640 && c.h == 480, L"640x480 frames (0x%08lX)", (unsigned long)hr))
+    if (Check(SUCCEEDED(hr) && c.w == 640 && c.h == 480, L"640x480 frames at 3 fps: %ux%u (0x%08lX)", c.w, c.h, (unsigned long)hr))
     {
         double ms = (c.ts - t0) / 10000.0;
         if (ms > 200 && ms < 500) Check(true, L"3 fps: %.0f ms between frames", ms);
@@ -728,7 +758,9 @@ static void ActionSources()
     Out(L"[sources] camera %d: %ls", cam.index + 1, generator ? L"generator" : cfg.text);
     if (!WaitClosed(cam, 3000))
     {
-        Warn(L"camera %d is in use by another program: skipped", cam.index + 1);
+        wchar_t who[400];
+        CameraUsers(cam, who, 400);
+        Warn(L"camera %d is in use by another program (%ls): skipped", cam.index + 1, who[0] ? who : L"?");
         return;
     }
     CameraRunner* r = RunnerStart(cam.index, cam.path, cfg, nullptr, 0);
@@ -769,14 +801,17 @@ static void ActionStress()
     CamInfo cam;
     if (!PickCam(&cam)) return;
     int n = Rand(5, 15), ok = 0;
-    Out(L"[stress] camera %d opened and closed %d times", cam.index + 1, n);
+    wchar_t who[400];
+    ULONG others = CameraUsers(cam, who, 400);
+    Out(L"[stress] camera %d opened and closed %d times%ls%ls", cam.index + 1, n, others ? L"; already open in: " : L"", who);
     for (int i = 0; i < n && !g_stop; i++)
     {
         Capture c;
         if (SUCCEEDED(CaptureOpen(cam, &c)) && (Rand(0, 1) || SUCCEEDED(CaptureRead(&c)))) ok++;
     }
     Check(ok == n, L"%d of %d opened", ok, n);
-    Check(WaitClosed(cam, 5000), L"not in use afterwards");
+    Check(WaitClosed(cam, 5000, others), others ? L"back to the %lu program(s) that had it open before" : L"not in use afterwards",
+          others);
 }
 
 
@@ -830,7 +865,9 @@ static CameraRunner* StartSource(const CamInfo& cam, const CamConfig& cfg, Captu
 {
     if (!WaitClosed(cam, 3000))
     {
-        Warn(L"camera %d is in use by another program: skipped", cam.index + 1);
+        wchar_t who[400];
+        CameraUsers(cam, who, 400);
+        Warn(L"camera %d is in use by another program (%ls): skipped", cam.index + 1, who[0] ? who : L"?");
         return nullptr;
     }
     CameraRunner* r = RunnerStart(cam.index, cam.path, cfg, nullptr, 0);
@@ -865,11 +902,13 @@ static CamConfig TestConfig(int index, int kind)
     return cfg;
 }
 
-static void RandomText(wchar_t* out, size_t len)
+static void RandomText(wchar_t* out, size_t len, int avoid = -1, int* used = nullptr)
 {
     static const wchar_t* kTexts[] = { L"Autotest", L"Проверка камеры Show2Cam", L"日本語のテキスト · 中文字幕", L"Ünïcödé — ñ ç ø ß",
                                        L"1234567890", L"Камера №%d: съешь же ещё этих мягких французских булок", L"A", L"%d" };
-    int k = Rand(0, (int)(sizeof(kTexts) / sizeof(kTexts[0])));
+    int k;
+    do k = Rand(0, (int)(sizeof(kTexts) / sizeof(kTexts[0]))); while (k == avoid);
+    if (used) *used = k;
     if (k == (int)(sizeof(kTexts) / sizeof(kTexts[0])))
     {
         // a long one (wraps)
@@ -886,8 +925,10 @@ static void ActionTextGen()
     CamInfo cam;
     if (!PickCam(&cam)) return;
     CamConfig a = TestConfig(cam.index, SourceText), b = a;
-    RandomText(a.text, 256);
-    do RandomText(b.text, 256); while (!wcscmp(a.text, b.text));
+    int ka = -1;
+    // the second text from another template: two of the same one (another number) may look almost alike
+    RandomText(a.text, 256, -1, &ka);
+    do RandomText(b.text, 256, ka); while (!wcscmp(a.text, b.text));
     Out(L"[text] camera %d: \"%ls\" then \"%ls\"", cam.index + 1, a.text, b.text);
     Capture c;
     CameraRunner* r = StartSource(cam, a, &c);
