@@ -89,6 +89,55 @@ static void LetUsersWriteLogs(const wchar_t* dir)
     LocalFree(sd);
 }
 
+// ---------------------------------------------------------------------------
+// A crash: the exception, where (module + offset: the build's .map files name the function) and the thread go into
+// the log, and a minidump next to it (<program>-<pid>.dmp). Written without the log's lock (it may be held).
+
+#pragma pack(push, 4)
+struct S2cMiniDumpExceptionInfo { DWORD ThreadId; PEXCEPTION_POINTERS ExceptionPointers; BOOL ClientPointers; };
+#pragma pack(pop)
+typedef BOOL(WINAPI* MiniDumpWriteDumpFn)(HANDLE, DWORD, HANDLE, int, void*, void*, void*);
+
+static LONG WINAPI CrashFilter(EXCEPTION_POINTERS* e)
+{
+    static volatile LONG once;
+    if (InterlockedExchange(&once, 1)) return EXCEPTION_CONTINUE_SEARCH;
+    void* at = e->ExceptionRecord->ExceptionAddress;
+    HMODULE mod = nullptr;
+    wchar_t name[MAX_PATH] = L"?";
+    GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, (LPCWSTR)at, &mod);
+    if (mod) GetModuleFileNameW(mod, name, MAX_PATH);
+    const wchar_t* base = wcsrchr(name, L'\\');
+    wchar_t line[700];
+    SYSTEMTIME t;
+    GetLocalTime(&t);
+    ULONG_PTR info0 = e->ExceptionRecord->NumberParameters > 0 ? e->ExceptionRecord->ExceptionInformation[0] : 0;
+    ULONG_PTR info1 = e->ExceptionRecord->NumberParameters > 1 ? e->ExceptionRecord->ExceptionInformation[1] : 0;
+    wchar_t dump[MAX_PATH], exe[MAX_PATH];
+    GetModuleFileNameW(nullptr, exe, MAX_PATH);
+    const wchar_t* exeName = wcsrchr(exe, L'\\');
+    _snwprintf(dump, MAX_PATH, L"%ls\\%ls-%lu.dmp", g_dir, exeName ? exeName + 1 : exe, GetCurrentProcessId());
+    dump[MAX_PATH - 1] = 0;
+    _snwprintf(line, 700, L"%04u-%02u-%02u %02u:%02u:%02u.%03u  CRASH: exception 0x%08lX at %ls+0x%llX (module base %p), "
+               L"thread %lu, info %llX %llX; build %ls; minidump %ls\r\n", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute,
+               t.wSecond, t.wMilliseconds, (unsigned long)e->ExceptionRecord->ExceptionCode, base ? base + 1 : name,
+               (unsigned long long)((ULONG_PTR)at - (ULONG_PTR)mod), (void*)mod, GetCurrentThreadId(),
+               (unsigned long long)info0, (unsigned long long)info1, L"" S2C_VER_STR, dump);
+    line[699] = 0;
+    WriteUtf8(line);
+    HMODULE dbg = LoadLibraryW(L"dbghelp.dll");
+    MiniDumpWriteDumpFn write = dbg ? (MiniDumpWriteDumpFn)GetProcAddress(dbg, "MiniDumpWriteDump") : nullptr;
+    HANDLE f = write ? CreateFileW(dump, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr) : INVALID_HANDLE_VALUE;
+    if (f != INVALID_HANDLE_VALUE)
+    {
+        S2cMiniDumpExceptionInfo mi = { GetCurrentThreadId(), e, FALSE };
+        // MiniDumpWithThreadInfo | MiniDumpWithIndirectlyReferencedMemory | MiniDumpWithDataSegs
+        write(GetCurrentProcess(), GetCurrentProcessId(), f, 0x1000 | 0x40 | 0x1, &mi, nullptr, nullptr);
+        CloseHandle(f);
+    }
+    return EXCEPTION_CONTINUE_SEARCH;           // Windows Error Reporting as usual
+}
+
 void AppLogOpen(const wchar_t* name)
 {
     InitializeCriticalSection(&g_cs);
@@ -119,6 +168,7 @@ void AppLogOpen(const wchar_t* name)
         MoveFileExW(g_path, old, MOVEFILE_REPLACE_EXISTING);
     }
     g_open = true;
+    SetUnhandledExceptionFilter(CrashFilter);
 
     wchar_t exe[MAX_PATH];
     GetModuleFileNameW(nullptr, exe, MAX_PATH);

@@ -729,7 +729,11 @@ private:
             if (!m_rgb) return;
         }
         if ((size_t)pitch * m_frameH + (size_t)pitch * ((m_frameH + 1) / 2) > len) return;
-        const BYTE* uvBase = base + (size_t)pitch * m_frameH;
+        // The UV plane follows the Y plane, whose rows a decoder may pad to an aligned height: taken from the buffer's
+        // length when it is a plausible one (a whole NV12 frame of up to 128 extra rows).
+        size_t planeH = (size_t)len * 2 / (3 * (size_t)pitch);
+        if (planeH < m_frameH || planeH > m_frameH + 128 || (size_t)pitch * planeH * 3 / 2 > len) planeH = m_frameH;
+        const BYTE* uvBase = base + (size_t)pitch * planeH;
         // fixed point (16 bits): Y scale and the chroma factors of the matrix / range
         int ys = m_fullRange ? 65536 : 76309, yo = m_fullRange ? 0 : 16;
         int rv, gu, gv, bu;
@@ -763,16 +767,24 @@ private:
         if (FAILED(sample->ConvertToContiguousBuffer(&buf))) return;
         if (m_nv12)
         {
-            IMF2DBuffer* nb = nullptr;
+            // The planes as the decoder laid them out (some, e.g. AV1, use a pitch far wider than the picture): read
+            // only within the buffer it reports (IMF2DBuffer2::Lock2DSize gives its true start and length).
+            IMF2DBuffer2* nb = nullptr;
             BYTE* p = nullptr;
+            BYTE* start = nullptr;
             LONG pitch = m_stride;
-            DWORD max = 0, len = 0;
-            bool locked2d = SUCCEEDED(buf->QueryInterface(IID_PPV_ARGS(&nb))) && SUCCEEDED(nb->Lock2D(&p, &pitch));
-            if (locked2d) buf->GetCurrentLength(&len);
-            if (locked2d && pitch > 0 && len < (DWORD)(pitch * (m_frameH + m_frameH / 2))) len = (DWORD)(pitch * (m_frameH + (m_frameH + 1) / 2));
+            DWORD max = 0, len = 0, total = 0;
+            bool locked2d = SUCCEEDED(buf->QueryInterface(IID_PPV_ARGS(&nb))) &&
+                            SUCCEEDED(nb->Lock2DSize(MF2DBuffer_LockFlags_Read, &p, &pitch, &start, &total));
+            if (locked2d) len = p >= start && (DWORD)(p - start) < total ? total - (DWORD)(p - start) : 0;
             if (!locked2d && SUCCEEDED(buf->Lock(&p, &max, &len))) pitch = m_stride;
             else if (!locked2d) p = nullptr;
-            if (p)
+            if (p && pitch <= 0)
+            {
+                if (m_logBuffer) AppLog(L"camera %d: video frame: NV12 with pitch %ld not supported", m_sink.index + 1, (long)pitch);
+                m_logBuffer = false;
+            }
+            else if (p)
             {
                 if (m_logBuffer)
                 {
@@ -781,9 +793,9 @@ private:
                 }
                 ConvertNV12(p, pitch, len);
                 if (m_rgb) FitPixels((const BYTE*)m_rgb, (int)m_cropW, (int)m_cropH, (LONG)(m_cropW * 4), px, w, h);
-                if (locked2d) nb->Unlock2D();
-                else buf->Unlock();
             }
+            if (p && locked2d) nb->Unlock2D();
+            else if (p) buf->Unlock();
             if (nb) nb->Release();
             buf->Release();
             return;

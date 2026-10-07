@@ -19,3 +19,6 @@ driver/mingw/testcert/
 # autotest samples, generated on every build (tools/make_autotest_media.py)
 app/autotest-media/
 app/autotest_media.rc
+
+# link maps (crash offsets -> functions)
+*.map

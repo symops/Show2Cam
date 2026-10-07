@@ -24,7 +24,7 @@ for r in s2csetup s2cinstall s2cpanel s2ccamdiag s2cctl s2cautotest; do $TRIPLE-
 $TRIPLE-gcc -municode -mwindows -static -s -o "$O/Show2Cam-Setup.exe" "$T/s2csetup.o" "$T/devctl.o" "$T/setupcore.o" \
     "$T/setupfiles.o" "$T/diag.o" "$T/applog.o" "$T/lang.o" "$T/s2csetup.res.o" \
     -lsetupapi -lnewdev -lcfgmgr32 -lcrypt32 -lcomctl32 -lshell32 -lgdi32 -ladvapi32 -luser32 -lole32 -lwevtapi -luuid
-$TRIPLE-gcc -municode -mwindows -static -s -o "$O/Show2Cam.exe" "$T/s2cpanel.o" "$T/sources.o" "$T/camcfg.o" "$T/drvlog.o" "$T/media.o" "$T/audioout.o" \
+$TRIPLE-gcc -municode -mwindows -static -s -Wl,-Map,"$O/Show2Cam.map" -o "$O/Show2Cam.exe" "$T/s2cpanel.o" "$T/sources.o" "$T/camcfg.o" "$T/drvlog.o" "$T/media.o" "$T/audioout.o" \
     "$T/camdev.o" "$T/cxxrt.o" "$T/devctl.o" "$T/setupcore.o" "$T/applog.o" "$T/lang.o" "$T/s2cpanel.res.o" \
     -lmf -lmfplat -lmfreadwrite -lmfuuid -lwindowscodecs -lwinhttp -lcrypt32 -lbcrypt -lsetupapi -lnewdev -lcfgmgr32 -lcomctl32 \
     -lshell32 -lgdi32 -ladvapi32 -luser32 -lole32 -loleaut32 -luuid -lpropsys -lcomdlg32
@@ -34,7 +34,7 @@ $TRIPLE-gcc -municode -static -s -o "$O/s2cctl.exe" "$T/s2cctl.o" "$T/camcfg.o" 
     "$T/cxxrt.o" "$T/devctl.o" "$T/setupcore.o" "$T/applog.o" "$T/lang.o" "$T/s2cctl.res.o" \
     -lwindowscodecs -lsetupapi -lnewdev -lcfgmgr32 -lcrypt32 -lgdi32 -lshell32 -ladvapi32 -luser32 -lole32 -loleaut32 -luuid \
     -lpropsys -lmfplat -lmfuuid -lbcrypt
-$TRIPLE-gcc -municode -static -s -o "$O/s2cautotest.exe" "$T/s2cautotest.o" "$T/atmedia.o" "$T/sources.o" "$T/camcfg.o" "$T/media.o" "$T/audioout.o" \
+$TRIPLE-gcc -municode -static -s -Wl,-Map,"$O/s2cautotest.map" -o "$O/s2cautotest.exe" "$T/s2cautotest.o" "$T/atmedia.o" "$T/sources.o" "$T/camcfg.o" "$T/media.o" "$T/audioout.o" \
     "$T/camdev.o" "$T/cxxrt.o" "$T/devctl.o" "$T/setupcore.o" "$T/applog.o" "$T/lang.o" "$T/s2cautotest.res.o" \
     -lmf -lmfplat -lmfreadwrite -lmfuuid -lwindowscodecs -lwinhttp -lcrypt32 -lbcrypt -lsetupapi -lnewdev -lcfgmgr32 \
     -lshell32 -lgdi32 -ladvapi32 -luser32 -lole32 -loleaut32 -luuid -lpropsys -lws2_32
