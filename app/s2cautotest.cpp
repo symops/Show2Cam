@@ -358,7 +358,9 @@ static HRESULT CaptureOpen(const CamInfo& cam, Capture* c, UINT32 wantW = 0, UIN
     if (SUCCEEDED(hr)) hr = MFCreateSourceReaderFromMediaSource(c->source, attr, &c->reader);
     if (attr) attr->Release();
     const DWORD stream = (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM;
-    if (SUCCEEDED(hr) && wantW && !typeSet)
+    // The reader starts from the camera's own type: the wanted size is chosen on it as well (also after the source
+    // took it - a reader created afterwards gave the camera's own size).
+    if (SUCCEEDED(hr) && wantW)
     {
         hr = MF_E_INVALIDMEDIATYPE;
         IMFMediaType* t = nullptr;
@@ -1014,6 +1016,18 @@ static void ActionVideos()
     CameraRunner* r = StartSource(cam, cfg, &c);
     if (!r) return;
     // the picture over the first pass, the sound during the second one (it used to stop after the first)
+    {
+        // the samples start when a clip plays (skipping broken files first takes a moment each)
+        CamRunStatus rs = {};
+        DWORD t0 = GetTickCount();
+        for (; GetTickCount() - t0 < 8000; Sleep(100))
+        {
+            RunnerGetStatus(r, &rs);
+            if (rs.state == StateOk && rs.current[0]) break;
+        }
+        if (GetTickCount() - t0 > 1000) Out(L"  info the clip started after %lu ms", GetTickCount() - t0);
+        Fresh(&c, 2);
+    }
     bool seen[4] = {};
     int samples = 0, matched = 0, distinct = 0;
     DWORD start = GetTickCount();

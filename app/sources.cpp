@@ -306,6 +306,25 @@ public:
             Present(m_shown, px, w, h);
             *changed = true;
         }
+        if (m_switchToRgb)
+        {
+            // The decoder's NV12 is not usable: the file again from its start, decoded to RGB32 by the reader (switching
+            // the type mid-stream left the AV1 decoder's frames empty).
+            m_switchToRgb = false;
+            wcsncpy(m_rgbPath, m_current, MAX_PATH - 1);
+            m_rgbPath[MAX_PATH - 1] = 0;
+            wchar_t path[MAX_PATH];
+            wcscpy(path, m_current);
+            CloseFile();
+            HRESULT hr = OpenFile(path);
+            AppLog(L"camera %d: %ls opened again with RGB32 output: 0x%08lX", m_sink.index + 1, FileName(path), (unsigned long)hr);
+            if (FAILED(hr))
+            {
+                CloseFile();
+                m_retryAt = now;
+            }
+            return 1;
+        }
         FeedAudio(t);
         if (m_audio.Failed())
         {
@@ -511,38 +530,16 @@ private:
         return hr;
     }
 
-    HRESULT OpenFile(const wchar_t* path)
+    // The picture's format from the reader's current video type (after opening, and when the decoder changes it: a
+    // decoder may settle its output only with the first frame - MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED).
+    HRESULT ApplyVideoType()
     {
-        // The picture and the sound have readers of their own: read through one reader, the sound waited behind the
-        // (slower) picture, came late and stopped after a few seconds, and on the next pass there was none at all.
-        HRESULT hr = CreateReader(path, true, &m_reader);
-        if (FAILED(hr)) return hr;
-        m_reader->SetStreamSelection((DWORD)MF_SOURCE_READER_ALL_STREAMS, FALSE);
-        m_reader->SetStreamSelection((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, TRUE);
-
-        // Video: NV12 straight from the decoder, converted here only for the frames shown (converting every decoded
-        // frame to RGB32 in the reader made 1080p play slower than real time); RGB32 by the reader otherwise.
-        IMFMediaType* type = nullptr;
-        m_nv12 = false;
-        hr = MFCreateMediaType(&type);
-        if (SUCCEEDED(hr)) hr = type->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
-        if (SUCCEEDED(hr)) hr = type->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_NV12);
-        if (SUCCEEDED(hr) && SUCCEEDED(m_reader->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, nullptr, type)))
-            m_nv12 = true;
-        if (type) type->Release();
-        type = nullptr;
-        if (!m_nv12)
-        {
-            hr = MFCreateMediaType(&type);
-            if (SUCCEEDED(hr)) hr = type->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
-            if (SUCCEEDED(hr)) hr = type->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
-            if (SUCCEEDED(hr)) hr = m_reader->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, nullptr, type);
-            if (type) type->Release();
-            if (FAILED(hr)) return hr;
-        }
         IMFMediaType* cur = nullptr;
-        hr = m_reader->GetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, &cur);
+        HRESULT hr = m_reader->GetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, &cur);
         if (FAILED(hr)) return hr;
+        GUID sub = {};
+        cur->GetGUID(MF_MT_SUBTYPE, &sub);
+        m_nv12 = IsEqualGUID(sub, MFVideoFormat_NV12);
         UINT32 w = 0, h = 0, num = 0, den = 0;
         MFGetAttributeSize(cur, MF_MT_FRAME_SIZE, &w, &h);
         m_frameW = w;
@@ -576,12 +573,45 @@ private:
         m_fps = 30;
         if (SUCCEEDED(MFGetAttributeRatio(cur, MF_MT_FRAME_RATE, &num, &den)) && num && den)
             m_fps = (num + den / 2) / den;
-        GUID sub = {};
-        cur->GetGUID(MF_MT_SUBTYPE, &sub);
         AppLog(L"camera %d: video output type %08lX%ls, %ux%u, default stride %ld", m_sink.index + 1, (unsigned long)sub.Data1,
                m_nv12 ? (m_bt709 ? L" (NV12, BT.709)" : L" (NV12, BT.601)") : L"", w, h, (long)m_stride);
         m_logBuffer = true;
         cur->Release();
+        return S_OK;
+    }
+
+    HRESULT OpenFile(const wchar_t* path)
+    {
+        // The picture and the sound have readers of their own: read through one reader, the sound waited behind the
+        // (slower) picture, came late and stopped after a few seconds, and on the next pass there was none at all.
+        HRESULT hr = CreateReader(path, true, &m_reader);
+        if (FAILED(hr)) return hr;
+        m_reader->SetStreamSelection((DWORD)MF_SOURCE_READER_ALL_STREAMS, FALSE);
+        m_reader->SetStreamSelection((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, TRUE);
+
+        // Video: NV12 straight from the decoder, converted here only for the frames shown (converting every decoded
+        // frame to RGB32 in the reader made 1080p play slower than real time); RGB32 by the reader otherwise.
+        IMFMediaType* type = nullptr;
+        m_nv12 = false;
+        hr = MFCreateMediaType(&type);
+        if (SUCCEEDED(hr)) hr = type->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+        if (SUCCEEDED(hr)) hr = type->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_NV12);
+        bool rgbOnly = m_rgbPath[0] && _wcsicmp(m_rgbPath, path) == 0;     // its decoder's NV12 was unusable
+        if (SUCCEEDED(hr) && !rgbOnly && SUCCEEDED(m_reader->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, nullptr, type)))
+            m_nv12 = true;
+        if (type) type->Release();
+        type = nullptr;
+        if (!m_nv12)
+        {
+            hr = MFCreateMediaType(&type);
+            if (SUCCEEDED(hr)) hr = type->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+            if (SUCCEEDED(hr)) hr = type->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
+            if (SUCCEEDED(hr)) hr = m_reader->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, nullptr, type);
+            if (type) type->Release();
+            if (FAILED(hr)) return hr;
+        }
+        hr = ApplyVideoType();
+        if (FAILED(hr)) return hr;
         if (!m_frameW || !m_frameH) return MF_E_INVALIDMEDIATYPE;
 
         // Sound: float samples, played on the chosen device. The track is decoded whenever there is one (and sound is
@@ -710,6 +740,11 @@ private:
                 m_videoEnded = true;
                 return false;
             }
+            if (flags & MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED)
+            {
+                HRESULT th = ApplyVideoType();
+                AppLog(L"camera %d: the decoder changed the video format (0x%08lX)", m_sink.index + 1, (unsigned long)th);
+            }
             if (sample)
             {
                 m_nextVideo = sample;
@@ -764,28 +799,6 @@ private:
         }
     }
 
-    void SwitchToRgb32()
-    {
-        m_switchToRgb = false;
-        IMFMediaType* t = nullptr;
-        HRESULT hr = MFCreateMediaType(&t);
-        if (SUCCEEDED(hr)) hr = t->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
-        if (SUCCEEDED(hr)) hr = t->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
-        if (SUCCEEDED(hr)) hr = m_reader->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, nullptr, t);
-        if (t) t->Release();
-        IMFMediaType* cur = nullptr;
-        if (SUCCEEDED(hr)) hr = m_reader->GetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, &cur);
-        if (SUCCEEDED(hr))
-        {
-            m_nv12 = false;
-            m_stride = (LONG)MFGetAttributeUINT32(cur, MF_MT_DEFAULT_STRIDE, m_frameW * 4);
-            if ((m_stride < 0 ? -m_stride : m_stride) < (LONG)(m_frameW * 4)) m_stride = m_stride < 0 ? -(LONG)(m_frameW * 4) : (LONG)(m_frameW * 4);
-            m_logBuffer = true;
-            cur->Release();
-        }
-        AppLog(L"camera %d: video output now RGB32: 0x%08lX", m_sink.index + 1, (unsigned long)hr);
-    }
-
     void Present(IMFSample* sample, ULONG* px, int w, int h)
     {
         IMFMediaBuffer* buf = nullptr;
@@ -813,7 +826,7 @@ private:
             {
                 // Not an NV12 frame of this size although the type says so (the AV1 decoder: pitch 1280 for 320 px,
                 // one plane only): the reader converts to RGB32 from now on.
-                AppLog(L"camera %d: video frame: NV12 expected, got pitch %ld and %lu bytes for %ux%u - switching to RGB32",
+                AppLog(L"camera %d: video frame: NV12 expected, got pitch %ld and %lu bytes for %ux%u - RGB32 for this file",
                        m_sink.index + 1, (long)pitch, len, m_frameW, m_frameH);
                 m_switchToRgb = true;
             }
@@ -831,22 +844,29 @@ private:
             else if (p) buf->Unlock();
             if (nb) nb->Release();
             buf->Release();
-            if (m_switchToRgb) SwitchToRgb32();
             return;
         }
-        IMF2DBuffer* b2 = nullptr;
+        IMF2DBuffer2* b2 = nullptr;
         BYTE* scan0 = nullptr;
+        BYTE* start = nullptr;
+        DWORD total = 0;
         LONG pitch = 0;
-        if (SUCCEEDED(buf->QueryInterface(IID_PPV_ARGS(&b2))) && SUCCEEDED(b2->Lock2D(&scan0, &pitch)))
+        if (SUCCEEDED(buf->QueryInterface(IID_PPV_ARGS(&b2))) &&
+            SUCCEEDED(b2->Lock2DSize(MF2DBuffer_LockFlags_Read, &scan0, &pitch, &start, &total)))
         {
+            // the rows the picture needs, from scan0 (a negative pitch: bottom-up, scan0 is the top row)
+            LONG absPitch = pitch < 0 ? -pitch : pitch;
+            BYTE* first = pitch < 0 ? scan0 - (size_t)absPitch * (m_frameH - 1) : scan0;
+            bool fits = absPitch >= (LONG)(m_frameW * 4) && first >= start &&
+                        (size_t)(first - start) + (size_t)absPitch * (m_frameH - 1) + m_frameW * 4 <= total;
             if (m_logBuffer)
             {
-                DWORD len = 0;
-                buf->GetCurrentLength(&len);
-                AppLog(L"camera %d: video frame: 2D buffer, pitch %ld, length %lu", m_sink.index + 1, (long)pitch, len);
+                AppLog(L"camera %d: video frame: 2D buffer, pitch %ld, buffer %lu bytes%ls", m_sink.index + 1, (long)pitch, total,
+                       fits ? L"" : L" - too small for the picture, frames skipped");
                 m_logBuffer = false;
             }
-            FitPixels(scan0 + (LONG_PTR)m_cropY * pitch + (SIZE_T)m_cropX * 4, (int)m_cropW, (int)m_cropH, pitch, px, w, h);
+            if (fits)
+                FitPixels(scan0 + (LONG_PTR)m_cropY * pitch + (SIZE_T)m_cropX * 4, (int)m_cropW, (int)m_cropH, pitch, px, w, h);
             b2->Unlock2D();
         }
         else
@@ -893,6 +913,29 @@ private:
                                flags, ts / 10000000.0);
                     m_audioEnded = true;
                     return;
+                }
+                if (flags & MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED)
+                {
+                    // the decoder settled its output (an AC-3 decoder gives 6 channels where the type said 2): read as
+                    // the new type, the device opened again for it
+                    IMFMediaType* at = nullptr;
+                    if (SUCCEEDED(m_audioReader->GetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, &at)))
+                    {
+                        UINT32 nch = MFGetAttributeUINT32(at, MF_MT_AUDIO_NUM_CHANNELS, m_audioCh);
+                        UINT32 nrate = MFGetAttributeUINT32(at, MF_MT_AUDIO_SAMPLES_PER_SECOND, m_audioRate);
+                        at->Release();
+                        if (nch && nrate && (nch != m_audioCh || nrate != m_audioRate))
+                        {
+                            AppLog(L"camera %d: the decoder changed the sound to %u Hz %u ch (was %u Hz %u ch)", m_sink.index + 1,
+                                   nrate, nch, m_audioRate, m_audioCh);
+                            m_audioCh = nch;
+                            m_audioRate = nrate;
+                            ch = nch;
+                            bool wasOpen = m_audio.IsOpen();
+                            m_audio.Close();
+                            if (wasOpen) OpenAudioDevice(false);
+                        }
+                    }
                 }
                 if (!sample) continue;
                 IMFMediaBuffer* buf = nullptr;
@@ -965,6 +1008,7 @@ private:
     IMFSourceReader* m_reader = nullptr;
     IMFSourceReader* m_audioReader = nullptr;   // the same file, sound only
     bool    m_nv12 = false, m_bt709 = true, m_fullRange = false, m_switchToRgb = false;
+    wchar_t m_rgbPath[MAX_PATH] = L"";         // a file whose decoder's NV12 frames could not be used: RGB32 for it
     ULONG*  m_rgb = nullptr;                    // an NV12 frame converted (crop size)
     size_t  m_rgbCap = 0;
     UINT32  m_frameW = 0, m_frameH = 0, m_cropX = 0, m_cropY = 0, m_cropW = 0, m_cropH = 0;
