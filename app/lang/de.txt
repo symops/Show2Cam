@@ -207,7 +207,7 @@ Anzahl der Kameras:
 Name:
 Umbenennen
 Quelle:
-Bilder aus einem Ordner (Wechsel alle 5 s)
+Bilder aus einem Ordner
 Videos aus einem Ordner
 MJPEG-Stream über das Netzwerk
 Durchsuchen…

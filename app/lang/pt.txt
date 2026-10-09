@@ -207,7 +207,7 @@ Aplicar
 Nome:
 Renomear
 Origem:
-Imagens de uma pasta (troca a cada 5 s)
+Imagens de uma pasta
 Vídeos de uma pasta
 Fluxo MJPEG pela rede
 Procurar…

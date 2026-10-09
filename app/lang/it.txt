@@ -207,7 +207,7 @@ Applica
 Nome:
 Rinomina
 Sorgente:
-Immagini da una cartella (cambio ogni 5 s)
+Immagini da una cartella
 Video da una cartella
 Flusso MJPEG in rete
 Sfoglia…

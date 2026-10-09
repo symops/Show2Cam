@@ -207,7 +207,7 @@ Aplicar
 Nombre:
 Cambiar nombre
 Origen:
-Imágenes de una carpeta (cambio cada 5 s)
+Imágenes de una carpeta
 Vídeos de una carpeta
 Flujo MJPEG por la red
 Examinar…

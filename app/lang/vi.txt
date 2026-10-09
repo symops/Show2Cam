@@ -207,7 +207,7 @@ Số camera:
 Tên:
 Đổi tên
 Nguồn:
-Hình ảnh từ thư mục (đổi mỗi 5 giây)
+Hình ảnh từ thư mục
 Video từ thư mục
 Luồng MJPEG qua mạng
 Duyệt…

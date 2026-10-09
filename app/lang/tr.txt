@@ -207,7 +207,7 @@ Uygula
 Ad:
 Yeniden adlandır
 Kaynak:
-Klasördeki görüntüler (her 5 sn'de değişir)
+Klasördeki görüntüler
 Klasördeki videolar
 Ağ üzerinden MJPEG akışı
 Gözat…

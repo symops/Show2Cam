@@ -207,7 +207,7 @@ Terapkan
 Nama:
 Ganti nama
 Sumber:
-Gambar dari folder (berganti setiap 5 dtk)
+Gambar dari folder
 Video dari folder
 Aliran MJPEG lewat jaringan
 Telusuri…

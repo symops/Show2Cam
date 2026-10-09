@@ -207,7 +207,7 @@ Appliquer
 Nom :
 Renommer
 Source :
-Images d’un dossier (changement toutes les 5 s)
+Images d’un dossier
 Vidéos d’un dossier
 Flux MJPEG par le réseau
 Parcourir…

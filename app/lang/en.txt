@@ -207,7 +207,7 @@ Apply
 Name:
 Rename
 Source:
-Images from a folder (change every 5 s)
+Images from a folder
 Videos from a folder
 MJPEG stream over the network
 Browse…

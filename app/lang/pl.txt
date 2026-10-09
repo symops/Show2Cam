@@ -207,7 +207,7 @@ Zastosuj
 Nazwa:
 Zmień nazwy
 Źródło:
-Obrazy z folderu (zmiana co 5 s)
+Obrazy z folderu
 Wideo z folderu
 Strumień MJPEG przez sieć
 Przeglądaj…

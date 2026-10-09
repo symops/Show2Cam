@@ -1508,8 +1508,8 @@ static void Layout()
     Place(IDC_GROUP2, 12, 272, 656, 280);
     Place(IDC_L_NAME, L1, 296, 100, 20);   Place(IDC_NAME, C1, 292, 300, 23);
     Place(IDC_L_RES, L1, 330, 100, 20);    Place(IDC_RES, C1, 326, W1, 300);
-    Place(IDC_L_FPS, 290, 330, C2 - 6 - 290, 20);  Place(IDC_FPS, C2, 326, 80, 300);
-    Place(IDC_L_SOURCE, L1, 364, 100, 20); Place(IDC_SOURCE, C1, 360, W1, 300);
+    Place(IDC_L_FPS, 290, 330, C2 - 6 - 290, 20);  Place(IDC_FPS, C2, 326, W2, 300);
+    Place(IDC_L_SOURCE, L1, 364, 100, 20); Place(IDC_SOURCE, C1, 360, 220, 300);
     Place(IDC_L_PARAM, L1, 398, 100, 20);  Place(IDC_PARAM, C1, 394, R - 160 - C1, 23);
     Place(IDC_BROWSE, R - 154, 392, 74, 27);   Place(IDC_OPENFOLDER, R - 74, 392, 74, 27);
     Place(IDC_L_AUDIO, L1, 432, 100, 20);  Place(IDC_AUDIO, C1, 428, R - C1, 300);
@@ -1602,10 +1602,10 @@ static void CreateControls()
     Create(L"STATIC", TR(L"Источник:"), 0, IDC_L_SOURCE);
     Create(WC_COMBOBOXW, L"", CBS_DROPDOWNLIST | WS_TABSTOP, IDC_SOURCE);
     ComboAdd(IDC_SOURCE, TR(L"Текст"), SourceText);
-    ComboAdd(IDC_SOURCE, TR(L"Изображения из папки (смена каждые 5 с)"), SourceImages);
+    ComboAdd(IDC_SOURCE, TR(L"Изображения из папки"), SourceImages);
     ComboAdd(IDC_SOURCE, TR(L"Видео из папки"), SourceVideo);
     ComboAdd(IDC_SOURCE, TR(L"MJPEG-поток по сети"), SourceStream);
-    ComboAdd(IDC_SOURCE, TR(L"Генератор (движущиеся фигуры)"), SourceGenerator);
+    ComboAdd(IDC_SOURCE, TR(L"Генератор"), SourceGenerator);
     Create(L"STATIC", L"", 0, IDC_L_PARAM);
     Create(L"EDIT", L"", ES_AUTOHSCROLL | WS_TABSTOP, IDC_PARAM, WS_EX_CLIENTEDGE);
     SendMessageW(Ctl(IDC_PARAM), EM_LIMITTEXT, MAX_PATH - 1, 0);

@@ -207,7 +207,7 @@ Toepassen
 Naam:
 Naam wijzigen
 Bron:
-Afbeeldingen uit een map (wisselen elke 5 s)
+Afbeeldingen uit een map
 Video’s uit een map
 MJPEG-stream via het netwerk
 Bladeren…
