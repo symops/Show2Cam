@@ -1518,7 +1518,8 @@ static void CreateControls()
     Create(L"BUTTON", TR(L"Камеры"), BS_GROUPBOX, IDC_GROUP1);
     HWND list = Create(WC_LISTVIEWW, L"", LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | LVS_NOSORTHEADER | WS_TABSTOP, IDC_LIST,
                        WS_EX_CLIENTEDGE);
-    ListView_SetExtendedListViewStyle(list, LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
+    ListView_SetExtendedListViewStyle(list, LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER | LVS_EX_INFOTIP);
+    if (HWND tips = ListView_GetToolTips(list)) SendMessageW(tips, TTM_SETMAXTIPWIDTH, 0, 500);    // long errors wrap
     const wchar_t* cols[5] = { TR(L"Камера"), TR(L"Статус"), TR(L"Источник"), TR(L"Формат"), TR(L"Состояние") };
     for (int i = 0; i < 5; i++)
     {
@@ -1674,6 +1675,20 @@ static void TrayMenu()
 // ---------------------------------------------------------------------------
 // Window procedure
 
+// A camera's source problem (the list shows its source in red and this as the row's tooltip); false: none.
+static bool SourceProblem(int i, wchar_t* out, size_t len)
+{
+    out[0] = 0;
+    if (i < 0 || i >= g_camCount) return false;
+    const CamRunStatus& s = g_cams[i].status;
+    if (!s.deviceOpen) _snwprintf(out, len, L"%ls", TR(L"Нет связи с камерой (драйвер перезапускается?)."));
+    else if (s.state == StateNoSignal) _snwprintf(out, len, TR(L"Нет сигнала: %ls"), s.detail[0] ? s.detail : s.current);
+    else if (s.state == StateNoFiles) _snwprintf(out, len, L"%ls", TR(L"В папке нет подходящих файлов."));
+    else if (s.state == StateError) _snwprintf(out, len, TR(L"Ошибка: %ls"), s.detail);
+    out[len - 1] = 0;
+    return out[0] != 0;
+}
+
 static LRESULT ListCustomDraw(NMLVCUSTOMDRAW* cd)
 {
     switch (cd->nmcd.dwDrawStage)
@@ -1692,6 +1707,12 @@ static LRESULT ListCustomDraw(NMLVCUSTOMDRAW* cd)
         cd->nmcd.uItemState &= ~(CDIS_SELECTED | CDIS_FOCUS);
         cd->clrTextBk = selected ? RGB(204, 228, 247) : GetSysColor(COLOR_WINDOW);
         cd->clrText = GetSysColor(COLOR_WINDOWTEXT);
+        if (cd->iSubItem == 2 && row < g_camCount)
+        {
+            wchar_t t[400];
+            if (SourceProblem(row, t, 400)) cd->clrText = RGB(190, 60, 50);    // details in the row's tooltip
+            return CDRF_NEWFONT;
+        }
         if (cd->iSubItem == 1 && row < g_camCount)
         {
             // Status: drawn, not a font glyph (fonts without the symbols showed boxes): a green triangle while the
@@ -1936,6 +1957,19 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
                 }
                 return TRUE;
             }
+        }
+        if (h->idFrom == IDC_LIST && h->code == LVN_GETINFOTIPW)
+        {
+            // a source error as the row's tooltip
+            NMLVGETINFOTIPW* tip = (NMLVGETINFOTIPW*)lp;
+            wchar_t t[400];
+            if (tip->pszText && tip->cchTextMax > 0)
+            {
+                if (SourceProblem(tip->iItem, t, 400)) wcsncpy(tip->pszText, t, tip->cchTextMax - 1);
+                else tip->pszText[0] = 0;
+                tip->pszText[tip->cchTextMax - 1] = 0;
+            }
+            return 0;
         }
         if (h->idFrom == IDC_LIST && h->code == NM_DBLCLK && !g_updating)
         {
