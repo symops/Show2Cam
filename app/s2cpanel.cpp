@@ -31,7 +31,7 @@ enum
     IDC_RESET_ALL = 100, IDC_L_LANG, IDC_LANG,
     IDC_GROUP1, IDC_LIST, IDC_L_COUNT, IDC_COUNT, IDC_COUNT_APPLY,
     IDC_GROUP2, IDC_L_NAME, IDC_NAME, IDC_L_SOURCE, IDC_SOURCE, IDC_L_PARAM, IDC_PARAM, IDC_BROWSE,
-    IDC_L_AUDIO, IDC_AUDIO, IDC_L_RES, IDC_RES, IDC_L_FPS, IDC_FPS, IDC_CAM_STATUS, IDC_TEST, IDC_PLAY, IDC_CAM_APPLY,
+    IDC_L_AUDIO, IDC_AUDIO, IDC_L_RES, IDC_RES, IDC_L_FPS, IDC_FPS, IDC_TEST, IDC_PLAY, IDC_CAM_APPLY,
     IDC_EVENTS, IDC_CLEARLOG, IDC_AUTOSTART, IDC_EXPORT, IDC_IMPORT,
 };
 
@@ -663,56 +663,6 @@ static void UpdatePlayButton()
     EnableWindow(Ctl(IDC_TEST), ok);
 }
 
-// The selected camera's status line.
-static void ShowCamStatus()
-{
-    if (g_sel < 0)
-    {
-        SetText(IDC_CAM_STATUS, g_camCount ? L"" : TR(L"Камеры Show2Cam не найдены: драйвер не установлен или перезапускается."));
-        return;
-    }
-    const CamRunStatus& s = g_cams[g_sel].status;
-    // (the format, and who uses the camera, are in the list)
-    wchar_t line1[400] = L"", line2[400] = L"";
-    if (!s.deviceOpen) wcscpy(line1, TR(L"Нет связи с камерой (драйвер перезапускается?)."));
-    else if (s.formatWaiting)
-    {
-        wchar_t want[80];
-        FormatText(want, 80, s.wantW, s.wantH, s.wantFps);
-        _snwprintf(line1, 400, TR(L"станет %ls, когда камеру закроют"), want);
-        CharUpperBuffW(line1, 1);
-    }
-    line1[399] = 0;
-    switch (s.state)
-    {
-    case StateNoSignal: _snwprintf(line2, 400, TR(L"Нет сигнала: %ls"), s.detail[0] ? s.detail : s.current); break;
-    case StateNoFiles:  wcscpy(line2, TR(L"В папке нет подходящих файлов.")); break;
-    case StateError:    _snwprintf(line2, 400, TR(L"Ошибка: %ls"), s.detail); break;
-    case StateOk:
-        if (s.sourceW && s.current[0] && g_cams[g_sel].config.kind != SourceText && g_cams[g_sel].config.kind != SourceStream)
-            wcsncat(line2, FileName(s.current), 399 - wcslen(line2));
-        if (g_cams[g_sel].config.kind == SourceVideo)
-        {
-            if (line2[0]) wcsncat(line2, L" · ", 399 - wcslen(line2));
-            if (s.audio[0])
-            {
-                wchar_t a[300];
-                _snwprintf(a, 300, TR(L"звук: %ls"), s.audio);
-                a[299] = 0;
-                wcsncat(line2, a, 399 - wcslen(line2));
-            }
-            else wcsncat(line2, TR(L"без звука"), 399 - wcslen(line2));
-        }
-        break;
-    default: break;
-    }
-    line2[399] = 0;
-    wchar_t all[820];
-    _snwprintf(all, 820, line1[0] && line2[0] ? L"%ls\n%ls" : L"%ls%ls", line1, line2);
-    all[819] = 0;
-    SetText(IDC_CAM_STATUS, all);
-}
-
 static void ShowSelected(bool keepEdits)
 {
     bool ok = g_sel >= 0 && g_sel < g_camCount;
@@ -727,7 +677,6 @@ static void ShowSelected(bool keepEdits)
     if (!ok)
     {
         UpdatePlayButton();
-        ShowCamStatus();
         return;
     }
     if (!keepEdits || g_editCam != g_cams[g_sel].info.index) g_edit = g_cams[g_sel].config;
@@ -763,7 +712,6 @@ static void ShowSelected(bool keepEdits)
     g_updating = false;
     UpdatePlayButton();
     UpdateCamApply();
-    ShowCamStatus();
 }
 
 // The selected camera's settings are edited in a copy (g_edit) and take effect with "Apply"; switching to another
@@ -877,7 +825,6 @@ static void OnCamApply()
     if (now.kind == SourceStream && wcscmp(now.url, old.url)) AddEventF(TR(L"Камера «%ls»: MJPEG-поток %ls."), name, now.url);
     AddEventF(TR(L"Камера «%ls»: настройки применены."), name);
     UpdateListRow(g_sel);
-    ShowCamStatus();
     UpdateCamApply();
 }
 
@@ -1459,7 +1406,6 @@ static void OnCamEvent(int i, int ev)
         break;
     }
     UpdateListRow(i);
-    if (i == g_sel) ShowCamStatus();
 }
 
 // ---------------------------------------------------------------------------
@@ -1524,7 +1470,7 @@ static void Layout()
     Place(IDC_COUNT_APPLY, 260, 224, 140, 27);
     ListColumns();
 
-    Place(IDC_GROUP2, 12, 272, 656, 280);
+    Place(IDC_GROUP2, 12, 272, 656, 228);
     Place(IDC_L_NAME, L1, 296, 100, 20);   Place(IDC_NAME, C1, 292, 300, 23);
     Place(IDC_L_RES, L1, 330, 100, 20);    Place(IDC_RES, C1, 326, W1, 300);
     Place(IDC_L_FPS, 290, 330, C2 - 6 - 290, 20);  Place(IDC_FPS, C2, 326, W2, 300);
@@ -1532,14 +1478,13 @@ static void Layout()
     Place(IDC_L_PARAM, L1, 398, 100, 20);  Place(IDC_PARAM, C1, 394, R - 80 - C1, 23);
     Place(IDC_BROWSE, R - 74, 392, 74, 27);
     Place(IDC_L_AUDIO, L1, 432, 100, 20);  Place(IDC_AUDIO, C1, 428, R - C1, 300);
-    Place(IDC_CAM_STATUS, L1, 460, R - L1, 52);
-    Place(IDC_TEST, L1, 516, 150, 28);     Place(IDC_PLAY, L1 + 156, 516, 110, 28);
-    Place(IDC_CAM_APPLY, C2, 516, W2, 28);
+    Place(IDC_TEST, L1, 464, 150, 28);     Place(IDC_PLAY, L1 + 156, 464, 110, 28);
+    Place(IDC_CAM_APPLY, C2, 464, W2, 28);
     if (g_sel >= 0) LayoutParamRow(g_cams[g_sel].config.kind);
 
-    Place(IDC_EVENTS, L1, 562, R - 38 - L1, 300);
-    Place(IDC_CLEARLOG, R - 32, 560, 32, 26);
-    Place(IDC_AUTOSTART, L1, 594, R - L1, 22);
+    Place(IDC_EVENTS, L1, 510, R - 38 - L1, 300);
+    Place(IDC_CLEARLOG, R - 32, 508, 32, 26);
+    Place(IDC_AUTOSTART, L1, 542, R - L1, 22);
     if (g_eventsWidest) FitEventList(nullptr);
 }
 
@@ -1631,7 +1576,6 @@ static void CreateControls()
     Create(L"BUTTON", TR(L"Обзор…"), BS_PUSHBUTTON | WS_TABSTOP, IDC_BROWSE);
     Create(L"STATIC", TR(L"Звук видео:"), 0, IDC_L_AUDIO);
     Create(WC_COMBOBOXW, L"", CBS_DROPDOWNLIST | WS_TABSTOP | WS_VSCROLL, IDC_AUDIO);
-    Create(L"STATIC", L"", SS_EDITCONTROL | SS_NOPREFIX, IDC_CAM_STATUS);   // up to 3 lines, long paths wrap
     Create(L"BUTTON", TR(L"Проверка"), BS_PUSHBUTTON | WS_TABSTOP, IDC_TEST);
     Create(L"BUTTON", TR(L"Пауза"), BS_PUSHBUTTON | WS_TABSTOP, IDC_PLAY);
     Create(L"BUTTON", TR(L"Применить"), BS_PUSHBUTTON | WS_TABSTOP, IDC_CAM_APPLY);
@@ -1883,7 +1827,6 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
                 RunnerGetStatus(g_cams[i].runner, &g_cams[i].status);
                 UpdateListRow(i);
             }
-            ShowCamStatus();
             // The cameras changed (driver installed / restarted elsewhere): look again every ~3 s.
             static int tick;
             if (++tick % 6 == 0) ScanCameras(true);
@@ -2201,7 +2144,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show)
     RegisterClassExW(&wc);
 
     UINT dpi = GetDpiForSystem();
-    RECT r = { 0, 0, MulDiv(680, (int)dpi, 96), MulDiv(626, (int)dpi, 96) };
+    RECT r = { 0, 0, MulDiv(680, (int)dpi, 96), MulDiv(574, (int)dpi, 96) };
     DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
     AdjustWindowRectExForDpi(&r, style, FALSE, WS_EX_CONTROLPARENT, dpi);
     wchar_t title[160];
