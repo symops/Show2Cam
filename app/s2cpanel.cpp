@@ -30,7 +30,7 @@ enum
 {
     IDC_RESET_ALL = 100, IDC_L_LANG, IDC_LANG,
     IDC_GROUP1, IDC_LIST, IDC_L_COUNT, IDC_COUNT, IDC_COUNT_APPLY,
-    IDC_GROUP2, IDC_L_NAME, IDC_NAME, IDC_RENAME, IDC_L_SOURCE, IDC_SOURCE, IDC_L_PARAM, IDC_PARAM, IDC_BROWSE, IDC_OPENFOLDER,
+    IDC_GROUP2, IDC_L_NAME, IDC_NAME, IDC_L_SOURCE, IDC_SOURCE, IDC_L_PARAM, IDC_PARAM, IDC_BROWSE, IDC_OPENFOLDER,
     IDC_L_AUDIO, IDC_AUDIO, IDC_L_RES, IDC_RES, IDC_L_FPS, IDC_FPS, IDC_CAM_STATUS, IDC_TEST, IDC_PLAY, IDC_CAM_APPLY,
     IDC_EVENTS, IDC_CLEARLOG, IDC_AUTOSTART, IDC_EXPORT, IDC_IMPORT,
 };
@@ -664,18 +664,6 @@ static void UpdatePlayButton()
     EnableWindow(Ctl(IDC_TEST), ok);
 }
 
-static void UpdateRenameButton()
-{
-    if (g_sel < 0)
-    {
-        EnableWindow(Ctl(IDC_RENAME), FALSE);
-        return;
-    }
-    wchar_t want[S2C_NAME_CHARS];
-    GetWindowTextW(Ctl(IDC_NAME), want, S2C_NAME_CHARS);
-    EnableWindow(Ctl(IDC_RENAME), wcscmp(want, g_cams[g_sel].info.name) != 0);
-}
-
 // The selected camera's status line.
 static void ShowCamStatus()
 {
@@ -749,7 +737,6 @@ static void ShowSelected(bool keepEdits)
     if (!ok)
     {
         UpdatePlayButton();
-        UpdateRenameButton();
         ShowCamStatus();
         return;
     }
@@ -785,7 +772,6 @@ static void ShowSelected(bool keepEdits)
     }
     g_updating = false;
     UpdatePlayButton();
-    UpdateRenameButton();
     UpdateCamApply();
     ShowCamStatus();
 }
@@ -803,9 +789,12 @@ static bool EditDirty()
            a.width != b.width || a.height != b.height || a.fps != b.fps;
 }
 
+static bool NameDirty();
+
+// "Apply" takes the settings and a new name.
 static void UpdateCamApply()
 {
-    EnableWindow(Ctl(IDC_CAM_APPLY), EditDirty());
+    EnableWindow(Ctl(IDC_CAM_APPLY), EditDirty() || NameDirty());
 }
 
 // The name typed (spaces at the ends dropped).
@@ -820,7 +809,7 @@ static void TypedName(wchar_t* out)
     while (n && out[n - 1] == L' ') out[--n] = 0;
 }
 
-// A new name typed but not given to the camera yet ("Rename" not pressed).
+// A new name typed but not given to the camera yet ("Apply" not pressed).
 static bool NameDirty()
 {
     if (g_sel < 0 || g_sel >= g_camCount) return false;
@@ -877,9 +866,16 @@ static void ShowEditParam()
     g_updating = false;
 }
 
+static void OnRename();
+
 static void OnCamApply()
 {
-    if (!EditDirty()) return;
+    if (NameDirty()) OnRename();                    // keeps the unsaved settings in the form
+    if (!EditDirty())
+    {
+        UpdateCamApply();
+        return;
+    }
     Cam& cam = g_cams[g_sel];
     CamConfig old = cam.config;
     CamConfig now = g_edit;
@@ -895,8 +891,6 @@ static void OnCamApply()
     UpdateCamApply();
 }
 
-static void OnRename();
-
 // Unsaved changes of the selected camera (settings or a new name): keep them (Yes), drop them (No) or stay (Cancel:
 // returns false).
 static bool AskSaveEdits()
@@ -908,11 +902,7 @@ static bool AskSaveEdits()
     q[299] = 0;
     int r = MessageBoxW(g_wnd, q, L"Show2Cam", MB_YESNOCANCEL | MB_ICONQUESTION);
     if (r == IDCANCEL) return false;
-    if (r == IDYES)
-    {
-        if (settings) OnCamApply();
-        if (name) OnRename();
-    }
+    if (r == IDYES) OnCamApply();
     else
     {
         g_edit = g_cams[g_sel].config;              // dropped
@@ -1522,7 +1512,7 @@ static void Layout()
     ListColumns();
 
     Place(IDC_GROUP2, 12, 272, 656, 280);
-    Place(IDC_L_NAME, 24, 296, 100, 20);   Place(IDC_NAME, 130, 292, 362, 23);   Place(IDC_RENAME, 500, 291, 152, 27);
+    Place(IDC_L_NAME, 24, 296, 100, 20);   Place(IDC_NAME, 130, 292, 522, 23);
     Place(IDC_L_RES, 24, 330, 100, 20);    Place(IDC_RES, 130, 326, 210, 300);
     Place(IDC_L_FPS, 344, 330, 140, 20);   Place(IDC_FPS, 490, 326, 162, 300);
     Place(IDC_L_SOURCE, 24, 364, 100, 20); Place(IDC_SOURCE, 130, 360, 362, 300);
@@ -1597,7 +1587,6 @@ static void CreateControls()
     Create(L"STATIC", TR(L"Имя:"), 0, IDC_L_NAME);
     Create(L"EDIT", L"", ES_AUTOHSCROLL | WS_TABSTOP, IDC_NAME, WS_EX_CLIENTEDGE);
     SendMessageW(Ctl(IDC_NAME), EM_LIMITTEXT, S2C_NAME_CHARS - 1, 0);
-    Create(L"BUTTON", TR(L"Переименовать"), BS_PUSHBUTTON | WS_TABSTOP, IDC_RENAME);
     Create(L"STATIC", TR(L"Разрешение:"), 0, IDC_L_RES);
     Create(WC_COMBOBOXW, L"", CBS_DROPDOWNLIST | WS_TABSTOP | WS_VSCROLL, IDC_RES);
     ComboAdd(IDC_RES, TR(L"Как у источника"), 0);
@@ -2036,11 +2025,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             g_updating = false;
         }
         else if (code == EN_CHANGE && id == IDC_PARAM) ReadParamToEdit();
-        else if (code == EN_CHANGE && id == IDC_NAME) UpdateRenameButton();
+        else if (code == EN_CHANGE && id == IDC_NAME) UpdateCamApply();
         else if (code == BN_CLICKED)
         {
-            if (id == IDC_RENAME) OnRename();
-            else if (id == IDC_BROWSE) OnBrowse();
+            if (id == IDC_BROWSE) OnBrowse();
             else if (id == IDC_OPENFOLDER) OnOpenFolder();
             else if (id == IDC_TEST) OnTest();
             else if (id == IDC_PLAY) OnPlay(g_sel);
@@ -2067,8 +2055,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         if (wp == S2C_CLOSE_FOR_SETUP)
         {
             // The installer closes the panel to replace its files: no question, unsaved settings are kept (applied).
-            if (EditDirty()) OnCamApply();
-            if (NameDirty()) OnRename();
+            OnCamApply();
         }
         else
         {
