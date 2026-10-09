@@ -360,23 +360,33 @@ static HRESULT CaptureOpen(const CamInfo& cam, Capture* c, UINT32 wantW = 0, UIN
     const DWORD stream = (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM;
     // The reader starts from the camera's own type: the wanted size is chosen on it as well (also after the source
     // took it - a reader created afterwards gave the camera's own size).
+    bool nativeRgb = false;
     if (SUCCEEDED(hr) && wantW)
     {
+        // The camera's own RGB32 type of that size (the driver offers RGB32 for every size): asking the reader for a
+        // plain RGB32 afterwards made it pick the first native RGB32 type - the camera's own size - instead.
         hr = MF_E_INVALIDMEDIATYPE;
-        IMFMediaType* t = nullptr;
-        for (DWORD i = 0; hr == (HRESULT)MF_E_INVALIDMEDIATYPE && SUCCEEDED(c->reader->GetNativeMediaType(stream, i, &t)); i++)
+        for (int pass = 0; pass < 2 && hr == (HRESULT)MF_E_INVALIDMEDIATYPE; pass++)
         {
-            UINT32 w = 0, h = 0;
-            MFGetAttributeSize(t, MF_MT_FRAME_SIZE, &w, &h);
-            if (w == wantW && h == wantH)
+            IMFMediaType* t = nullptr;
+            for (DWORD i = 0; hr == (HRESULT)MF_E_INVALIDMEDIATYPE && SUCCEEDED(c->reader->GetNativeMediaType(stream, i, &t)); i++)
             {
-                if (fps) MFSetAttributeRatio(t, MF_MT_FRAME_RATE, fps, 1);
-                hr = c->reader->SetCurrentMediaType(stream, nullptr, t);
+                UINT32 w = 0, h = 0;
+                GUID sub = {};
+                MFGetAttributeSize(t, MF_MT_FRAME_SIZE, &w, &h);
+                t->GetGUID(MF_MT_SUBTYPE, &sub);
+                bool rgb = IsEqualGUID(sub, MFVideoFormat_RGB32);
+                if (w == wantW && h == wantH && (pass == 1 || rgb))
+                {
+                    if (fps) MFSetAttributeRatio(t, MF_MT_FRAME_RATE, fps, 1);
+                    hr = c->reader->SetCurrentMediaType(stream, nullptr, t);
+                    nativeRgb = SUCCEEDED(hr) && rgb;
+                }
+                t->Release();
             }
-            t->Release();
         }
     }
-    if (SUCCEEDED(hr))
+    if (SUCCEEDED(hr) && !nativeRgb)
     {
         IMFMediaType* rgb = nullptr;
         hr = MFCreateMediaType(&rgb);
@@ -1074,6 +1084,10 @@ static void ActionVideos()
             if (mic.rms > 0.003)
             {
                 if (mic.tone > 0.3) Check(true, L"the clip's 1 kHz tone: %.0f %% of the sound", mic.tone * 100);
+                else if (mic.peakHz >= 960 && mic.peakHz <= 1040)
+                    // a short clip played over and over: gaps between the passes, but the sound is the tone
+                    Check(true, L"the clip's 1 kHz tone is the strongest frequency (~%d Hz, %.0f %% of the sound)", mic.peakHz,
+                          mic.tone * 100);
                 else Warn(L"the 1 kHz tone is only %.0f %% of the sound; strongest frequency ~%d Hz (microphone %u Hz %u ch)",
                           mic.tone * 100, mic.peakHz, mic.rate, mic.channels);
             }
