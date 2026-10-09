@@ -647,7 +647,7 @@ static void LayoutParamRow(int kind)
     ShowWindow(Ctl(IDC_PARAM), kind == SourceGenerator ? SW_HIDE : SW_SHOW);
     ShowWindow(Ctl(IDC_BROWSE), folder ? SW_SHOW : SW_HIDE);
     ShowWindow(Ctl(IDC_OPENFOLDER), folder ? SW_SHOW : SW_HIDE);
-    SetWindowPos(Ctl(IDC_PARAM), nullptr, S(130), S(394), S(folder ? 282 : 442), S(23), SWP_NOZORDER | SWP_NOACTIVATE);
+    SetWindowPos(Ctl(IDC_PARAM), nullptr, S(130), S(394), S(folder ? 362 : 522), S(23), SWP_NOZORDER | SWP_NOACTIVATE);
     ShowWindow(Ctl(IDC_L_AUDIO), kind == SourceVideo ? SW_SHOW : SW_HIDE);
     ShowWindow(Ctl(IDC_AUDIO), kind == SourceVideo ? SW_SHOW : SW_HIDE);
     SetText(IDC_L_PARAM, kind == SourceText ? TR(L"Текст:") : (kind == SourceStream ? TR(L"Адрес:") : TR(L"Папка:")));
@@ -685,17 +685,17 @@ static void ShowCamStatus()
         return;
     }
     const CamRunStatus& s = g_cams[g_sel].status;
-    wchar_t line1[400], line2[400] = L"", fmt[80];
+    wchar_t line1[400], line2[400] = L"";
     if (!s.deviceOpen) wcscpy(line1, TR(L"Нет связи с камерой (драйвер перезапускается?)."));
     else
     {
-        FormatText(fmt, 80, s.driver.Width, s.driver.Height, s.driver.Fps);
         wchar_t users[300], inUse[340];
         UsersText(s, users, 300);
         if (users[0]) _snwprintf(inUse, 340, TR(L"используется: %ls"), users);
         else wcscpy(inUse, TR(L"не используется"));
         inUse[339] = 0;
-        _snwprintf(line1, 400, L"%ls: %ls · %ls", TR(L"Камера"), fmt, inUse);
+        wcscpy(line1, inUse);      // the format is in the list's Format column
+        CharUpperBuffW(line1, 1);
         if (s.formatWaiting)
         {
             wchar_t want[80];
@@ -711,18 +711,11 @@ static void ShowCamStatus()
     case StateNoFiles:  wcscpy(line2, TR(L"В папке нет подходящих файлов.")); break;
     case StateError:    _snwprintf(line2, 400, TR(L"Ошибка: %ls"), s.detail); break;
     case StateOk:
-        if (s.sourceW && g_cams[g_sel].config.kind != SourceText)
-        {
-            _snwprintf(line2, 400, TR(L"Источник: %lu×%lu"), s.sourceW, s.sourceH);
-            if (s.current[0] && g_cams[g_sel].config.kind != SourceStream)
-            {
-                wcsncat(line2, L" · ", 399 - wcslen(line2));
-                wcsncat(line2, FileName(s.current), 399 - wcslen(line2));
-            }
-        }
+        if (s.sourceW && s.current[0] && g_cams[g_sel].config.kind != SourceText && g_cams[g_sel].config.kind != SourceStream)
+            wcsncat(line2, FileName(s.current), 399 - wcslen(line2));
         if (g_cams[g_sel].config.kind == SourceVideo)
         {
-            wcsncat(line2, L" · ", 399 - wcslen(line2));
+            if (line2[0]) wcsncat(line2, L" · ", 399 - wcslen(line2));
             if (s.audio[0])
             {
                 wchar_t a[300];
@@ -967,15 +960,16 @@ static void OnFormatChanged()
     UpdateCamApply();
 }
 
-static void OnPlay()
+// The "Pause / Play" button (the selected camera) or a double click in the Status column (that row's camera).
+static void OnPlay(int i)
 {
-    if (g_sel < 0) return;
-    CamConfig& c = g_cams[g_sel].config;
+    if (i < 0 || i >= g_camCount) return;
+    CamConfig& c = g_cams[i].config;
     c.paused = !c.paused;
-    ApplyConfig(g_sel);
-    AddEventF(c.paused ? TR(L"Камера «%ls»: пауза.") : TR(L"Камера «%ls»: воспроизведение."), g_cams[g_sel].info.name);
+    ApplyConfig(i);
+    AddEventF(c.paused ? TR(L"Камера «%ls»: пауза.") : TR(L"Камера «%ls»: воспроизведение."), g_cams[i].info.name);
     UpdatePlayButton();
-    UpdateListRow(g_sel);
+    UpdateListRow(i);
 }
 
 static void OnRename()
@@ -1500,38 +1494,49 @@ static void ApplyFonts()
 
 static void ListColumns()
 {
+    // The last column takes the rest, leaving room for the vertical scroll bar: no horizontal one.
     HWND list = Ctl(IDC_LIST);
-    const int widths[5] = { 134, 50, 140, 104, 112 };
-    for (int i = 0; i < 5; i++) ListView_SetColumnWidth(list, i, S(widths[i]));
+    const int widths[4] = { 150, 56, 170, 110 };
+    int used = 0;
+    for (int i = 0; i < 4; i++)
+    {
+        ListView_SetColumnWidth(list, i, S(widths[i]));
+        used += S(widths[i]);
+    }
+    RECT rc;
+    GetClientRect(list, &rc);
+    int inner = rc.right;
+    if (!(GetWindowLongW(list, GWL_STYLE) & WS_VSCROLL)) inner -= GetSystemMetricsForDpi(SM_CXVSCROLL, g_dpi);
+    ListView_SetColumnWidth(list, 4, inner - used > S(80) ? inner - used : S(80));
 }
 
 static void Layout()
 {
     Place(IDC_RESET_ALL, 12, 7, 32, 28);   Place(IDC_EXPORT, 48, 7, 32, 28);   Place(IDC_IMPORT, 84, 7, 32, 28);
-    Place(IDC_L_LANG, 300, 12, 120, 20);   Place(IDC_LANG, 428, 8, 160, 400);
+    Place(IDC_L_LANG, 380, 12, 120, 20);   Place(IDC_LANG, 508, 8, 160, 400);
 
-    Place(IDC_GROUP1, 12, 42, 576, 222);
-    Place(IDC_LIST, 24, 64, 552, 154);
+    Place(IDC_GROUP1, 12, 42, 656, 222);
+    Place(IDC_LIST, 24, 64, 632, 154);
     Place(IDC_L_COUNT, 24, 230, 150, 20);  Place(IDC_COUNT, 180, 226, 70, 300);
     Place(IDC_COUNT_APPLY, 260, 225, 140, 27);
     ListColumns();
 
-    Place(IDC_GROUP2, 12, 272, 576, 280);
-    Place(IDC_L_NAME, 24, 296, 100, 20);   Place(IDC_NAME, 130, 292, 282, 23);   Place(IDC_RENAME, 420, 291, 152, 27);
-    Place(IDC_L_RES, 24, 330, 100, 20);    Place(IDC_RES, 130, 326, 170, 300);
-    Place(IDC_L_FPS, 304, 330, 140, 20);   Place(IDC_FPS, 450, 326, 122, 300);
-    Place(IDC_L_SOURCE, 24, 364, 100, 20); Place(IDC_SOURCE, 130, 360, 282, 300);
-    Place(IDC_L_PARAM, 24, 398, 100, 20);  Place(IDC_PARAM, 130, 394, 282, 23);
-    Place(IDC_BROWSE, 420, 393, 74, 27);   Place(IDC_OPENFOLDER, 498, 393, 74, 27);
-    Place(IDC_L_AUDIO, 24, 432, 100, 20);  Place(IDC_AUDIO, 130, 428, 442, 300);
-    Place(IDC_CAM_STATUS, 24, 460, 548, 52);
+    Place(IDC_GROUP2, 12, 272, 656, 280);
+    Place(IDC_L_NAME, 24, 296, 100, 20);   Place(IDC_NAME, 130, 292, 362, 23);   Place(IDC_RENAME, 500, 291, 152, 27);
+    Place(IDC_L_RES, 24, 330, 100, 20);    Place(IDC_RES, 130, 326, 210, 300);
+    Place(IDC_L_FPS, 344, 330, 140, 20);   Place(IDC_FPS, 490, 326, 162, 300);
+    Place(IDC_L_SOURCE, 24, 364, 100, 20); Place(IDC_SOURCE, 130, 360, 362, 300);
+    Place(IDC_L_PARAM, 24, 398, 100, 20);  Place(IDC_PARAM, 130, 394, 362, 23);
+    Place(IDC_BROWSE, 500, 393, 74, 27);   Place(IDC_OPENFOLDER, 578, 393, 74, 27);
+    Place(IDC_L_AUDIO, 24, 432, 100, 20);  Place(IDC_AUDIO, 130, 428, 522, 300);
+    Place(IDC_CAM_STATUS, 24, 460, 628, 52);
     Place(IDC_TEST, 24, 516, 150, 28);     Place(IDC_PLAY, 180, 516, 110, 28);
-    Place(IDC_CAM_APPLY, 412, 516, 160, 28);
+    Place(IDC_CAM_APPLY, 492, 516, 160, 28);
     if (g_sel >= 0) LayoutParamRow(g_cams[g_sel].config.kind);
 
-    Place(IDC_EVENTS, 24, 562, 512, 300);
-    Place(IDC_CLEARLOG, 542, 560, 32, 26);
-    Place(IDC_AUTOSTART, 24, 594, 548, 22);
+    Place(IDC_EVENTS, 24, 562, 592, 300);
+    Place(IDC_CLEARLOG, 622, 560, 32, 26);
+    Place(IDC_AUTOSTART, 24, 594, 628, 22);
     if (g_eventsWidest) FitEventList(nullptr);
 }
 
@@ -1988,6 +1993,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
                 return TRUE;
             }
         }
+        if (h->idFrom == IDC_LIST && h->code == NM_DBLCLK && !g_updating)
+        {
+            LVHITTESTINFO hit = {};
+            hit.pt = ((NMITEMACTIVATE*)lp)->ptAction;
+            if (ListView_SubItemHitTest(h->hwndFrom, &hit) >= 0 && hit.iItem >= 0 && hit.iSubItem == 1) OnPlay(hit.iItem);
+            return 0;
+        }
         if (h->idFrom == IDC_LIST && h->code == LVN_ITEMCHANGED && !g_updating)
         {
             NMLISTVIEW* nm = (NMLISTVIEW*)lp;
@@ -2031,7 +2043,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             else if (id == IDC_BROWSE) OnBrowse();
             else if (id == IDC_OPENFOLDER) OnOpenFolder();
             else if (id == IDC_TEST) OnTest();
-            else if (id == IDC_PLAY) OnPlay();
+            else if (id == IDC_PLAY) OnPlay(g_sel);
             else if (id == IDC_CAM_APPLY) OnCamApply();
             else if (id == IDC_COUNT_APPLY) OnCountApply();
             else if (id == IDC_RESET_ALL) OnResetAll();
@@ -2191,7 +2203,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show)
     RegisterClassExW(&wc);
 
     UINT dpi = GetDpiForSystem();
-    RECT r = { 0, 0, MulDiv(600, (int)dpi, 96), MulDiv(626, (int)dpi, 96) };
+    RECT r = { 0, 0, MulDiv(680, (int)dpi, 96), MulDiv(626, (int)dpi, 96) };
     DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
     AdjustWindowRectExForDpi(&r, style, FALSE, WS_EX_CONTROLPARENT, dpi);
     wchar_t title[160];
