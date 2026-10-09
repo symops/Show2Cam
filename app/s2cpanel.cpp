@@ -47,6 +47,7 @@ enum { IDM_TRAY_OPEN = 40001, IDM_TRAY_EXIT };
 static HINSTANCE g_inst;
 static HWND      g_wnd;
 static HFONT     g_font, g_fontBold;
+static HWND      g_listTip;            // the list's cell tooltips (ListTipText)
 static HICON     g_toolIcons[4];          // reset / clear log / export / import (resources 10..13)
 static UINT      g_dpi = 96;
 static bool      g_elevated, g_updating;
@@ -1436,6 +1437,7 @@ static void ApplyFonts()
     g_font = CreateFontW(-MulDiv(9, (int)g_dpi, 72), 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
     g_fontBold = CreateFontW(-MulDiv(9, (int)g_dpi, 72), 0, 0, 0, FW_SEMIBOLD, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
     for (HWND c = GetWindow(g_wnd, GW_CHILD); c; c = GetWindow(c, GW_HWNDNEXT)) SendMessageW(c, WM_SETFONT, (WPARAM)g_font, TRUE);
+    if (g_listTip) SendMessageW(g_listTip, WM_SETFONT, (WPARAM)g_font, FALSE);
 }
 
 static void ListColumns()
@@ -1506,7 +1508,6 @@ static void AddTip(HWND tip, int id, const wchar_t* text)
     SendMessageW(tip, TTM_ADDTOOLW, 0, (LPARAM)&ti);
 }
 
-static HWND g_listTip;              // the list's cell tooltips (ListTipText)
 static LRESULT CALLBACK ListTipProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR);
 
 static void CreateControls()
@@ -1535,6 +1536,7 @@ static void CreateControls()
         ti.lpszText = LPSTR_TEXTCALLBACKW;
         SendMessageW(g_listTip, TTM_ADDTOOLW, 0, (LPARAM)&ti);
         SendMessageW(g_listTip, TTM_SETMAXTIPWIDTH, 0, 500);                 // long errors and paths wrap
+        SendMessageW(g_listTip, WM_SETFONT, (WPARAM)g_font, FALSE);           // the list's font (shown over the cell)
         SetWindowSubclass(list, ListTipProc, 0, 0);
     }
     const wchar_t* cols[5] = { TR(L"Камера"), TR(L"Статус"), TR(L"Источник"), TR(L"Формат"), TR(L"Состояние") };
@@ -1734,10 +1736,15 @@ static void ListTipText(NMTTDISPINFOW* info)
     bool bad = SourceProblem(row, problem, 400);
     if (col == 2)
     {
-        ListView_GetItemText(list, row, 2, t, 600);
+        // the source itself (as the cell shows it, without its kind: "Video: ")
+        const Cam& c = g_cams[row];
+        if (c.config.kind == SourceText) wcsncpy(t, c.config.text, 599);
+        else if (c.config.kind == SourceStream) wcsncpy(t, c.config.url, 599);
+        else if (c.config.kind != SourceGenerator && c.status.current[0]) wcsncpy(t, FileName(c.status.current), 599);
+        t[599] = 0;
         if (bad)
         {
-            wcsncat(t, L"\n", 1099 - wcslen(t));
+            if (t[0]) wcsncat(t, L"\n", 1099 - wcslen(t));
             wcsncat(t, problem, 1099 - wcslen(t));
         }
     }
@@ -2040,6 +2047,19 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         {
             ListTipText((NMTTDISPINFOW*)lp);
             return 0;
+        }
+        if (h->code == TTN_SHOW && g_listTip && h->hwndFrom == g_listTip && g_listTipCell >= 0 && g_listTipCell % 8 == 2)
+        {
+            // over the Source cell, as the list's own tip of the Camera column
+            HWND list = Ctl(IDC_LIST);
+            RECT rc;
+            if (ListView_GetSubItemRect(list, g_listTipCell / 8, 2, LVIR_LABEL, &rc))
+            {
+                MapWindowPoints(list, nullptr, (POINT*)&rc, 2);
+                SendMessageW(g_listTip, TTM_ADJUSTRECT, TRUE, (LPARAM)&rc);
+                SetWindowPos(g_listTip, nullptr, rc.left, rc.top, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+                return TRUE;
+            }
         }
         if (h->idFrom == IDC_LIST && h->code == NM_DBLCLK && !g_updating)
         {
