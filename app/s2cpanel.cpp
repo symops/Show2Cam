@@ -647,7 +647,7 @@ static void LayoutParamRow(int kind)
     ShowWindow(Ctl(IDC_PARAM), kind == SourceGenerator ? SW_HIDE : SW_SHOW);
     ShowWindow(Ctl(IDC_BROWSE), folder ? SW_SHOW : SW_HIDE);
     ShowWindow(Ctl(IDC_OPENFOLDER), folder ? SW_SHOW : SW_HIDE);
-    SetWindowPos(Ctl(IDC_PARAM), nullptr, S(130), S(394), S(folder ? 362 : 522), S(23), SWP_NOZORDER | SWP_NOACTIVATE);
+    SetWindowPos(Ctl(IDC_PARAM), nullptr, S(130), S(394), S(folder ? 366 : 526), S(23), SWP_NOZORDER | SWP_NOACTIVATE);  // as in Layout
     ShowWindow(Ctl(IDC_L_AUDIO), kind == SourceVideo ? SW_SHOW : SW_HIDE);
     ShowWindow(Ctl(IDC_AUDIO), kind == SourceVideo ? SW_SHOW : SW_HIDE);
     SetText(IDC_L_PARAM, kind == SourceText ? TR(L"Текст:") : (kind == SourceStream ? TR(L"Адрес:") : TR(L"Папка:")));
@@ -1493,31 +1493,34 @@ static void ListColumns()
 
 static void Layout()
 {
+    // Grid: labels at L1, fields at C1 (W1 wide) and C2 (W2 wide, ending at R, the right edge of every row). Buttons
+    // next to a 23-px field are 27 px high and centred on it (2 px above).
+    const int L1 = 24, C1 = 130, W1 = 150, C2 = 516, W2 = 140, R = C2 + W2;
     Place(IDC_RESET_ALL, 12, 7, 32, 28);   Place(IDC_EXPORT, 48, 7, 32, 28);   Place(IDC_IMPORT, 84, 7, 32, 28);
-    Place(IDC_L_LANG, 380, 12, 120, 20);   Place(IDC_LANG, 508, 8, 160, 400);
+    Place(IDC_L_LANG, 380, 12, C2 - 6 - 380, 20);  Place(IDC_LANG, C2, 8, W2, 400);
 
     Place(IDC_GROUP1, 12, 42, 656, 222);
-    Place(IDC_LIST, 24, 64, 632, 154);
-    Place(IDC_L_COUNT, 24, 230, 150, 20);  Place(IDC_COUNT, 180, 226, 70, 300);
-    Place(IDC_COUNT_APPLY, 260, 225, 140, 27);
+    Place(IDC_LIST, L1, 64, R - L1, 154);
+    Place(IDC_L_COUNT, L1, 230, 150, 20);  Place(IDC_COUNT, 180, 226, 70, 300);
+    Place(IDC_COUNT_APPLY, 260, 224, 140, 27);
     ListColumns();
 
     Place(IDC_GROUP2, 12, 272, 656, 280);
-    Place(IDC_L_NAME, 24, 296, 100, 20);   Place(IDC_NAME, 130, 292, 522, 23);
-    Place(IDC_L_RES, 24, 330, 100, 20);    Place(IDC_RES, 130, 326, 210, 300);
-    Place(IDC_L_FPS, 344, 330, 140, 20);   Place(IDC_FPS, 490, 326, 162, 300);
-    Place(IDC_L_SOURCE, 24, 364, 100, 20); Place(IDC_SOURCE, 130, 360, 362, 300);
-    Place(IDC_L_PARAM, 24, 398, 100, 20);  Place(IDC_PARAM, 130, 394, 362, 23);
-    Place(IDC_BROWSE, 500, 393, 74, 27);   Place(IDC_OPENFOLDER, 578, 393, 74, 27);
-    Place(IDC_L_AUDIO, 24, 432, 100, 20);  Place(IDC_AUDIO, 130, 428, 522, 300);
-    Place(IDC_CAM_STATUS, 24, 460, 628, 52);
-    Place(IDC_TEST, 24, 516, 150, 28);     Place(IDC_PLAY, 180, 516, 110, 28);
-    Place(IDC_CAM_APPLY, 492, 516, 160, 28);
+    Place(IDC_L_NAME, L1, 296, 100, 20);   Place(IDC_NAME, C1, 292, 300, 23);
+    Place(IDC_L_RES, L1, 330, 100, 20);    Place(IDC_RES, C1, 326, W1, 300);
+    Place(IDC_L_FPS, 290, 330, C2 - 6 - 290, 20);  Place(IDC_FPS, C2, 326, 80, 300);
+    Place(IDC_L_SOURCE, L1, 364, 100, 20); Place(IDC_SOURCE, C1, 360, W1, 300);
+    Place(IDC_L_PARAM, L1, 398, 100, 20);  Place(IDC_PARAM, C1, 394, R - 160 - C1, 23);
+    Place(IDC_BROWSE, R - 154, 392, 74, 27);   Place(IDC_OPENFOLDER, R - 74, 392, 74, 27);
+    Place(IDC_L_AUDIO, L1, 432, 100, 20);  Place(IDC_AUDIO, C1, 428, R - C1, 300);
+    Place(IDC_CAM_STATUS, L1, 460, R - L1, 52);
+    Place(IDC_TEST, L1, 516, 150, 28);     Place(IDC_PLAY, L1 + 156, 516, 110, 28);
+    Place(IDC_CAM_APPLY, C2, 516, W2, 28);
     if (g_sel >= 0) LayoutParamRow(g_cams[g_sel].config.kind);
 
-    Place(IDC_EVENTS, 24, 562, 592, 300);
-    Place(IDC_CLEARLOG, 622, 560, 32, 26);
-    Place(IDC_AUTOSTART, 24, 594, 628, 22);
+    Place(IDC_EVENTS, L1, 562, R - 38 - L1, 300);
+    Place(IDC_CLEARLOG, R - 32, 560, 32, 26);
+    Place(IDC_AUTOSTART, L1, 594, R - L1, 22);
     if (g_eventsWidest) FitEventList(nullptr);
 }
 
