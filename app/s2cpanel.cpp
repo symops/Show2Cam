@@ -673,24 +673,15 @@ static void ShowCamStatus()
         return;
     }
     const CamRunStatus& s = g_cams[g_sel].status;
-    wchar_t line1[400], line2[400] = L"";
+    // (the format, and who uses the camera, are in the list)
+    wchar_t line1[400] = L"", line2[400] = L"";
     if (!s.deviceOpen) wcscpy(line1, TR(L"Нет связи с камерой (драйвер перезапускается?)."));
-    else
+    else if (s.formatWaiting)
     {
-        wchar_t users[300], inUse[340];
-        UsersText(s, users, 300);
-        if (users[0]) _snwprintf(inUse, 340, TR(L"используется: %ls"), users);
-        else wcscpy(inUse, TR(L"не используется"));
-        inUse[339] = 0;
-        wcscpy(line1, inUse);      // the format is in the list's Format column
+        wchar_t want[80];
+        FormatText(want, 80, s.wantW, s.wantH, s.wantFps);
+        _snwprintf(line1, 400, TR(L"станет %ls, когда камеру закроют"), want);
         CharUpperBuffW(line1, 1);
-        if (s.formatWaiting)
-        {
-            wchar_t want[80];
-            FormatText(want, 80, s.wantW, s.wantH, s.wantFps);
-            wcsncat(line1, L" · ", 399 - wcslen(line1));
-            _snwprintf(line1 + wcslen(line1), 400 - wcslen(line1), TR(L"станет %ls, когда камеру закроют"), want);
-        }
     }
     line1[399] = 0;
     switch (s.state)
@@ -718,7 +709,7 @@ static void ShowCamStatus()
     }
     line2[399] = 0;
     wchar_t all[820];
-    _snwprintf(all, 820, line2[0] ? L"%ls\n%ls" : L"%ls", line1, line2);
+    _snwprintf(all, 820, line1[0] && line2[0] ? L"%ls\n%ls" : L"%ls%ls", line1, line2);
     all[819] = 0;
     SetText(IDC_CAM_STATUS, all);
 }
