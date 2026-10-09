@@ -265,3 +265,5 @@ Camera ‘%ls’: instellingen toegepast.
 Generator
 Generator (bewegende vormen)
 Status
+Deze map
+Map selecteren

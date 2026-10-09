@@ -265,6 +265,8 @@ Camera “%ls”: settings applied.
 Generator
 Generator (moving shapes)
 Status
+This folder
+Select folder
 [driver] the driver log is empty: the driver has never started
 [driver] ---- driver log (DriverLog) ----
 [setupapi] cannot open %ls (%lu)

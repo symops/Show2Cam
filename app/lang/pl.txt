@@ -265,3 +265,5 @@ Kamera „%ls”: ustawienia zastosowane.
 Generator
 Generator (ruchome kształty)
 Status
+Ten folder
+Wybierz folder

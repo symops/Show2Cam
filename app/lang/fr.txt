@@ -265,3 +265,5 @@ Caméra « %ls » : réglages appliqués.
 Générateur
 Générateur (formes en mouvement)
 État
+Ce dossier
+Choisir le dossier

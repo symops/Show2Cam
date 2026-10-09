@@ -265,3 +265,5 @@ Cámara «%ls»: configuración aplicada.
 Generador
 Generador (figuras en movimiento)
 Estado
+Esta carpeta
+Seleccionar carpeta

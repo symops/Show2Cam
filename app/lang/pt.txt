@@ -265,3 +265,5 @@ Câmera “%ls”: configurações aplicadas.
 Gerador
 Gerador (formas em movimento)
 Status
+Esta pasta
+Selecionar pasta

@@ -265,3 +265,5 @@ Camera “%ls”: đã áp dụng cài đặt.
 Trình tạo
 Trình tạo (hình chuyển động)
 Trạng thái
+Thư mục này
+Chọn thư mục

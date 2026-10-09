@@ -265,3 +265,5 @@ belirlenemedi
 Üreteç
 Üreteç (hareketli şekiller)
 Durum
+Bu klasör
+Klasörü seç

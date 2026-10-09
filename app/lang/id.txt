@@ -265,3 +265,5 @@ Kamera “%ls”: pengaturan diterapkan.
 Generator
 Generator (bentuk bergerak)
 Status
+Folder ini
+Pilih folder

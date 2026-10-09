@@ -265,3 +265,5 @@ Kamera „%ls“: Einstellungen übernommen.
 Generator
 Generator (bewegte Formen)
 Status
+Dieser Ordner
+Ordner auswählen

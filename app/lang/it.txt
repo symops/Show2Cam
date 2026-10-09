@@ -265,3 +265,5 @@ Telecamera «%ls»: impostazioni applicate.
 Generatore
 Generatore (forme in movimento)
 Stato
+Questa cartella
+Seleziona cartella

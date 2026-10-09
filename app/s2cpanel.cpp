@@ -30,7 +30,7 @@ enum
 {
     IDC_RESET_ALL = 100, IDC_L_LANG, IDC_LANG,
     IDC_GROUP1, IDC_LIST, IDC_L_COUNT, IDC_COUNT, IDC_COUNT_APPLY,
-    IDC_GROUP2, IDC_L_NAME, IDC_NAME, IDC_L_SOURCE, IDC_SOURCE, IDC_L_PARAM, IDC_PARAM, IDC_BROWSE, IDC_OPENFOLDER,
+    IDC_GROUP2, IDC_L_NAME, IDC_NAME, IDC_L_SOURCE, IDC_SOURCE, IDC_L_PARAM, IDC_PARAM, IDC_BROWSE,
     IDC_L_AUDIO, IDC_AUDIO, IDC_L_RES, IDC_RES, IDC_L_FPS, IDC_FPS, IDC_CAM_STATUS, IDC_TEST, IDC_PLAY, IDC_CAM_APPLY,
     IDC_EVENTS, IDC_CLEARLOG, IDC_AUTOSTART, IDC_EXPORT, IDC_IMPORT,
 };
@@ -646,8 +646,7 @@ static void LayoutParamRow(int kind)
     ShowWindow(Ctl(IDC_L_PARAM), kind == SourceGenerator ? SW_HIDE : SW_SHOW);
     ShowWindow(Ctl(IDC_PARAM), kind == SourceGenerator ? SW_HIDE : SW_SHOW);
     ShowWindow(Ctl(IDC_BROWSE), folder ? SW_SHOW : SW_HIDE);
-    ShowWindow(Ctl(IDC_OPENFOLDER), folder ? SW_SHOW : SW_HIDE);
-    SetWindowPos(Ctl(IDC_PARAM), nullptr, S(130), S(394), S(folder ? 366 : 526), S(23), SWP_NOZORDER | SWP_NOACTIVATE);  // as in Layout
+    SetWindowPos(Ctl(IDC_PARAM), nullptr, S(130), S(394), S(folder ? 446 : 526), S(23), SWP_NOZORDER | SWP_NOACTIVATE);  // as in Layout
     ShowWindow(Ctl(IDC_L_AUDIO), kind == SourceVideo ? SW_SHOW : SW_HIDE);
     ShowWindow(Ctl(IDC_AUDIO), kind == SourceVideo ? SW_SHOW : SW_HIDE);
     SetText(IDC_L_PARAM, kind == SourceText ? TR(L"Текст:") : (kind == SourceStream ? TR(L"Адрес:") : TR(L"Папка:")));
@@ -717,7 +716,7 @@ static void ShowCamStatus()
 static void ShowSelected(bool keepEdits)
 {
     bool ok = g_sel >= 0 && g_sel < g_camCount;
-    const int ids[] = { IDC_NAME, IDC_SOURCE, IDC_PARAM, IDC_BROWSE, IDC_OPENFOLDER, IDC_AUDIO, IDC_RES, IDC_FPS };
+    const int ids[] = { IDC_NAME, IDC_SOURCE, IDC_PARAM, IDC_BROWSE, IDC_AUDIO, IDC_RES, IDC_FPS };
     for (int id : ids) EnableWindow(Ctl(id), ok);
     if (!ok) EnableWindow(Ctl(IDC_CAM_APPLY), FALSE);
     wchar_t title[200];
@@ -977,42 +976,62 @@ static void OnRename()
     ShowSelected(true);                              // unsaved settings of the camera stay in the form
 }
 
-static void OnBrowse()
+// "Browse…" for a folder, showing the files in it too (a folder picker shows folders only): a file chosen gives its
+// folder; "Select folder" with the name box at "This folder" takes the folder shown (an empty one too).
+static bool BrowseFolder(const wchar_t* startFolder, wchar_t* out)
 {
-    if (g_sel < 0) return;
     IFileOpenDialog* dlg = nullptr;
-    if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dlg)))) return;
+    if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dlg)))) return false;
     DWORD opts = 0;
     dlg->GetOptions(&opts);
-    dlg->SetOptions(opts | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM);
-    wchar_t cur[MAX_PATH];
-    FolderOf(g_cams[g_sel].config, cur);
+    dlg->SetOptions((opts | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST | FOS_NOTESTFILECREATE | FOS_NOVALIDATE) & ~FOS_FILEMUSTEXIST);
     IShellItem* start = nullptr;
-    if (SUCCEEDED(SHCreateItemFromParsingName(cur, nullptr, IID_PPV_ARGS(&start))))
+    if (startFolder[0] && SUCCEEDED(SHCreateItemFromParsingName(startFolder, nullptr, IID_PPV_ARGS(&start))))
     {
         dlg->SetFolder(start);
         start->Release();
     }
+    dlg->SetFileName(TR(L"Эта папка"));
+    dlg->SetOkButtonLabel(TR(L"Выбрать папку"));
+    bool ok = false;
     if (SUCCEEDED(dlg->Show(g_wnd)))
     {
         IShellItem* item = nullptr;
         PWSTR path = nullptr;
-        if (SUCCEEDED(dlg->GetResult(&item)) && SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &path)))
+        bool file = SUCCEEDED(dlg->GetResult(&item)) && SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &path));
+        if (!file)
         {
-            SetWindowTextW(Ctl(IDC_PARAM), path);       // EN_CHANGE -> the form's copy ("Apply" applies it)
+            // no item for the name typed: the folder shown
+            if (item) item->Release();
+            item = nullptr;
+            if (SUCCEEDED(dlg->GetFolder(&item))) item->GetDisplayName(SIGDN_FILESYSPATH, &path);
+        }
+        if (path)
+        {
+            wcsncpy(out, path, MAX_PATH - 1);
+            out[MAX_PATH - 1] = 0;
+            DWORD a = GetFileAttributesW(out);
+            if (file && (a == INVALID_FILE_ATTRIBUTES || !(a & FILE_ATTRIBUTE_DIRECTORY)))
+            {
+                wchar_t* slash = wcsrchr(out, L'\\');     // a file (or "This folder"): its folder
+                if (slash) *(slash == out + 2 && out[1] == L':' ? slash + 1 : slash) = 0;
+            }
+            ok = out[0] != 0;
             CoTaskMemFree(path);
         }
         if (item) item->Release();
     }
     dlg->Release();
+    return ok;
 }
 
-static void OnOpenFolder()
+static void OnBrowse()
 {
     if (g_sel < 0) return;
-    wchar_t folder[MAX_PATH];
-    FolderOf(g_cams[g_sel].config, folder);
-    ShellExecuteW(g_wnd, L"open", folder, nullptr, nullptr, SW_SHOWNORMAL);
+    wchar_t cur[MAX_PATH], path[MAX_PATH];
+    GetWindowTextW(Ctl(IDC_PARAM), cur, MAX_PATH);
+    if (!cur[0]) FolderOf(g_cams[g_sel].config, cur);
+    if (BrowseFolder(cur, path)) SetWindowTextW(Ctl(IDC_PARAM), path);   // EN_CHANGE -> the form's copy ("Apply")
 }
 
 // ---------------------------------------------------------------------------
@@ -1510,8 +1529,8 @@ static void Layout()
     Place(IDC_L_RES, L1, 330, 100, 20);    Place(IDC_RES, C1, 326, W1, 300);
     Place(IDC_L_FPS, 290, 330, C2 - 6 - 290, 20);  Place(IDC_FPS, C2, 326, W2, 300);
     Place(IDC_L_SOURCE, L1, 364, 100, 20); Place(IDC_SOURCE, C1, 360, 220, 300);
-    Place(IDC_L_PARAM, L1, 398, 100, 20);  Place(IDC_PARAM, C1, 394, R - 160 - C1, 23);
-    Place(IDC_BROWSE, R - 154, 392, 74, 27);   Place(IDC_OPENFOLDER, R - 74, 392, 74, 27);
+    Place(IDC_L_PARAM, L1, 398, 100, 20);  Place(IDC_PARAM, C1, 394, R - 80 - C1, 23);
+    Place(IDC_BROWSE, R - 74, 392, 74, 27);
     Place(IDC_L_AUDIO, L1, 432, 100, 20);  Place(IDC_AUDIO, C1, 428, R - C1, 300);
     Place(IDC_CAM_STATUS, L1, 460, R - L1, 52);
     Place(IDC_TEST, L1, 516, 150, 28);     Place(IDC_PLAY, L1 + 156, 516, 110, 28);
@@ -1610,7 +1629,6 @@ static void CreateControls()
     Create(L"EDIT", L"", ES_AUTOHSCROLL | WS_TABSTOP, IDC_PARAM, WS_EX_CLIENTEDGE);
     SendMessageW(Ctl(IDC_PARAM), EM_LIMITTEXT, MAX_PATH - 1, 0);
     Create(L"BUTTON", TR(L"Обзор…"), BS_PUSHBUTTON | WS_TABSTOP, IDC_BROWSE);
-    Create(L"BUTTON", TR(L"Открыть"), BS_PUSHBUTTON | WS_TABSTOP, IDC_OPENFOLDER);
     Create(L"STATIC", TR(L"Звук видео:"), 0, IDC_L_AUDIO);
     Create(WC_COMBOBOXW, L"", CBS_DROPDOWNLIST | WS_TABSTOP | WS_VSCROLL, IDC_AUDIO);
     Create(L"STATIC", L"", SS_EDITCONTROL | SS_NOPREFIX, IDC_CAM_STATUS);   // up to 3 lines, long paths wrap
@@ -2023,7 +2041,6 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         else if (code == BN_CLICKED)
         {
             if (id == IDC_BROWSE) OnBrowse();
-            else if (id == IDC_OPENFOLDER) OnOpenFolder();
             else if (id == IDC_TEST) OnTest();
             else if (id == IDC_PLAY) OnPlay(g_sel);
             else if (id == IDC_CAM_APPLY) OnCamApply();
