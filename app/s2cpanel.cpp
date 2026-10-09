@@ -1506,6 +1506,9 @@ static void AddTip(HWND tip, int id, const wchar_t* text)
     SendMessageW(tip, TTM_ADDTOOLW, 0, (LPARAM)&ti);
 }
 
+static HWND g_listTip;              // the list's cell tooltips (ListTipText)
+static LRESULT CALLBACK ListTipProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR);
+
 static void CreateControls()
 {
     Create(L"BUTTON", TR(L"Сбросить все настройки"), BS_PUSHBUTTON | BS_ICON | WS_TABSTOP, IDC_RESET_ALL);
@@ -1518,8 +1521,22 @@ static void CreateControls()
     Create(L"BUTTON", TR(L"Камеры"), BS_GROUPBOX, IDC_GROUP1);
     HWND list = Create(WC_LISTVIEWW, L"", LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | LVS_NOSORTHEADER | WS_TABSTOP, IDC_LIST,
                        WS_EX_CLIENTEDGE);
-    ListView_SetExtendedListViewStyle(list, LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER | LVS_EX_INFOTIP);
-    if (HWND tips = ListView_GetToolTips(list)) SendMessageW(tips, TTM_SETMAXTIPWIDTH, 0, 500);    // long errors wrap
+    ListView_SetExtendedListViewStyle(list, LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
+    // the cell tooltips (ListTipText): the list's own ones come only for the first column
+    g_listTip = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr, WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX, CW_USEDEFAULT,
+                                CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, g_wnd, nullptr, g_inst, nullptr);
+    if (g_listTip)
+    {
+        TOOLINFOW ti = {};
+        ti.cbSize = sizeof(ti);
+        ti.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
+        ti.hwnd = g_wnd;
+        ti.uId = (UINT_PTR)list;
+        ti.lpszText = LPSTR_TEXTCALLBACKW;
+        SendMessageW(g_listTip, TTM_ADDTOOLW, 0, (LPARAM)&ti);
+        SendMessageW(g_listTip, TTM_SETMAXTIPWIDTH, 0, 500);                 // long errors and paths wrap
+        SetWindowSubclass(list, ListTipProc, 0, 0);
+    }
     const wchar_t* cols[5] = { TR(L"Камера"), TR(L"Статус"), TR(L"Источник"), TR(L"Формат"), TR(L"Состояние") };
     for (int i = 0; i < 5; i++)
     {
@@ -1687,6 +1704,67 @@ static bool SourceProblem(int i, wchar_t* out, size_t len)
     else if (s.state == StateError) _snwprintf(out, len, TR(L"Ошибка: %ls"), s.detail);
     out[len - 1] = 0;
     return out[0] != 0;
+}
+
+// Cell tooltips of the list: the Source column shows its whole text (and a source error), the other columns a source
+// error only.
+static int  g_listTipCell = -1;         // row * 8 + column under the mouse
+
+static int ListCellAt(HWND list, POINT pt)
+{
+    LVHITTESTINFO hit = {};
+    hit.pt = pt;
+    if (ListView_SubItemHitTest(list, &hit) < 0 || hit.iItem < 0) return -1;
+    return hit.iItem * 8 + hit.iSubItem;
+}
+
+static void ListTipText(NMTTDISPINFOW* info)
+{
+    static wchar_t t[1100];
+    t[0] = 0;
+    info->lpszText = t;
+    HWND list = Ctl(IDC_LIST);
+    POINT pt;
+    GetCursorPos(&pt);
+    ScreenToClient(list, &pt);
+    int cell = ListCellAt(list, pt);
+    if (cell < 0) return;
+    int row = cell / 8, col = cell % 8;
+    wchar_t problem[400];
+    bool bad = SourceProblem(row, problem, 400);
+    if (col == 2)
+    {
+        ListView_GetItemText(list, row, 2, t, 600);
+        if (bad)
+        {
+            wcsncat(t, L"\n", 1099 - wcslen(t));
+            wcsncat(t, problem, 1099 - wcslen(t));
+        }
+    }
+    else if (bad)
+    {
+        wcscpy(t, problem);
+    }
+}
+
+// A new cell under the mouse: the tooltip goes and comes back with that cell's text.
+static LRESULT CALLBACK ListTipProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR)
+{
+    if (msg == WM_MOUSEMOVE && g_listTip)
+    {
+        POINT pt = { (short)LOWORD(lp), (short)HIWORD(lp) };
+        int cell = ListCellAt(hwnd, pt);
+        if (cell != g_listTipCell)
+        {
+            g_listTipCell = cell;
+            SendMessageW(g_listTip, TTM_POP, 0, 0);
+        }
+    }
+    else if (msg == WM_MOUSELEAVE)
+    {
+        g_listTipCell = -1;
+    }
+    return DefSubclassProc(hwnd, msg, wp, lp);
 }
 
 static LRESULT ListCustomDraw(NMLVCUSTOMDRAW* cd)
@@ -1958,17 +2036,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
                 return TRUE;
             }
         }
-        if (h->idFrom == IDC_LIST && h->code == LVN_GETINFOTIPW)
+        if (h->code == TTN_GETDISPINFOW && g_listTip && h->hwndFrom == g_listTip)
         {
-            // a source error as the row's tooltip
-            NMLVGETINFOTIPW* tip = (NMLVGETINFOTIPW*)lp;
-            wchar_t t[400];
-            if (tip->pszText && tip->cchTextMax > 0)
-            {
-                if (SourceProblem(tip->iItem, t, 400)) wcsncpy(tip->pszText, t, tip->cchTextMax - 1);
-                else tip->pszText[0] = 0;
-                tip->pszText[tip->cchTextMax - 1] = 0;
-            }
+            ListTipText((NMTTDISPINFOW*)lp);
             return 0;
         }
         if (h->idFrom == IDC_LIST && h->code == NM_DBLCLK && !g_updating)
