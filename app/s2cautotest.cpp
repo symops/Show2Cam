@@ -665,6 +665,16 @@ static void ActionSizes()
     hr = CaptureRead(&c);
     if (SUCCEEDED(hr)) t0 = c.ts;
     if (SUCCEEDED(hr)) hr = CaptureRead(&c);
+    wchar_t who[400];
+    ULONG others = CameraUsers(cam, who, 400) > 1 ? 1 : 0;      // besides this test's own open
+    if (SUCCEEDED(hr) && (c.w != 640 || c.h != 480) && others)
+    {
+        // A camera another program streams is shared: Windows keeps that program's format for every client.
+        Out(L"  info 640x480 at 3 fps: %ux%u - the camera is shared with %ls, Windows keeps its format", c.w, c.h, who);
+        c.Close();
+        WaitClosed(cam, 5000, others);
+        return;
+    }
     if (Check(SUCCEEDED(hr) && c.w == 640 && c.h == 480, L"640x480 frames at 3 fps: %ux%u (0x%08lX)", c.w, c.h, (unsigned long)hr))
     {
         double ms = (c.ts - t0) / 10000.0;
@@ -1057,7 +1067,7 @@ static void ActionVideos()
         else
         {
             if (mic.rms <= 0.003 && v.optional)
-                Warn(L"no sound on the second pass (level %.4f): this clip's sound needs a decoder from a Store extension", mic.rms);
+                Warn(L"no sound on the second pass (level %.4f): Windows does not offer this clip's sound track (Vorbis / Opus in MKV or WebM: not read by Media Foundation, even with Web Media Extensions)", mic.rms);
             else
                 Check(mic.rms > 0.003, mic.rms > 0.003 ? L"sound on the second pass: level %.4f" :
                   L"sound on the second pass: level %.4f (microphone muted or at 0 %% in Speak2Mic?)", mic.rms);
