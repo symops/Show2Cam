@@ -1530,10 +1530,10 @@ static void CreateControls()
     {
         TOOLINFOW ti = {};
         ti.cbSize = sizeof(ti);
-        ti.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
+        ti.uFlags = TTF_IDISHWND | TTF_TRACK | TTF_ABSOLUTE;     // placed and shown by ListTipProc (steady while the list updates)
         ti.hwnd = g_wnd;
         ti.uId = (UINT_PTR)list;
-        ti.lpszText = LPSTR_TEXTCALLBACKW;
+        ti.lpszText = (LPWSTR)L"";
         SendMessageW(g_listTip, TTM_ADDTOOLW, 0, (LPARAM)&ti);
         SendMessageW(g_listTip, TTM_SETMAXTIPWIDTH, 0, 500);                 // long errors and paths wrap
         SendMessageW(g_listTip, WM_SETFONT, (WPARAM)g_font, FALSE);           // the list's font (shown over the cell)
@@ -1720,56 +1720,98 @@ static int ListCellAt(HWND list, POINT pt)
     return hit.iItem * 8 + hit.iSubItem;
 }
 
-static void ListTipText(NMTTDISPINFOW* info)
+static void ListTipText(int cell, wchar_t* t)      // t: 1100 characters
 {
-    static wchar_t t[1100];
     t[0] = 0;
-    info->lpszText = t;
-    HWND list = Ctl(IDC_LIST);
-    POINT pt;
-    GetCursorPos(&pt);
-    ScreenToClient(list, &pt);
-    int cell = ListCellAt(list, pt);
     if (cell < 0) return;
     int row = cell / 8, col = cell % 8;
     wchar_t problem[400];
-    bool bad = SourceProblem(row, problem, 400);
-    if (col == 2 && bad)
+    if (!SourceProblem(row, problem, 400)) return;
+    if (col == 2)
     {
-        // the source itself (as the cell shows it, without its kind: "Video: ")
+        // the source itself (as the cell shows it, without its kind: "Video: "), the error below
         const Cam& c = g_cams[row];
         if (c.config.kind == SourceText) wcsncpy(t, c.config.text, 599);
         else if (c.config.kind == SourceStream) wcsncpy(t, c.config.url, 599);
         else if (c.config.kind != SourceGenerator && c.status.current[0]) wcsncpy(t, FileName(c.status.current), 599);
         t[599] = 0;
-        if (bad)
-        {
-            if (t[0]) wcsncat(t, L"\n", 1099 - wcslen(t));
-            wcsncat(t, problem, 1099 - wcslen(t));
-        }
+        if (t[0]) wcsncat(t, L"\n", 1099 - wcslen(t));
+        wcsncat(t, problem, 1099 - wcslen(t));
     }
-    else if (bad)
+    else
     {
         wcscpy(t, problem);
     }
 }
 
+static void ListTipHide()
+{
+    TOOLINFOW ti = {};
+    ti.cbSize = sizeof(ti);
+    ti.hwnd = g_wnd;
+    ti.uId = (UINT_PTR)Ctl(IDC_LIST);
+    SendMessageW(g_listTip, TTM_TRACKACTIVATE, FALSE, (LPARAM)&ti);
+}
+
+// Shows the tip of the cell under the mouse: over the Source cell (as the list's own tip of the Camera column), else
+// under the mouse.
+static void ListTipShow(HWND list)
+{
+    static wchar_t t[1100];
+    ListTipText(g_listTipCell, t);
+    if (!t[0]) return;
+    TOOLINFOW ti = {};
+    ti.cbSize = sizeof(ti);
+    ti.hwnd = g_wnd;
+    ti.uId = (UINT_PTR)list;
+    ti.lpszText = t;
+    SendMessageW(g_listTip, TTM_UPDATETIPTEXTW, 0, (LPARAM)&ti);
+    POINT at;
+    RECT rc;
+    if (g_listTipCell % 8 == 2 && ListView_GetSubItemRect(list, g_listTipCell / 8, 2, LVIR_LABEL, &rc))
+    {
+        MapWindowPoints(list, nullptr, (POINT*)&rc, 2);
+        SendMessageW(g_listTip, TTM_ADJUSTRECT, TRUE, (LPARAM)&rc);
+        at = { rc.left, rc.top };
+    }
+    else
+    {
+        GetCursorPos(&at);
+        at.y += GetSystemMetricsForDpi(SM_CYCURSOR, g_dpi) * 3 / 4;
+    }
+    SendMessageW(g_listTip, TTM_TRACKPOSITION, 0, MAKELPARAM(at.x, at.y));
+    SendMessageW(g_listTip, TTM_TRACKACTIVATE, TRUE, (LPARAM)&ti);
+}
+
 // A new cell under the mouse: the tooltip goes and comes back with that cell's text.
 static LRESULT CALLBACK ListTipProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR)
 {
+    const UINT_PTR kTipTimer = 0x5332;      // the hover delay
     if (msg == WM_MOUSEMOVE && g_listTip)
     {
+        TRACKMOUSEEVENT tme = { sizeof(tme), TME_LEAVE, hwnd, 0 };
+        TrackMouseEvent(&tme);
         POINT pt = { (short)LOWORD(lp), (short)HIWORD(lp) };
         int cell = ListCellAt(hwnd, pt);
         if (cell != g_listTipCell)
         {
             g_listTipCell = cell;
-            SendMessageW(g_listTip, TTM_POP, 0, 0);
+            ListTipHide();
+            KillTimer(hwnd, kTipTimer);
+            if (cell >= 0) SetTimer(hwnd, kTipTimer, GetDoubleClickTime(), nullptr);
         }
     }
-    else if (msg == WM_MOUSELEAVE)
+    else if (msg == WM_TIMER && wp == kTipTimer)
     {
-        g_listTipCell = -1;
+        KillTimer(hwnd, kTipTimer);
+        ListTipShow(hwnd);
+        return 0;
+    }
+    else if (msg == WM_MOUSELEAVE || msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MOUSEWHEEL)
+    {
+        if (msg == WM_MOUSELEAVE) g_listTipCell = -1;
+        KillTimer(hwnd, kTipTimer);
+        if (g_listTip) ListTipHide();
     }
     return DefSubclassProc(hwnd, msg, wp, lp);
 }
@@ -2040,24 +2082,6 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
                     g_switchTo = nm->iItem;
                     PostMessageW(hwnd, WM_APP_SWITCH, (WPARAM)nm->iItem, 0);
                 }
-                return TRUE;
-            }
-        }
-        if (h->code == TTN_GETDISPINFOW && g_listTip && h->hwndFrom == g_listTip)
-        {
-            ListTipText((NMTTDISPINFOW*)lp);
-            return 0;
-        }
-        if (h->code == TTN_SHOW && g_listTip && h->hwndFrom == g_listTip && g_listTipCell >= 0 && g_listTipCell % 8 == 2)
-        {
-            // over the Source cell, as the list's own tip of the Camera column
-            HWND list = Ctl(IDC_LIST);
-            RECT rc;
-            if (ListView_GetSubItemRect(list, g_listTipCell / 8, 2, LVIR_LABEL, &rc))
-            {
-                MapWindowPoints(list, nullptr, (POINT*)&rc, 2);
-                SendMessageW(g_listTip, TTM_ADJUSTRECT, TRUE, (LPARAM)&rc);
-                SetWindowPos(g_listTip, nullptr, rc.left, rc.top, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
                 return TRUE;
             }
         }
