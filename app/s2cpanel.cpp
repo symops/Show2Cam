@@ -1509,6 +1509,7 @@ static void AddTip(HWND tip, int id, const wchar_t* text)
 }
 
 static LRESULT CALLBACK ListTipProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR);
+static LRESULT CALLBACK ListTipHitProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR);
 
 static void CreateControls()
 {
@@ -1538,6 +1539,7 @@ static void CreateControls()
         SendMessageW(g_listTip, TTM_SETMAXTIPWIDTH, 0, 500);                 // long errors and paths wrap
         SendMessageW(g_listTip, WM_SETFONT, (WPARAM)g_font, FALSE);           // the list's font (shown over the cell)
         SetWindowSubclass(list, ListTipProc, 0, 0);
+        SetWindowSubclass(g_listTip, ListTipHitProc, 0, 0);
     }
     const wchar_t* cols[5] = { TR(L"Камера"), TR(L"Статус"), TR(L"Источник"), TR(L"Формат"), TR(L"Состояние") };
     for (int i = 0; i < 5; i++)
@@ -1784,6 +1786,14 @@ static void ListTipShow(HWND list)
 }
 
 // A new cell under the mouse: the tooltip goes and comes back with that cell's text.
+// The tip over the Source cell lets the mouse through to the list (else the list saw the mouse leave, hid the tip, saw
+// it again and showed it: it blinked).
+static LRESULT CALLBACK ListTipHitProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR)
+{
+    if (msg == WM_NCHITTEST) return HTTRANSPARENT;
+    return DefSubclassProc(hwnd, msg, wp, lp);
+}
+
 static LRESULT CALLBACK ListTipProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR)
 {
     const UINT_PTR kTipTimer = 0x5332;      // the hover delay
@@ -1806,6 +1816,23 @@ static LRESULT CALLBACK ListTipProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, U
         KillTimer(hwnd, kTipTimer);
         ListTipShow(hwnd);
         return 0;
+    }
+    else if (msg == WM_MOUSELEAVE && g_listTip && IsWindowVisible(g_listTip))
+    {
+        // the mouse went onto the tip itself (it covers the Source cell): still the same cell
+        POINT pt;
+        GetCursorPos(&pt);
+        RECT rt;
+        GetWindowRect(g_listTip, &rt);
+        if (PtInRect(&rt, pt))
+        {
+            TRACKMOUSEEVENT tme = { sizeof(tme), TME_LEAVE, hwnd, 0 };
+            TrackMouseEvent(&tme);
+            return DefSubclassProc(hwnd, msg, wp, lp);
+        }
+        g_listTipCell = -1;
+        KillTimer(hwnd, kTipTimer);
+        ListTipHide();
     }
     else if (msg == WM_MOUSELEAVE || msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MOUSEWHEEL)
     {
