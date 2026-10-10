@@ -430,6 +430,21 @@ static Capture* volatile g_reading;
 static volatile LONG     g_readSince, g_readStage;
 static void (*g_emergencyExit)();
 
+// Windows' camera privacy setting for desktop programs ("Allow"/"Deny", "-": not set), for the watchdog's report.
+static void CameraConsent(wchar_t* out, size_t len)
+{
+    const wchar_t* key = L"Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\webcam";
+    wchar_t all[32] = L"-", desktop[32] = L"-", sub[200];
+    DWORD size = sizeof(all);
+    RegGetValueW(HKEY_CURRENT_USER, key, L"Value", RRF_RT_REG_SZ, nullptr, all, &size);
+    _snwprintf(sub, 200, L"%ls\\NonPackaged", key);
+    sub[199] = 0;
+    size = sizeof(desktop);
+    RegGetValueW(HKEY_CURRENT_USER, sub, L"Value", RRF_RT_REG_SZ, nullptr, desktop, &size);
+    _snwprintf(out, len, L"camera access %ls, desktop programs %ls", all, desktop);
+    out[len - 1] = 0;
+}
+
 static DWORD WINAPI ReadWatchdog(LPVOID)
 {
     for (;;)
@@ -444,9 +459,11 @@ static DWORD WINAPI ReadWatchdog(LPVOID)
             bool okA = Status(c->cam, &a);
             Sleep(1000);
             bool okB = Status(c->cam, &b);
+            wchar_t consent[120];
+            CameraConsent(consent, 120);
             Check(false, L"no frame from camera %d for 20 s: ReadSample does not return (driver: %ls, streaming %lu, open %lu, "
-                         L"frames delivered %llu -> %llu in 1 s, dropped %llu)", c->cam.index + 1, okA && okB ? L"answers" : L"NO ANSWER",
-                  b.Streaming, b.PinsOpen, a.FramesDelivered, b.FramesDelivered, b.FramesDropped);
+                         L"frames delivered %llu -> %llu in 1 s, dropped %llu; %ls)", c->cam.index + 1, okA && okB ? L"answers" : L"NO ANSWER",
+                  b.Streaming, b.PinsOpen, a.FramesDelivered, b.FramesDelivered, b.FramesDropped, consent);
             if (c->source) c->source->Shutdown();
         }
         else if (t > 50000 && InterlockedCompareExchange(&g_readStage, 2, 1) == 1)

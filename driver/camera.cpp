@@ -30,6 +30,23 @@ static const GUID kMemoryNonPaged   = { STATIC_KSMEMORY_TYPE_KERNEL_NONPAGED };
 // ---------------------------------------------------------------------------
 // Pin: streaming state
 
+// The client's reference clock (ks.h declares it only with COM's IUnknown, which a driver build does not have): the
+// methods in ks.h's order.
+struct S2cRefClock
+{
+    virtual NTSTATUS __stdcall QueryInterface(const GUID& iid, void** out) = 0;
+    virtual ULONG __stdcall AddRef() = 0;
+    virtual ULONG __stdcall Release() = 0;
+    virtual LONGLONG __stdcall GetTime() = 0;
+    virtual LONGLONG __stdcall GetPhysicalTime() = 0;
+    virtual LONGLONG __stdcall GetCorrelatedTime(PLONGLONG systemTime) = 0;
+    virtual LONGLONG __stdcall GetCorrelatedPhysicalTime(PLONGLONG systemTime) = 0;
+    virtual NTSTATUS __stdcall GetResolution(PKSRESOLUTION resolution) = 0;
+    virtual NTSTATUS __stdcall GetState(PKSSTATE state) = 0;
+};
+typedef S2cRefClock* PS2CREFCLOCK;
+extern "C" __declspec(dllimport) NTSTATUS NTAPI KsPinGetReferenceClockInterface(PKSPIN Pin, PS2CREFCLOCK* Interface);
+
 struct S2C_PIN
 {
     S2C_CAMERA*         Camera;
@@ -51,6 +68,7 @@ struct S2C_PIN
     BOOLEAN             StallLogged;
     BOOLEAN             KickLogged;     // the status watchdog restarted processing (logged once until frames come)
     LONG                FiresSeen;      // TimerFires when the watchdog looked last
+    PS2CREFCLOCK  Clock;          // the client's reference clock while running (nullptr: none assigned)
 };
 
 static ULONGLONG QpcNow100ns(S2C_PIN* p)
@@ -149,6 +167,8 @@ static NTSTATUS S2C_CB PinClose(_In_ PKSPIN Pin, _In_ PIRP Irp)
         p->Running = FALSE;
         KeCancelTimer(&p->Timer);
         KeFlushQueuedDpcs();                // a DPC already queued has run before the context goes
+        if (p->Clock) p->Clock->Release();
+        p->Clock = nullptr;
         if (p->Running) InterlockedDecrement(&p->Camera->Streaming);
         InterlockedDecrement(&p->Camera->PinsOpen);
         ExAcquireFastMutex(&p->Camera->Lock);
@@ -186,6 +206,9 @@ static NTSTATUS S2C_CB PinSetDeviceState(_In_ PKSPIN Pin, _In_ KSSTATE ToState, 
         p->LastFrame = p->LastProcess = 0;
         p->StallLogged = FALSE;
         p->Running = TRUE;
+        // Frames are stamped with the client's clock, as Microsoft's AVStream sample does (a stream-relative time from 0
+        // marked valid without a clock: Windows 11 24H2's Frame Server passed none of the frames on to the programs).
+        if (!p->Clock && !NT_SUCCESS(KsPinGetReferenceClockInterface(Pin, &p->Clock))) p->Clock = nullptr;
         InterlockedIncrement(&c->Streaming);
         LARGE_INTEGER due;
         due.QuadPart = -period;
@@ -195,8 +218,14 @@ static NTSTATUS S2C_CB PinSetDeviceState(_In_ PKSPIN Pin, _In_ KSSTATE ToState, 
     else if (ToState != KSSTATE_RUN && p->Running)
     {
         KeCancelTimer(&p->Timer);
+        KeFlushQueuedDpcs();                // no Process with the clock about to go
         p->Running = FALSE;
         InterlockedDecrement(&c->Streaming);
+    }
+    if (ToState == KSSTATE_STOP && p->Clock)
+    {
+        p->Clock->Release();
+        p->Clock = nullptr;
     }
     S2cLog("Camera %lu: state %d -> %d (process %lu)", c->Index + 1, (int)FromState, (int)ToState, p->Pid);
     if (ToState == KSSTATE_RUN)
@@ -304,15 +333,18 @@ static NTSTATUS S2C_CB PinProcess(_In_ PKSPIN Pin)
     if (!p->FirstLogged)
     {
         p->FirstLogged = TRUE;
-        S2cLog("Camera %lu: first frame to process %lu: %lu of %lu bytes, %llu ms after run (timer fired %ld, Process called %ld)",
-               c->Index + 1, p->Pid, used, leading->OffsetOut.Remaining, now / 10000, p->TimerFires, p->ProcessCalls);
+        S2cLog("Camera %lu: first frame to process %lu: %lu of %lu bytes, %llu ms after run (timer fired %ld, Process called %ld, "
+               "clock %s)", c->Index + 1, p->Pid, used, leading->OffsetOut.Remaining, now / 10000, p->TimerFires, p->ProcessCalls,
+               p->Clock ? "yes" : "none");
         S2cLogFlush();
     }
-    header->PresentationTime.Time = (LONGLONG)(p->FramesDone * interval);
+    // the client's clock time (no clock: no valid time, the client stamps the frame itself)
+    PS2CREFCLOCK clock = p->Clock;
+    header->PresentationTime.Time = clock ? clock->GetTime() : 0;
     header->PresentationTime.Numerator = 1;
     header->PresentationTime.Denominator = 1;
     header->Duration = (LONGLONG)interval;
-    header->OptionsFlags = KSSTREAM_HEADER_OPTIONSF_TIMEVALID | KSSTREAM_HEADER_OPTIONSF_DURATIONVALID |
+    header->OptionsFlags = (clock ? KSSTREAM_HEADER_OPTIONSF_TIMEVALID : 0) | KSSTREAM_HEADER_OPTIONSF_DURATIONVALID |
                            KSSTREAM_HEADER_OPTIONSF_SPLICEPOINT;
     if (header->Size >= sizeof(KSSTREAM_HEADER) + sizeof(KS_FRAME_INFO))
     {
