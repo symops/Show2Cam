@@ -21,6 +21,7 @@ struct TestVideo
     UINT32  channels;
     int     minColors = 3;               // colour fields the clip must show (shorter samples: fewer)
     bool    optional = false;            // needs a decoder Windows has only with an extension: missing -> WARN
+    bool    soundless = false;           // has a sound track Windows cannot decode: the picture only
 };
 
 struct TestMedia

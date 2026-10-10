@@ -704,8 +704,21 @@ static void ActionFormat()
     HRESULT hr = CaptureOpen(cam, &c);
     if (Check(SUCCEEDED(hr), L"opened (0x%08lX)", (unsigned long)hr))
     {
-        Check(c.w == w && c.h == h, L"offered first: %ux%u", c.w, c.h);
-        hr = CaptureRead(&c);
+        if (c.w != w || c.h != h)
+        {
+            // Windows 11's Frame Server may give the first program the format a camera added seconds ago had then
+            // (seen 7 times in 80, never later): the next opening tells that apart from a driver offering a wrong one.
+            UINT32 w1 = c.w, h1 = c.h;
+            c.Close();
+            WaitClosed(cam, 5000);
+            hr = CaptureOpen(cam, &c);
+            if (SUCCEEDED(hr) && c.w == w && c.h == h)
+                Warn(L"camera %d: the first opening offered %ux%u, the next one %lux%lu (Windows' Frame Server kept the format "
+                     L"of a camera added moments ago)", cam.index + 1, w1, h1, w, h);
+            else Check(false, L"offered first: %ux%u, again %ux%u (0x%08lX)", w1, h1, c.w, c.h, (unsigned long)hr);
+        }
+        else Check(true, L"offered first: %ux%u", c.w, c.h);
+        hr = SUCCEEDED(hr) ? CaptureRead(&c) : hr;
         Check(SUCCEEDED(hr), L"frame read (0x%08lX)", (unsigned long)hr);
     }
     c.Close();
@@ -970,7 +983,14 @@ static int ColorIndex(ULONG got, int count, int tol)
 static bool Fresh(Capture* c, int frames = 3)
 {
     for (int i = 0; i < frames; i++)
-        if (FAILED(CaptureRead(c))) return false;
+    {
+        HRESULT hr = CaptureRead(c);
+        if (FAILED(hr))
+        {
+            Out(L"  info camera %d: frame read failed (0x%08lX)", c->cam.index + 1, (unsigned long)hr);
+            return false;
+        }
+    }
     return true;
 }
 
@@ -1123,7 +1143,8 @@ static void ActionVideos()
     const TestVideo& v = g_media.videos[Rand(0, g_media.videoCount - 1)];
     CamConfig cfg = TestConfig(cam.index, SourceVideo);
     wcscpy(cfg.videoFolder, v.folder);
-    Out(L"[videos] camera %d: %ls (%ls)", cam.index + 1, v.name, v.sound ? (v.channels == 6 ? L"5.1 sound" : L"sound") : L"no sound");
+    Out(L"[videos] camera %d: %ls (%ls)", cam.index + 1, v.name, v.sound ? (v.channels == 6 ? L"5.1 sound" : L"sound") :
+        v.soundless ? L"sound not decodable here" : L"no sound");
     Capture c;
     CameraRunner* r = StartSource(cam, cfg, &c);
     if (!r) return;
@@ -1158,7 +1179,13 @@ static void ActionVideos()
     };
     sample((DWORD)(kClipSeconds * 1000) + 700);
     MicResult mic = {};
-    if (v.sound) MicMeasure(1500, &mic);
+    if (v.sound)
+    {
+        // Silence between the passes (the player first tries the broken clips next to it, ~0.5 s each) is measured
+        // again: the sound must come with the clip's next pass.
+        MicMeasure(1500, &mic);
+        for (int k = 0; k < 3 && mic.found && SUCCEEDED(mic.hr) && mic.rms <= 0.003 && !g_stop; k++) MicMeasure(1500, &mic);
+    }
     sample((DWORD)(kClipSeconds * 2000) + 1500);
     Check(samples >= 10 && matched * 10 >= samples * 8, L"clip colours shown: %d of %d samples", matched, samples);
     Check(distinct >= v.minColors, L"the picture moves (%d of 4 colour fields seen, %d wanted)", distinct, v.minColors);
@@ -1463,6 +1490,67 @@ static double ProcessMb(DWORD* handles)
     return m.PrivateUsage / 1048576.0;
 }
 
+// This process' handles by object type ("Event 412, Thread 37, ..."): a handle leak shows as one type growing.
+static void HandleTypes(wchar_t* out, size_t len)
+{
+    out[0] = 0;
+    typedef LONG (NTAPI* QuerySystem)(ULONG, PVOID, ULONG, PULONG);
+    typedef LONG (NTAPI* QueryObject)(HANDLE, ULONG, PVOID, ULONG, PULONG);
+    HMODULE nt = GetModuleHandleW(L"ntdll.dll");
+    QuerySystem qs = (QuerySystem)(void*)GetProcAddress(nt, "NtQuerySystemInformation");
+    QueryObject qo = (QueryObject)(void*)GetProcAddress(nt, "NtQueryObject");
+    if (!qs || !qo) return;
+    struct Entry { PVOID object; ULONG_PTR pid, handle; ULONG access; USHORT creator, type; ULONG attributes, reserved; };
+    struct Table { ULONG_PTR count, reserved; Entry e[1]; };
+    ULONG size = 4 << 20;
+    BYTE* buf = nullptr;
+    LONG status;
+    for (int i = 0; i < 6; i++)
+    {
+        buf = (BYTE*)malloc(size);
+        if (!buf) return;
+        ULONG need = 0;
+        status = qs(64 /* SystemExtendedHandleInformation */, buf, size, &need);
+        if (status != (LONG)0xC0000004 /* STATUS_INFO_LENGTH_MISMATCH */) break;
+        free(buf);
+        buf = nullptr;
+        size = (need > size ? need : size) + (1 << 20);
+    }
+    if (!buf) return;
+    if (status < 0)
+    {
+        free(buf);
+        return;
+    }
+    const Table* t = (const Table*)buf;
+    ULONG counts[256] = {};
+    HANDLE one[256] = {};
+    ULONG_PTR pid = GetCurrentProcessId();
+    for (ULONG_PTR i = 0; i < t->count; i++)
+        if (t->e[i].pid == pid)
+        {
+            counts[t->e[i].type & 255]++;
+            one[t->e[i].type & 255] = (HANDLE)t->e[i].handle;
+        }
+    free(buf);
+    for (int k = 0; k < 256; k++)
+    {
+        if (counts[k] < 5) continue;
+        union { BYTE raw[1024]; struct { USHORT length, maxLength; PWSTR text; } name; } info;
+        wchar_t type[64] = L"?";
+        if (qo(one[k], 2 /* ObjectTypeInformation */, &info, sizeof(info), nullptr) >= 0 && info.name.text)
+        {
+            size_t n = info.name.length / sizeof(wchar_t) < 63 ? info.name.length / sizeof(wchar_t) : 63;
+            wcsncpy(type, info.name.text, n);
+            type[n] = 0;
+        }
+        wchar_t part[100];
+        _snwprintf(part, 100, L"%ls%ls %lu", out[0] ? L", " : L"", type, counts[k]);
+        part[99] = 0;
+        wcsncat(out, part, len - wcslen(out) - 1);
+    }
+}
+
 static Snapshot* g_snapshot;            // for the read watchdog's emergency stop
 
 int wmain(int argc, wchar_t** argv)
@@ -1600,6 +1688,9 @@ int wmain(int argc, wchar_t** argv)
                     wcsncat(line, part, 1199 - wcslen(line));
                 }
             Out(L"memory %.1f MB; grown with:%ls", ProcessMb(nullptr), line);
+            wchar_t types[600];
+            HandleTypes(types, 600);
+            if (types[0]) Out(L"handles: %ls", types);
         }
     }
     Out(L"");

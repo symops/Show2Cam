@@ -425,6 +425,21 @@ static HRESULT ProbeVideo(const wchar_t* path)
     return hr;
 }
 
+// Whether Windows decodes the clip's sound track (Windows 11 24H2 dropped the AC-3 decoder: 0xC00D36B4).
+static HRESULT ProbeSound(const wchar_t* path)
+{
+    IMFSourceReader* r = nullptr;
+    HRESULT hr = MFCreateSourceReaderFromURL(path, nullptr, &r);
+    IMFMediaType* t = nullptr;
+    if (SUCCEEDED(hr)) hr = MFCreateMediaType(&t);
+    if (SUCCEEDED(hr)) t->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio);
+    if (SUCCEEDED(hr)) t->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_Float);
+    if (SUCCEEDED(hr)) hr = r->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, nullptr, t);
+    if (t) t->Release();
+    if (r) r->Release();
+    return hr;
+}
+
 static void AddSamples(TestMedia* m, TestLog log, TestLog warn)
 {
     HRSRC r = FindResourceW(nullptr, MAKEINTRESOURCEW(500), (LPCWSTR)RT_RCDATA);
@@ -553,6 +568,17 @@ static void AddSamples(TestMedia* m, TestLog log, TestLog warn)
             v.name[63] = 0;
             v.minColors = (int)a1;
             v.sound = a2 != 0;
+            HRESULT sh = v.sound ? ProbeSound(path) : S_OK;
+            if (FAILED(sh))
+            {
+                wchar_t t[300];
+                _snwprintf(t, 300, L"sample clip %ls: Windows cannot decode its sound (0x%08lX; Windows 11 24H2 has no AC-3 "
+                           L"decoder): only its picture is checked", wfile, (unsigned long)sh);
+                t[299] = 0;
+                if (warn) warn(t);
+                v.sound = false;
+                v.soundless = true;
+            }
             v.channels = 2;
             v.optional = a3 != 0;
             videos++;

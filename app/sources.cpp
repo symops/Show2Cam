@@ -301,6 +301,7 @@ public:
             if (!m_nextVideo && !ReadVideo()) break;
             if (!m_nextVideo || m_nextVideoTs > t) break;
             // Due: the newest due frame is the one to show (late ones are skipped).
+            if (due) m_vLate++;
             if (m_shown) m_shown->Release();
             m_shown = m_nextVideo;
             m_nextVideo = nullptr;
@@ -310,6 +311,14 @@ public:
         {
             Present(m_shown, px, w, h);
             *changed = true;
+            m_vShown++;
+            if (!m_drawn) m_vUndrawn++;
+            else
+            {
+                ULONG c = px[(size_t)(h * 3 / 5) * w + w / 2] & 0xF0F0F0;      // the centre, roughly
+                if (m_vShown > 1 && c != m_vCentre) m_vChanges++;
+                m_vCentre = c;
+            }
         }
         if (m_switchToRgb)
         {
@@ -466,10 +475,12 @@ private:
                 m_retryAt = GetTickCount() + 2000;
                 return false;
             }
-            wcscpy(m_last, path);
             HRESULT hr = OpenFile(path);
             if (SUCCEEDED(hr))
             {
+                // the file played last: set only for one that plays (a broken one here made the fallback above pick
+                // that broken file, and the good one was left to the random draws: the error screen for 5 s)
+                wcscpy(m_last, path);
                 m_state = StateOk;
                 m_detail[0] = 0;
                 m_sink.Post(EvVideoFile);
@@ -725,6 +736,14 @@ private:
                    m_audioName[0] ? m_audioName : L"-", m_statLate / r, m_statNoDevice / r, m_statWriteErrors,
                    m_audioStarted ? L"yes" : L"NO", m_audioRate, m_audioCh);
         }
+        if (m_reader && m_vRead)
+            AppLog(L"camera %d: picture of %ls: %lu frame(s) decoded (%.2f..%.2f s), %lu shown, %lu skipped late, %lu not drawn, "
+                   L"centre colour changed %lu time(s), last %06lX", m_sink.index + 1, FileName(m_current), m_vRead,
+                   m_vFirstTs / 1e7, m_vLastTs / 1e7, m_vShown, m_vLate, m_vUndrawn, m_vChanges, m_vCentre);
+        m_vRead = m_vShown = m_vLate = m_vUndrawn = m_vChanges = 0;
+        m_vFirstTs = -1;
+        m_vLastTs = 0;
+        m_vCentre = 0;
         m_statWritten = m_statLate = m_statNoDevice = 0;
         m_statWriteErrors = 0;
         if (m_nextVideo) m_nextVideo->Release();
@@ -766,6 +785,9 @@ private:
             {
                 m_nextVideo = sample;
                 m_nextVideoTs = ts;
+                m_vRead++;
+                if (m_vFirstTs < 0) m_vFirstTs = ts;
+                m_vLastTs = ts;
                 return true;
             }
         }
@@ -818,6 +840,7 @@ private:
 
     void Present(IMFSample* sample, ULONG* px, int w, int h)
     {
+        m_drawn = false;
         IMFMediaBuffer* buf = nullptr;
         if (FAILED(sample->ConvertToContiguousBuffer(&buf))) return;
         if (m_nv12)
@@ -856,6 +879,7 @@ private:
                 }
                 ConvertNV12(p, pitch, len);
                 if (m_rgb) FitPixels((const BYTE*)m_rgb, (int)m_cropW, (int)m_cropH, (LONG)(m_cropW * 4), px, w, h);
+                m_drawn = m_rgb != nullptr;
             }
             if (p && locked2d) nb->Unlock2D();
             else if (p) buf->Unlock();
@@ -884,6 +908,7 @@ private:
             }
             if (fits)
                 FitPixels(scan0 + (LONG_PTR)m_cropY * pitch + (SIZE_T)m_cropX * 4, (int)m_cropW, (int)m_cropH, pitch, px, w, h);
+            m_drawn = fits;
             b2->Unlock2D();
         }
         else
@@ -900,7 +925,10 @@ private:
                 LONG stride = m_stride;
                 BYTE* top = stride < 0 ? p + (SIZE_T)(m_frameH - 1) * (SIZE_T)(-stride) : p;
                 if (len >= (DWORD)(m_frameH * (stride < 0 ? -stride : stride)))
+                {
                     FitPixels(top + (LONG_PTR)m_cropY * stride + (SIZE_T)m_cropX * 4, (int)m_cropW, (int)m_cropH, stride, px, w, h);
+                    m_drawn = true;
+                }
                 buf->Unlock();
             }
         }
@@ -1048,6 +1076,11 @@ private:
     HRESULT m_audioLastErr = S_OK;
     ULONGLONG m_statWritten = 0, m_statLate = 0, m_statNoDevice = 0;     // sound frames of the current file
     ULONG   m_statWriteErrors = 0;
+    // pictures of the current file (diagnostics: a clip whose picture stalls or shows wrong colours)
+    ULONG   m_vRead = 0, m_vShown = 0, m_vLate = 0, m_vUndrawn = 0, m_vChanges = 0;
+    LONGLONG m_vFirstTs = -1, m_vLastTs = 0;
+    ULONG   m_vCentre = 0;
+    bool    m_drawn = false;
     float*  m_pending = nullptr;
     UINT32  m_pendingCap = 0, m_pendingFrames = 0, m_pendingPos = 0;
     LONGLONG m_pendingTs = 0;
