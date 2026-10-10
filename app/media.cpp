@@ -58,11 +58,21 @@ static void FitRect(int sw, int sh, int dw, int dh, int* x, int* y, int* w, int*
 // One per thread (the callers' threads each initialised COM); released by MediaThreadEnd (each source thread used to
 // leave its factory behind: the autotest's thousands of source starts ran the process out of memory).
 static thread_local IWICImagingFactory* factory;
+// FitPixels' column table and PickRandomFile's file list: per thread too, freed by MediaThreadEnd (each source thread
+// used to leave ~0.5 MB behind: the autotest's 5 hours grew the process by ~400 MB).
+static thread_local int* xs;
+static thread_local int xsCap;
+static thread_local wchar_t (*fileNames)[MAX_PATH];
 
 void MediaThreadEnd()
 {
     if (factory) factory->Release();
     factory = nullptr;
+    free(xs);
+    xs = nullptr;
+    xsCap = 0;
+    free(fileNames);
+    fileNames = nullptr;
 }
 
 static IWICImagingFactory* Wic()
@@ -196,8 +206,6 @@ void FitPixels(const BYTE* src, int sw, int sh, LONG stride, ULONG* dst, int dw,
     FillBlack(dst, dw, dh);
 
     // Source position of every target column: index and weight of the right neighbour (0..255).
-    static thread_local int* xs;
-    static thread_local int xsCap;
     if (xsCap < rw)
     {
         free(xs);
@@ -492,16 +500,15 @@ static int RandomIndex(int n)
 
 bool PickRandomFile(const wchar_t* folder, MediaKind kind, const wchar_t* last, wchar_t* out)
 {
-    static thread_local wchar_t (*names)[MAX_PATH];
-    if (!names) names = (wchar_t (*)[MAX_PATH])malloc(sizeof(wchar_t) * MAX_PATH * 1024);
-    if (!names) return false;
-    int n = ListMediaFiles(folder, kind, names, 1024);
+    if (!fileNames) fileNames = (wchar_t (*)[MAX_PATH])malloc(sizeof(wchar_t) * MAX_PATH * 1024);
+    if (!fileNames) return false;
+    int n = ListMediaFiles(folder, kind, fileNames, 1024);
     if (n == 0) return false;
     // Random, but never the file just shown while there is another one (as Speak2Mic's music).
     for (;;)
     {
         int pick = RandomIndex(n);
-        _snwprintf(out, MAX_PATH, L"%ls\\%ls", folder, names[pick]);
+        _snwprintf(out, MAX_PATH, L"%ls\\%ls", folder, fileNames[pick]);
         out[MAX_PATH - 1] = 0;
         if (n == 1 || !last || _wcsicmp(out, last) != 0) return true;
     }

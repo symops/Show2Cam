@@ -207,6 +207,35 @@ static bool WaitClosed(const CamInfo& cam, DWORD ms, ULONG others = 0)
     return false;
 }
 
+// Like WaitClosed for a test's closing check: when the camera stays open only because another program (not this
+// one, not the Frame Server serving it) opened it meanwhile - a DLP agent taking a snapshot - that is a warning.
+static void CheckClosed(const CamInfo& cam, DWORD ms, ULONG others, const wchar_t* what)
+{
+    if (WaitClosed(cam, ms, others))
+    {
+        if (others) Check(true, L"back to the %lu program(s) that had it open before", others);
+        else Check(true, L"%ls", what);
+        return;
+    }
+    S2C_STATUS st;
+    bool foreign = false, ours = false;
+    if (Status(cam, &st))
+        for (int u = 0; u < S2C_MAX_USERS; u++)
+        {
+            if (!st.UserPids[u]) continue;
+            WCHAR name[33];
+            wcsncpy(name, st.UserNames[u], 32);
+            name[32] = 0;
+            if (st.UserPids[u] == GetCurrentProcessId() || !_wcsicmp(name, L"svchost.exe")) ours = true;
+            else foreign = true;
+        }
+    wchar_t who[400];
+    CameraUsers(cam, who, 400);
+    if (foreign && !ours) Warn(L"camera %d opened meanwhile by another program (%ls): not checked", cam.index + 1, who);
+    else if (others) Check(false, L"back to the %lu program(s) that had it open before (now: %ls)", others, who[0] ? who : L"?");
+    else Check(false, L"%ls (now: %ls)", what, who[0] ? who : L"?");
+}
+
 // The FriendlyName of the ROOT\Show2Cam device of camera `index` (Device Parameters\CameraIndex): what DirectShow
 // programs compare with the camera's name.
 static bool DeviceName(int index, wchar_t* out, size_t len)
@@ -630,8 +659,7 @@ static void ActionPicture()
               L"format change refused while open (%lu)", err);
     }
     c.Close();
-    Check(WaitClosed(cam, 5000, st.PinsOpen), st.PinsOpen ? L"back to the %lu program(s) that had it open before" :
-          L"not in use after closing", st.PinsOpen);
+    CheckClosed(cam, 5000, st.PinsOpen, L"not in use after closing");
     SendPattern(cam);
 }
 
@@ -897,8 +925,7 @@ static void ActionStress()
         if (SUCCEEDED(CaptureOpen(cam, &c)) && (Rand(0, 1) || SUCCEEDED(CaptureRead(&c)))) ok++;
     }
     Check(ok == n, L"%d of %d opened", ok, n);
-    Check(WaitClosed(cam, 5000, others), others ? L"back to the %lu program(s) that had it open before" : L"not in use afterwards",
-          others);
+    CheckClosed(cam, 5000, others, L"not in use afterwards");
 }
 
 
