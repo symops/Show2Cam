@@ -6,7 +6,7 @@ Signature="$WINDOWS NT$"
 Class=Image
 ClassGuid={6bdd1fc6-810f-11d0-bec7-08002be2092f}
 Provider=%ProviderName%
-DriverVer=10/10/2026,1.0.283.608
+DriverVer=10/10/2026,1.0.283.625
 CatalogFile=Show2Cam.cat
 PnpLockdown=1
 

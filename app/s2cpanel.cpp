@@ -1708,8 +1708,8 @@ static bool SourceProblem(int i, wchar_t* out, size_t len)
     return out[0] != 0;
 }
 
-// Cell tooltips of the list: the Source column shows its whole text (and a source error), the other columns a source
-// error only.
+// Cell tooltips of the list, only for a source error: the Source column shows the source and the error, the other
+// columns the error.
 static int  g_listTipCell = -1;         // row * 8 + column under the mouse
 
 static int ListCellAt(HWND list, POINT pt)
@@ -1734,7 +1734,7 @@ static void ListTipText(NMTTDISPINFOW* info)
     int row = cell / 8, col = cell % 8;
     wchar_t problem[400];
     bool bad = SourceProblem(row, problem, 400);
-    if (col == 2)
+    if (col == 2 && bad)
     {
         // the source itself (as the cell shows it, without its kind: "Video: ")
         const Cam& c = g_cams[row];
