@@ -35,9 +35,9 @@ $TRIPLE-gcc -municode -static -s -o "$O/s2cctl.exe" "$T/s2cctl.o" "$T/camcfg.o" 
     -lwindowscodecs -lsetupapi -lnewdev -lcfgmgr32 -lcrypt32 -lgdi32 -lshell32 -ladvapi32 -luser32 -lole32 -loleaut32 -luuid \
     -lpropsys -lmfplat -lmfuuid -lbcrypt
 $TRIPLE-gcc -municode -static -s -Wl,-Map,"$O/s2cautotest.map" -o "$O/s2cautotest.exe" "$T/s2cautotest.o" "$T/atmedia.o" "$T/sources.o" "$T/camcfg.o" "$T/media.o" "$T/audioout.o" \
-    "$T/camdev.o" "$T/cxxrt.o" "$T/devctl.o" "$T/setupcore.o" "$T/applog.o" "$T/lang.o" "$T/s2cautotest.res.o" \
+    "$T/camdev.o" "$T/drvlog.o" "$T/cxxrt.o" "$T/devctl.o" "$T/setupcore.o" "$T/applog.o" "$T/lang.o" "$T/s2cautotest.res.o" \
     -lmf -lmfplat -lmfreadwrite -lmfuuid -lwindowscodecs -lwinhttp -lcrypt32 -lbcrypt -lsetupapi -lnewdev -lcfgmgr32 \
-    -lshell32 -lgdi32 -ladvapi32 -luser32 -lole32 -loleaut32 -luuid -lpropsys -lws2_32
+    -lshell32 -lgdi32 -ladvapi32 -luser32 -lole32 -loleaut32 -luuid -lpropsys -lws2_32 -lpsapi
 $TRIPLE-gcc -municode -static -s -o "$O/s2cinstall.exe" "$T/s2cinstall.o" "$T/setupcore.o" "$T/devctl.o" "$T/applog.o" "$T/lang.o" "$T/s2cinstall.res.o" \
     -lsetupapi -lnewdev -lcfgmgr32 -lcrypt32 -lshell32 -ladvapi32 -lole32
 if [ "$ARCH" = x86 ]; then

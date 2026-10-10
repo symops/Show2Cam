@@ -1154,6 +1154,7 @@ private:
     {
         CoInitializeEx(nullptr, COINIT_MULTITHREADED);
         ((StreamSource*)p)->Run();
+        MediaThreadEnd();
         CoUninitialize();
         return 0;
     }
@@ -1895,6 +1896,7 @@ static DWORD WINAPI RunnerThread(LPVOID p)
         CamSendTestPattern(cam);
         CloseHandle(cam);
     }
+    MediaThreadEnd();
     CoUninitialize();
     return 0;
 }

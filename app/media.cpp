@@ -55,10 +55,18 @@ static void FitRect(int sw, int sh, int dw, int dh, int* x, int* y, int* w, int*
     *y = (dh - *h) / 2;
 }
 
+// One per thread (the callers' threads each initialised COM); released by MediaThreadEnd (each source thread used to
+// leave its factory behind: the autotest's thousands of source starts ran the process out of memory).
+static thread_local IWICImagingFactory* factory;
+
+void MediaThreadEnd()
+{
+    if (factory) factory->Release();
+    factory = nullptr;
+}
+
 static IWICImagingFactory* Wic()
 {
-    // One per thread (the callers' threads each initialised COM).
-    static thread_local IWICImagingFactory* factory;
     if (!factory)
         CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&factory));
     return factory;

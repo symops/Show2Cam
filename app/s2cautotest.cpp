@@ -28,6 +28,7 @@
 // Everything is restored at the end (also after Ctrl+C). Every check is logged as PASS / FAIL / WARN to
 // %ProgramData%\Show2Cam\logs\autotest.log; exit code 1 if anything failed.
 #include "camcfg.h"
+#include <psapi.h>
 #include "atmedia.h"
 #include "camdev.h"
 #include "applog.h"
@@ -256,6 +257,7 @@ struct Capture
     LONG   stride = 0;
     bool   native = false;                 // read in the camera's own format (no RGB32 conversion): timing only
     ULONG* px = nullptr;                   // the last frame, top-down
+    CamInfo cam = {};                      // the camera (for the read watchdog's report)
     LONGLONG ts = 0;                       // its time stamp (100 ns)
 
     ~Capture() { Close(); }
@@ -306,6 +308,7 @@ static HRESULT ActivateCamera(const CamInfo& cam, IMFMediaSource** source)
 static HRESULT CaptureOpen(const CamInfo& cam, Capture* c, UINT32 wantW = 0, UINT32 wantH = 0, UINT32 fps = 0)
 {
     c->Close();
+    c->cam = cam;
     HRESULT hr = ActivateCamera(cam, &c->source);
     if (FAILED(hr)) return hr;
     bool typeSet = false;
@@ -420,6 +423,51 @@ static HRESULT CaptureOpen(const CamInfo& cam, Capture* c, UINT32 wantW = 0, UIN
 }
 
 // Reads the next frame into c->px (skipping stream ticks without a sample).
+// Read watchdog: a synchronous ReadSample has no timeout - a camera that never sends a frame hung the autotest for good.
+// After 20 s the reader's source is shut down (ReadSample returns an error: FAIL, the test goes on); 30 s later still
+// stuck: everything is restored and the autotest ends (exit code 1).
+static Capture* volatile g_reading;
+static volatile LONG     g_readSince, g_readStage;
+static void (*g_emergencyExit)();
+
+static DWORD WINAPI ReadWatchdog(LPVOID)
+{
+    for (;;)
+    {
+        Sleep(1000);
+        Capture* c = g_reading;
+        if (!c) continue;
+        DWORD t = GetTickCount() - (DWORD)g_readSince;
+        if (t > 20000 && InterlockedCompareExchange(&g_readStage, 1, 0) == 0)
+        {
+            S2C_STATUS a = {}, b = {};
+            bool okA = Status(c->cam, &a);
+            Sleep(1000);
+            bool okB = Status(c->cam, &b);
+            Check(false, L"no frame from camera %d for 20 s: ReadSample does not return (driver: %ls, streaming %lu, open %lu, "
+                         L"frames delivered %llu -> %llu in 1 s, dropped %llu)", c->cam.index + 1, okA && okB ? L"answers" : L"NO ANSWER",
+                  b.Streaming, b.PinsOpen, a.FramesDelivered, b.FramesDelivered, b.FramesDropped);
+            if (c->source) c->source->Shutdown();
+        }
+        else if (t > 50000 && InterlockedCompareExchange(&g_readStage, 2, 1) == 1)
+        {
+            Out(L"FAIL the autotest is stuck in ReadSample (camera %d): restoring and stopping.", c->cam.index + 1);
+            if (g_emergencyExit) g_emergencyExit();
+            ExitProcess(1);
+        }
+    }
+}
+
+static HRESULT ReadSampleWatched(Capture* c, DWORD* streamIndex, DWORD* flags, LONGLONG* ts, IMFSample** sample)
+{
+    InterlockedExchange(&g_readSince, (LONG)GetTickCount());
+    InterlockedExchange(&g_readStage, 0);
+    g_reading = c;
+    HRESULT hr = c->reader->ReadSample((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, streamIndex, flags, ts, sample);
+    g_reading = nullptr;
+    return hr;
+}
+
 static HRESULT CaptureRead(Capture* c)
 {
     for (int tries = 0; tries < 50; tries++)
@@ -427,7 +475,7 @@ static HRESULT CaptureRead(Capture* c)
         DWORD streamIndex = 0, flags = 0;
         LONGLONG ts = 0;
         IMFSample* sample = nullptr;
-        HRESULT hr = c->reader->ReadSample((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, &streamIndex, &flags, &ts, &sample);
+        HRESULT hr = ReadSampleWatched(c, &streamIndex, &flags, &ts, &sample);
         if (FAILED(hr)) return hr;
         if (sample && c->native)
         {
@@ -1361,6 +1409,18 @@ static void RestartPanel()
     Out(L"Control panel started again.");
 }
 
+// The process' memory (private bytes, MB) and handles: logged with every action, grown per action type summed up.
+static double ProcessMb(DWORD* handles)
+{
+    PROCESS_MEMORY_COUNTERS_EX m = {};
+    m.cb = sizeof(m);
+    GetProcessMemoryInfo(GetCurrentProcess(), (PROCESS_MEMORY_COUNTERS*)&m, sizeof(m));
+    if (handles) GetProcessHandleCount(GetCurrentProcess(), handles);
+    return m.PrivateUsage / 1048576.0;
+}
+
+static Snapshot* g_snapshot;            // for the read watchdog's emergency stop
+
 int wmain(int argc, wchar_t** argv)
 {
     _setmode(_fileno(stdout), _O_U16TEXT);
@@ -1426,6 +1486,17 @@ int wmain(int argc, wchar_t** argv)
     }
     Snapshot snap;
     TakeSnapshot(&snap);
+    g_snapshot = &snap;
+    g_emergencyExit = [] {
+        MjpegStop();
+        TestMediaDelete(&g_media);
+        Restore(*g_snapshot);
+        DriverLogWriterStop();
+        Out(L"==== stopped: stuck in ReadSample; %d passed, %d FAILED, %d warning(s) ====", g_pass, g_fail, g_warn);
+    };
+    // driver.log as the panel writes it (the autotest closes the panel); the read watchdog
+    DriverLogWriterStart();
+    CloseHandle(CreateThread(nullptr, 0, ReadWatchdog, nullptr, 0, nullptr));
     // the test media: made now, removed at the end
     g_haveMedia = TestMediaCreate(&g_media, MediaLog, MediaWarn);
     g_mjPort = 0;
@@ -1437,7 +1508,7 @@ int wmain(int argc, wchar_t** argv)
         if (snap.names[i][0]) Out(L"  camera %d \"%ls\" %lux%lu %lu fps", i + 1, snap.names[i], snap.w[i], snap.h[i], snap.fps[i]);
 
     // Weighted random actions.
-    struct { void (*fn)(); int weight; const wchar_t* name; } actions[] = {
+    struct { void (*fn)(); int weight; const wchar_t* name; double grown; int runs; } actions[] = {
         { ActionPicture, 20, L"picture" }, { ActionPattern, 8, L"pattern" }, { ActionFormat, 14, L"format" },
         { ActionSizes, 8, L"sizes" }, { ActionRename, 12, L"rename" }, { ActionCount, 5, L"count" },
         { ActionSources, 10, L"sources" }, { ActionStress, 6, L"stress" }, { ActionCli, 15, L"cli" },
@@ -1459,18 +1530,36 @@ int wmain(int argc, wchar_t** argv)
         iteration++;
         wprintf(L"\n");
         AppLog(L"");
-        Out(L"#%d (%d s left)", iteration, (int)((LONG)(end - GetTickCount()) / 1000));
+        DWORD handles = 0;
+        double mb = ProcessMb(&handles);
+        Out(L"#%d (%d s left; memory %.1f MB, %lu handles)", iteration, (int)((LONG)(end - GetTickCount()) / 1000), mb, handles);
         for (auto& a : actions)
         {
             if (pick <= a.weight)
             {
                 a.fn();
+                a.grown += ProcessMb(nullptr) - mb;
+                a.runs++;
                 break;
             }
             pick -= a.weight;
         }
+        if (iteration % 200 == 0)
+        {
+            // which actions the memory grew with (a leak shows as one steadily growing line)
+            wchar_t line[1200] = L"", part[100];
+            for (auto& a : actions)
+                if (a.runs)
+                {
+                    _snwprintf(part, 100, L" %ls %+.1f MB (%d);", a.name, a.grown, a.runs);
+                    part[99] = 0;
+                    wcsncat(line, part, 1199 - wcslen(line));
+                }
+            Out(L"memory %.1f MB; grown with:%ls", ProcessMb(nullptr), line);
+        }
     }
     Out(L"");
+    DriverLogWriterStop();
     MjpegStop();
     TestMediaDelete(&g_media);
     Out(L"Test media removed.");
@@ -1479,6 +1568,7 @@ int wmain(int argc, wchar_t** argv)
     Out(L"");
     Out(L"==== %d action(s): %d passed, %d FAILED, %d warning(s); seed %u ====", iteration, g_pass, g_fail, g_warn, seed);
     Out(L"Log: %ls", AppLogPath());
+    MediaThreadEnd();
     MFShutdown();
     CoUninitialize();
 

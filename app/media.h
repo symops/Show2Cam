@@ -5,6 +5,9 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
+// Before CoUninitialize on a thread that decoded pictures: releases that thread's WIC factory.
+void MediaThreadEnd();
+
 // A decoded picture (owns its pixels).
 struct Picture
 {
