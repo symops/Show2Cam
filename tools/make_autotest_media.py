@@ -190,6 +190,10 @@ def make_s2c(out):
             args += ['-f', 'lavfi', '-i', 'sine=frequency=1000:sample_rate=48000:duration=%g,volume=0.25' % seconds]
         fmt = [a for a in vargs if a in ('-f',)]
         args += [a for a in vargs]
+        if '-pix_fmt' not in vargs:
+            # from RGB frames x265 / libaom / VP9 otherwise keep RGB (gbrp: HEVC Rext, AV1 High, VP9 profile 1), which
+            # Windows' decoders show with wrong colours: real clips are YUV 4:2:0
+            args += ['-pix_fmt', 'yuv420p']
         if aargs:
             args += aargs + ['-ac', '2' if 'ac3' not in ' '.join(aargs) else '2']
         args += ['-shortest', os.path.join(out, name)]

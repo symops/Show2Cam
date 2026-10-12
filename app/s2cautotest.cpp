@@ -1551,6 +1551,45 @@ static void HandleTypes(wchar_t* out, size_t len)
     }
 }
 
+// Which part leaves handles behind (the 10-hour Windows 11 run: +2700 events, +240 semaphores, with the sources):
+// a source alone, the camera opened alone, both - 5 times each.
+static void HandleProbe()
+{
+    if (!g_media.imageCount) return;
+    CamInfo cam;
+    if (!PickCam(&cam) || !WaitClosed(cam, 3000)) return;
+    CamConfig cfg = TestConfig(cam.index, SourceImages);
+    wcscpy(cfg.imageFolder, g_media.images[0].folder);
+    auto count = [] { DWORD n = 0; GetProcessHandleCount(GetCurrentProcess(), &n); return (long)n; };
+    long h0 = count();
+    for (int i = 0; i < 5 && !g_stop; i++)
+    {
+        CameraRunner* r = RunnerStart(cam.index, cam.path, cfg, nullptr, 0);
+        Sleep(800);
+        RunnerStop(r);
+    }
+    long h1 = count();
+    for (int i = 0; i < 5 && !g_stop; i++)
+    {
+        Capture c;
+        if (SUCCEEDED(CaptureOpen(cam, &c))) CaptureRead(&c);
+        c.Close();
+        WaitClosed(cam, 5000);
+    }
+    long h2 = count();
+    for (int i = 0; i < 5 && !g_stop; i++)
+    {
+        Capture c;
+        CameraRunner* r = StartSource(cam, cfg, &c);
+        if (!r) break;
+        Fresh(&c);
+        StopSource(r, cam, &c);
+    }
+    long h3 = count();
+    Out(L"handle probe, camera %d, 5 times each: source alone %+ld, camera opened alone %+ld, both %+ld", cam.index + 1,
+        h1 - h0, h2 - h1, h3 - h2);
+}
+
 static Snapshot* g_snapshot;            // for the read watchdog's emergency stop
 
 int wmain(int argc, wchar_t** argv)
@@ -1691,6 +1730,7 @@ int wmain(int argc, wchar_t** argv)
             wchar_t types[600];
             HandleTypes(types, 600);
             if (types[0]) Out(L"handles: %ls", types);
+            HandleProbe();
         }
     }
     Out(L"");
