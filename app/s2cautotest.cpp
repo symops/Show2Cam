@@ -1586,8 +1586,67 @@ static void HandleProbe()
         StopSource(r, cam, &c);
     }
     long h3 = count();
-    Out(L"handle probe, camera %d, 5 times each: source alone %+ld, camera opened alone %+ld, both %+ld", cam.index + 1,
-        h1 - h0, h2 - h1, h3 - h2);
+    // the sources that grew the count most: a stream, a clip with sound
+    long stream = 0, clip = 0;
+    if (g_mjOk)
+    {
+        CamConfig sc = TestConfig(cam.index, SourceStream);
+        _snwprintf(sc.url, 512, L"http://127.0.0.1:%u/", g_mjPort);
+        long a = count();
+        for (int i = 0; i < 5 && !g_stop; i++)
+        {
+            Capture c;
+            CameraRunner* r = StartSource(cam, sc, &c);
+            if (!r) break;
+            Fresh(&c);
+            StopSource(r, cam, &c);
+        }
+        stream = count() - a;
+    }
+    for (int v = 0; v < g_media.videoCount; v++)
+        if (g_media.videos[v].sound)
+        {
+            CamConfig vc = TestConfig(cam.index, SourceVideo);
+            wcscpy(vc.videoFolder, g_media.videos[v].folder);
+            long a = count();
+            for (int i = 0; i < 5 && !g_stop; i++)
+            {
+                Capture c;
+                CameraRunner* r = StartSource(cam, vc, &c);
+                if (!r) break;
+                Fresh(&c);
+                Sleep(500);
+                StopSource(r, cam, &c);
+            }
+            clip = count() - a;
+            break;
+        }
+    Out(L"handle probe, camera %d, 5 times each: source alone %+ld, camera opened alone %+ld, both %+ld; stream %+ld, clip "
+        L"with sound %+ld", cam.index + 1, h1 - h0, h2 - h1, h3 - h2, stream, clip);
+}
+
+// Closes a running control panel (no questions); true when there was one.
+static bool ClosePanel(const wchar_t* message)
+{
+    bool was = false;
+    for (int tries = 0; tries < 3; tries++)
+    {
+        HWND panel = FindWindowW(S2C_PANEL_CLASS, nullptr);
+        if (!panel) break;
+        if (!was && message) Out(L"%ls", message);
+        was = true;
+        DWORD pid = 0;
+        GetWindowThreadProcessId(panel, &pid);
+        HANDLE proc = OpenProcess(SYNCHRONIZE, FALSE, pid);
+        PostMessageW(panel, WM_CLOSE, 0x53324331 /* S2C_CLOSE_FOR_SETUP */, 0);
+        if (proc)
+        {
+            WaitForSingleObject(proc, 5000);
+            CloseHandle(proc);
+        }
+        else Sleep(1500);
+    }
+    return was;
 }
 
 static Snapshot* g_snapshot;            // for the read watchdog's emergency stop
@@ -1630,24 +1689,7 @@ int wmain(int argc, wchar_t** argv)
     Out(L"Log: %ls", AppLogPath());
 
     // The control panel would send its own pictures to the cameras: close it (no questions), start it again at the end.
-    bool panelWasRunning = false;
-    for (int tries = 0; tries < 3; tries++)
-    {
-        HWND panel = FindWindowW(S2C_PANEL_CLASS, nullptr);
-        if (!panel) break;
-        panelWasRunning = true;
-        Out(L"Closing the Show2Cam control panel.");
-        DWORD pid = 0;
-        GetWindowThreadProcessId(panel, &pid);
-        HANDLE proc = OpenProcess(SYNCHRONIZE, FALSE, pid);
-        PostMessageW(panel, WM_CLOSE, 0x53324331 /* S2C_CLOSE_FOR_SETUP */, 0);
-        if (proc)
-        {
-            WaitForSingleObject(proc, 5000);
-            CloseHandle(proc);
-        }
-        else Sleep(1500);
-    }
+    bool panelWasRunning = ClosePanel(L"Closing the Show2Cam control panel.");
 
     CamInfo cams[S2C_MAX_CAMERAS_UI];
     if (!Cameras(cams))
@@ -1696,6 +1738,14 @@ int wmain(int argc, wchar_t** argv)
         {
             Sleep(3000);
             if (!Check(Cameras(cams) > 0, L"Show2Cam cameras there")) break;
+        }
+        // started meanwhile (Windows starts the autostart programs late after a logon: its source fought the test's
+        // for the cameras for 5 hours - pictures of the wrong colour, formats set back)
+        if (ClosePanel(nullptr))
+        {
+            Warn(L"the Show2Cam control panel was started during the test (autostart after a logon?): closed, started again "
+                 L"at the end");
+            panelWasRunning = true;
         }
         int pick = Rand(1, total);
         iteration++;
