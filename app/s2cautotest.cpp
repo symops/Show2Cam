@@ -100,8 +100,11 @@ static int Rand(int lo, int hi)
     return lo + (int)((r >> 33) % (unsigned long long)(hi - lo + 1));
 }
 
-static BOOL WINAPI CtrlHandler(DWORD)
+static volatile LONG g_stopSignal = -1;     // the console signal that stopped the test (-1: none)
+
+static BOOL WINAPI CtrlHandler(DWORD type)
 {
+    InterlockedCompareExchange(&g_stopSignal, (LONG)type, -1);
     InterlockedExchange(&g_stop, 1);        // finish the current action, then restore everything
     return TRUE;
 }
@@ -334,7 +337,7 @@ static HRESULT ActivateCamera(const CamInfo& cam, IMFMediaSource** source)
 }
 
 // Opens the camera; wantW / wantH: that native size (else the camera's default), fps: that rate (0: as offered).
-static HRESULT CaptureOpen(const CamInfo& cam, Capture* c, UINT32 wantW = 0, UINT32 wantH = 0, UINT32 fps = 0)
+static HRESULT CaptureOpenOnce(const CamInfo& cam, Capture* c, UINT32 wantW, UINT32 wantH, UINT32 fps)
 {
     c->Close();
     c->cam = cam;
@@ -560,6 +563,23 @@ static HRESULT CaptureRead(Capture* c)
         return hr;
     }
     return MF_E_NO_SAMPLE_TIMESTAMP;
+}
+
+// Opens the camera and reads its first frame. Windows 11's Frame Server answered the first reads of a camera whose
+// format had just changed with ERROR_NO_MATCH (a few times in 8000 actions): opened again, that is a warning; failing
+// again, the test's own reads fail.
+static HRESULT CaptureOpen(const CamInfo& cam, Capture* c, UINT32 wantW = 0, UINT32 wantH = 0, UINT32 fps = 0)
+{
+    HRESULT hr = CaptureOpenOnce(cam, c, wantW, wantH, fps);
+    if (FAILED(hr)) return hr;
+    HRESULT rh = CaptureRead(c);
+    if (rh != HRESULT_FROM_WIN32(ERROR_NO_MATCH)) return hr;
+    c->Close();
+    Sleep(500);
+    hr = CaptureOpenOnce(cam, c, wantW, wantH, fps);
+    Warn(L"camera %d: the first frame read failed (0x%08lX, Windows' Frame Server after a format change): opened again "
+         L"(0x%08lX)", cam.index + 1, (unsigned long)rh, (unsigned long)hr);
+    return hr;
 }
 
 static ULONG PixelAt(const Capture& c, double fx, double fy)
@@ -1009,20 +1029,6 @@ static CameraRunner* StartSource(const CamInfo& cam, const CamConfig& cfg, Captu
     S2C_STATUS st = {};
     for (int t = 0; t < 60 && !(Status(cam, &st) && st.SourceWidth && st.Width == cfg.width && st.Height == cfg.height); t++) Sleep(100);
     HRESULT hr = CaptureOpen(cam, c);
-    if (SUCCEEDED(hr))
-    {
-        // Windows 11's Frame Server answered the first reads of a camera whose format had just changed with
-        // ERROR_NO_MATCH (twice in 8000 actions): opened again, that is a warning; failing again, the reads fail below.
-        HRESULT rh = CaptureRead(c);
-        if (rh == HRESULT_FROM_WIN32(ERROR_NO_MATCH))
-        {
-            c->Close();
-            WaitClosed(cam, 5000);
-            hr = CaptureOpen(cam, c);
-            Warn(L"camera %d: the first frame read failed (0x%08lX, Windows' Frame Server after a format change): opened again "
-                 L"(0x%08lX)", cam.index + 1, (unsigned long)rh, (unsigned long)hr);
-        }
-    }
     if (!Check(SUCCEEDED(hr), L"camera opened (0x%08lX)", (unsigned long)hr))
     {
         RunnerStop(r);
@@ -1264,6 +1270,8 @@ static void ActionMjpeg()
     {
         ULONGLONG sent = MjpegFramesSent();
         bool shown = Check(WaitColor(&c, a, 8000), L"stream picture shown (colour %06lX)", a);
+        // (10 pictures a second: the first one may still be the only one)
+        for (int t = 0; t < 20 && MjpegFramesSent() <= sent; t++) Sleep(100);
         Check(MjpegFramesSent() > sent, L"the server sent pictures (%lu client(s))", (unsigned long)MjpegClients());
         if (shown && mode == 0)
         {
@@ -1635,8 +1643,17 @@ static void HandleProbe()
             clip = count() - a;
             break;
         }
+    // the test's MJPEG server alone (a plain socket client): tells its side from the stream source's
+    long server = 0;
+    if (g_mjOk)
+    {
+        long a = count();
+        for (int i = 0; i < 5 && !g_stop; i++) MjpegProbeClient(g_mjPort);
+        Sleep(300);                         // its client threads end
+        server = count() - a;
+    }
     Out(L"handle probe, camera %d, 5 times each: source alone %+ld, camera opened alone %+ld, both %+ld; stream %+ld, clip "
-        L"with sound %+ld", cam.index + 1, h1 - h0, h2 - h1, h3 - h2, stream, clip);
+        L"with sound %+ld, test server alone %+ld", cam.index + 1, h1 - h0, h2 - h1, h3 - h2, stream, clip, server);
 }
 
 // Closes a running control panel (no questions); true when there was one.
@@ -1796,6 +1813,12 @@ int wmain(int argc, wchar_t** argv)
             if (types[0]) Out(L"handles: %ls", types);
             HandleProbe();
         }
+    }
+    if (g_stopSignal >= 0)
+    {
+        static const wchar_t* names[7] = { L"Ctrl+C", L"Ctrl+Break", L"the console window closed", L"?", L"?",
+                                           L"the user logs off", L"Windows shuts down" };
+        Out(L"stopped early: %ls", g_stopSignal < 7 ? names[g_stopSignal] : L"?");
     }
     Out(L"");
     DriverLogWriterStop();

@@ -48,6 +48,8 @@ void  MjpegSetColor(ULONG color);
 void  MjpegStop();
 LONG  MjpegClients();
 ULONGLONG MjpegFramesSent();
+// A plain client (no WinHTTP): connects, reads ~64 KB of the stream, disconnects (the handle probe: the server's side).
+bool  MjpegProbeClient(USHORT port);
 
 // Speak2Mic Microphone for `ms`: level (RMS of channel 1, 0..1) and the share of it that is the 1 kHz tone.
 struct MicResult { bool found; HRESULT hr; double rms, tone; int peakHz; UINT32 rate, channels; };

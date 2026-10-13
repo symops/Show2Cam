@@ -572,8 +572,8 @@ static void AddSamples(TestMedia* m, TestLog log, TestLog warn)
             if (FAILED(sh))
             {
                 wchar_t t[300];
-                _snwprintf(t, 300, L"sample clip %ls: Windows cannot decode its sound (0x%08lX; Windows 11 24H2 has no AC-3 "
-                           L"decoder): only its picture is checked", wfile, (unsigned long)sh);
+                _snwprintf(t, 300, L"sample clip %ls: Windows cannot decode its sound (0x%08lX; no decoder for it here: Windows 11 "
+                           L"24H2 dropped AC-3, Vorbis / Opus need Web Media Extensions): only its picture is checked", wfile, (unsigned long)sh);
                 t[299] = 0;
                 if (warn) warn(t);
                 v.sound = false;
@@ -893,6 +893,32 @@ static DWORD WINAPI AcceptThread(LPVOID)
         }
     }
     return 0;
+}
+
+bool MjpegProbeClient(USHORT port)
+{
+    SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (s == INVALID_SOCKET) return false;
+    sockaddr_in a = {};
+    a.sin_family = AF_INET;
+    a.sin_port = htons(port);
+    a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    DWORD timeout = 3000;
+    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout));
+    bool ok = connect(s, (sockaddr*)&a, sizeof(a)) == 0;
+    const char* get = "GET / HTTP/1.0\r\nAuthorization: Basic czJjOnRlc3Q=\r\n\r\n";
+    ok = ok && send(s, get, (int)strlen(get), 0) > 0;
+    int total = 0;
+    char buf[4096];
+    while (ok && total < 65536)
+    {
+        int n = recv(s, buf, sizeof(buf), 0);
+        if (n <= 0) break;
+        total += n;
+    }
+    shutdown(s, SD_BOTH);
+    closesocket(s);
+    return ok && total > 0;
 }
 
 bool MjpegStart(USHORT* port, bool auth)

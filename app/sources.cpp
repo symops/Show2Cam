@@ -1206,9 +1206,25 @@ private:
         LeaveCriticalSection(&m_cs);
     }
 
+    // One WinHTTP session for the process (its handles may be used from any thread): a session per stream start, opened
+    // and closed again, left ~2 event handles behind each time (the autotest's handle probe: +8 per 5 starts).
+    static BOOL WINAPI OpenSession(PINIT_ONCE, PVOID, PVOID* session)
+    {
+        *session = WinHttpOpen(L"Show2Cam", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+        return TRUE;
+    }
+
+    static HINTERNET Session()
+    {
+        static INIT_ONCE once = INIT_ONCE_STATIC_INIT;
+        PVOID session = nullptr;
+        InitOnceExecuteOnce(&once, OpenSession, nullptr, &session);
+        return (HINTERNET)session;
+    }
+
     void Run()
     {
-        HINTERNET session = WinHttpOpen(L"Show2Cam", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+        HINTERNET session = Session();
         int failures = 0;
         while (!m_stop && session)
         {
@@ -1219,7 +1235,6 @@ private:
                 AppLog(L"camera %d: stream %ls: %ls, reconnecting", m_sink.index + 1, m_url, m_error);
             WaitForSingleObject(m_stopEvent, 3000);
         }
-        if (session) WinHttpCloseHandle(session);
     }
 
     void Publish(const BYTE* data, size_t size)
