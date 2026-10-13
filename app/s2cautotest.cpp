@@ -1009,6 +1009,20 @@ static CameraRunner* StartSource(const CamInfo& cam, const CamConfig& cfg, Captu
     S2C_STATUS st = {};
     for (int t = 0; t < 60 && !(Status(cam, &st) && st.SourceWidth && st.Width == cfg.width && st.Height == cfg.height); t++) Sleep(100);
     HRESULT hr = CaptureOpen(cam, c);
+    if (SUCCEEDED(hr))
+    {
+        // Windows 11's Frame Server answered the first reads of a camera whose format had just changed with
+        // ERROR_NO_MATCH (twice in 8000 actions): opened again, that is a warning; failing again, the reads fail below.
+        HRESULT rh = CaptureRead(c);
+        if (rh == HRESULT_FROM_WIN32(ERROR_NO_MATCH))
+        {
+            c->Close();
+            WaitClosed(cam, 5000);
+            hr = CaptureOpen(cam, c);
+            Warn(L"camera %d: the first frame read failed (0x%08lX, Windows' Frame Server after a format change): opened again "
+                 L"(0x%08lX)", cam.index + 1, (unsigned long)rh, (unsigned long)hr);
+        }
+    }
     if (!Check(SUCCEEDED(hr), L"camera opened (0x%08lX)", (unsigned long)hr))
     {
         RunnerStop(r);

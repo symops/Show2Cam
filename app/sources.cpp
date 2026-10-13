@@ -1110,10 +1110,16 @@ public:
     {
         InterlockedExchange(&m_stop, 1);
         SetEvent(m_stopEvent);
-        EnterCriticalSection(&m_cs);
-        if (m_request) WinHttpCloseHandle(m_request);      // aborts a waiting read
-        m_request = nullptr;
-        LeaveCriticalSection(&m_cs);
+        // A stream that sends returns from its read within moments and ends by itself. Only a stalled one has its request
+        // closed from here (aborts the waiting read): closing it under a running read every time left WinHTTP's events
+        // behind - ~2 handles per stop, thousands over a day of source changes.
+        if (!m_thread || WaitForSingleObject(m_thread, 1500) == WAIT_TIMEOUT)
+        {
+            EnterCriticalSection(&m_cs);
+            if (m_request) WinHttpCloseHandle(m_request);
+            m_request = nullptr;
+            LeaveCriticalSection(&m_cs);
+        }
         if (m_thread)
         {
             WaitForSingleObject(m_thread, 10000);
