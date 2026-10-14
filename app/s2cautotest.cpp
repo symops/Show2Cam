@@ -1652,8 +1652,20 @@ static void HandleProbe()
         Sleep(300);                         // its client threads end
         server = count() - a;
     }
+    // the test's own microphone measurement (the clips with sound grew the count most, the source playing them did not)
+    long mic;
+    {
+        long a = count();
+        for (int i = 0; i < 5 && !g_stop; i++)
+        {
+            MicResult m = {};
+            MicMeasure(200, &m);
+        }
+        mic = count() - a;
+    }
     Out(L"handle probe, camera %d, 5 times each: source alone %+ld, camera opened alone %+ld, both %+ld; stream %+ld, clip "
-        L"with sound %+ld, test server alone %+ld", cam.index + 1, h1 - h0, h2 - h1, h3 - h2, stream, clip, server);
+        L"with sound %+ld, test server alone %+ld, microphone measured %+ld", cam.index + 1, h1 - h0, h2 - h1, h3 - h2, stream,
+        clip, server, mic);
 }
 
 // Closes a running control panel (no questions); true when there was one.
