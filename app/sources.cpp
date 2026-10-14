@@ -125,26 +125,9 @@ public:
                 m_badCount = 0;                     // files may have been replaced: tried again after a minute
                 m_badReset = now + 60000;
             }
-            bool picked = false;
-            // A file Windows cannot decode is remembered and another one taken at once (it used to show the error
-            // screen for a second: dark frames programs drop).
-            for (int attempt = 0; attempt < 12; attempt++)
-            {
-                // After a few broken picks the current picture may be taken again (it may be the only good one).
-                if (!PickRandomFile(m_folder, MediaImages, attempt < 6 ? m_current : nullptr, next)) break;
-                bool bad = false;
-                for (int b = 0; b < m_badCount && !bad; b++) bad = _wcsicmp(m_bad[b], next) == 0;
-                if (bad && attempt >= 3 && m_current[0] && GetFileAttributesW(m_current) != INVALID_FILE_ATTRIBUTES)
-                {
-                    wcscpy(next, m_current);        // the others drawn are broken: the current picture again
-                    bad = false;
-                }
-                if (!bad)
-                {
-                    picked = true;
-                    break;
-                }
-            }
+            // A file Windows cannot decode is remembered (it used to show the error screen for a second: dark frames
+            // programs drop) and left out of the choice; the current picture again when it is the only good one.
+            bool picked = PickRandomFile(m_folder, MediaImages, m_current[0] ? m_current : nullptr, m_bad, m_badCount, next) > 0;
             if (picked)
             {
                 UINT sw, sh;
@@ -437,28 +420,9 @@ private:
         for (int attempt = 0; attempt < 24; attempt++)
         {
             wchar_t path[MAX_PATH];
-            // After a few broken picks the file just played may be taken again (it may be the only good one: with it
-            // excluded only broken ones were left and the error screen came for 5 s).
-            bool found = PickRandomFile(m_folder, MediaVideo, attempt < 8 ? m_last : nullptr, path);
-            bool bad = false;
-            for (int b = 0; found && b < m_badCount && !bad; b++) bad = _wcsicmp(m_bad[b], path) == 0;
-            if (bad && attempt >= 3 && m_last[0])
-            {
-                // the others drawn are broken: the file just played again, when it is not one of them (with random draws
-                // the only good file was sometimes not hit, and the error screen came for 5 s)
-                bool lastBad = false;
-                for (int b = 0; b < m_badCount && !lastBad; b++) lastBad = _wcsicmp(m_bad[b], m_last) == 0;
-                if (!lastBad && GetFileAttributesW(m_last) != INVALID_FILE_ATTRIBUTES)
-                {
-                    wcscpy(path, m_last);
-                    bad = false;
-                }
-            }
-            if (bad)
-            {
-                if (attempt < 23) continue;
-                found = false;                  // every file left is one that cannot be played
-            }
+            // Among the files not known to be broken; the file just played again when it is the only good one.
+            int pick = PickRandomFile(m_folder, MediaVideo, m_last[0] ? m_last : nullptr, m_bad, m_badCount, path);
+            bool found = pick > 0;
             if (!found && m_badCount)
             {
                 m_state = StateError;

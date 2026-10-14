@@ -40,6 +40,9 @@ enum MediaKind { MediaImages, MediaVideo };
 bool IsMediaFile(const wchar_t* name, MediaKind kind);
 int  ListMediaFiles(const wchar_t* folder, MediaKind kind, wchar_t (*names)[MAX_PATH], int max);   // sorted by name
 // A random file of the folder, never `last` again while there is another one. Full path into `out`.
-bool PickRandomFile(const wchar_t* folder, MediaKind kind, const wchar_t* last, wchar_t* out);
+// A random file of the folder, not one of `bad` (files that cannot be shown) and not `last` while there is another one.
+// 1: picked; 0: no files; -1: every file is a bad one.
+int PickRandomFile(const wchar_t* folder, MediaKind kind, const wchar_t* last, const wchar_t (*bad)[MAX_PATH], int badCount,
+                   wchar_t* out);
 // The default folders next to the program: "images" and "mp4".
 void DefaultMediaFolder(MediaKind kind, wchar_t* folder);

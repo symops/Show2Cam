@@ -498,20 +498,34 @@ static int RandomIndex(int n)
     return (int)(r % (ULONG)n);
 }
 
-bool PickRandomFile(const wchar_t* folder, MediaKind kind, const wchar_t* last, wchar_t* out)
+int PickRandomFile(const wchar_t* folder, MediaKind kind, const wchar_t* last, const wchar_t (*bad)[MAX_PATH], int badCount,
+                   wchar_t* out)
 {
     if (!fileNames) fileNames = (wchar_t (*)[MAX_PATH])malloc(sizeof(wchar_t) * MAX_PATH * 1024);
-    if (!fileNames) return false;
+    if (!fileNames) return 0;
     int n = ListMediaFiles(folder, kind, fileNames, 1024);
-    if (n == 0) return false;
-    // Random, but never the file just shown while there is another one (as Speak2Mic's music).
-    for (;;)
+    if (n == 0) return 0;
+    // Chosen among the good files at once (random draws that hit broken ones fell back to the file shown, and with
+    // half the folder broken a slideshow sometimes stood still for 10 s); never the file just shown while there is
+    // another good one (as Speak2Mic's music).
+    static thread_local int good[1024];
+    int count = 0, lastIndex = -1;
+    for (int i = 0; i < n; i++)
     {
-        int pick = RandomIndex(n);
-        _snwprintf(out, MAX_PATH, L"%ls\\%ls", folder, fileNames[pick]);
-        out[MAX_PATH - 1] = 0;
-        if (n == 1 || !last || _wcsicmp(out, last) != 0) return true;
+        wchar_t path[MAX_PATH];
+        _snwprintf(path, MAX_PATH, L"%ls\\%ls", folder, fileNames[i]);
+        path[MAX_PATH - 1] = 0;
+        bool broken = false;
+        for (int b = 0; b < badCount && !broken; b++) broken = _wcsicmp(bad[b], path) == 0;
+        if (broken) continue;
+        if (last && _wcsicmp(path, last) == 0) lastIndex = i;
+        else good[count++] = i;
     }
+    if (!count && lastIndex >= 0) good[count++] = lastIndex;
+    if (!count) return -1;
+    _snwprintf(out, MAX_PATH, L"%ls\\%ls", folder, fileNames[good[RandomIndex(count)]]);
+    out[MAX_PATH - 1] = 0;
+    return 1;
 }
 
 void DefaultMediaFolder(MediaKind kind, wchar_t* folder)
