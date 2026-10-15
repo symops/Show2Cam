@@ -440,6 +440,64 @@ static HRESULT ProbeSound(const wchar_t* path)
     return hr;
 }
 
+struct DecodeJob { wchar_t path[MAX_PATH]; bool video; };
+
+static DWORD WINAPI DecodeThread(LPVOID p)
+{
+    const DecodeJob* j = (const DecodeJob*)p;
+    CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    if (j->video) ProbeVideo(j->path);
+    else ProbePicture(j->path);
+    CoUninitialize();
+    return 0;
+}
+
+static DWORD WINAPI DecodeThreadOwned(LPVOID p)
+{
+    DecodeThread(p);
+    delete (DecodeJob*)p;
+    return 0;
+}
+
+void DecodeProbe(const wchar_t* folder, bool video, bool newThreads, int times)
+{
+    DecodeJob j = { {}, video };
+    wchar_t mask[MAX_PATH];
+    _snwprintf(mask, MAX_PATH, L"%ls\\*", folder);
+    mask[MAX_PATH - 1] = 0;
+    WIN32_FIND_DATAW fd;
+    HANDLE f = FindFirstFileW(mask, &fd);
+    if (f == INVALID_HANDLE_VALUE) return;
+    do
+        if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+        {
+            _snwprintf(j.path, MAX_PATH, L"%ls\\%ls", folder, fd.cFileName);
+            j.path[MAX_PATH - 1] = 0;
+            break;
+        }
+    while (FindNextFileW(f, &fd));
+    FindClose(f);
+    if (!j.path[0]) return;
+    for (int i = 0; i < times; i++)
+    {
+        if (!newThreads)
+        {
+            DecodeThread(&j);
+            continue;
+        }
+        // its own copy: a thread that outlives the wait still has it
+        DecodeJob* copy = new DecodeJob(j);
+        HANDLE t = CreateThread(nullptr, 0, DecodeThreadOwned, copy, 0, nullptr);
+        if (!t)
+        {
+            delete copy;
+            break;
+        }
+        WaitForSingleObject(t, 15000);
+        CloseHandle(t);
+    }
+}
+
 static void AddSamples(TestMedia* m, TestLog log, TestLog warn)
 {
     HRSRC r = FindResourceW(nullptr, MAKEINTRESOURCEW(500), (LPCWSTR)RT_RCDATA);

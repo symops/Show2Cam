@@ -1666,6 +1666,44 @@ static void HandleProbe()
     Out(L"handle probe, camera %d, 5 times each: source alone %+ld, camera opened alone %+ld, both %+ld; stream %+ld, clip "
         L"with sound %+ld, test server alone %+ld, microphone measured %+ld", cam.index + 1, h1 - h0, h2 - h1, h3 - h2, stream,
         clip, server, mic);
+
+    // the actions that grew the count most decode with a codec from a Store extension (AVIF / HEIC / WebP, VP9 / AV1 /
+    // HEVC / VP8), the built-in ones grew nothing: per use or per thread (a source runs on a new thread each time)?
+    auto find = [](const wchar_t* const* keys, bool video, bool store) -> int {
+        for (int k = 0; keys[k]; k++)
+            for (int i = 0, n = video ? g_media.videoCount : g_media.imageCount; i < n; i++)
+            {
+                const wchar_t* name = video ? g_media.videos[i].name : g_media.images[i].format;
+                if (wcsstr(name, keys[k]) && (!video || g_media.videos[i].optional == store)) return i;
+            }
+        return -1;
+    };
+    static const wchar_t* const storePics[] = { L"avif", L"heic", L"webp", nullptr };
+    static const wchar_t* const storeClips[] = { L"vp9", L"av1", L"hevc", L"vp8", nullptr };
+    static const wchar_t* const plainClips[] = { L"h264", L"mpeg2", nullptr };
+    struct { const wchar_t* folder; const wchar_t* name; bool video; } probes[4] = {};
+    int p = find(storePics, false, true);
+    if (p >= 0) probes[0] = { g_media.images[p].folder, g_media.images[p].format, false };
+    probes[1] = { g_media.images[0].folder, g_media.images[0].format, false };
+    p = find(storeClips, true, true);
+    if (p >= 0) probes[2] = { g_media.videos[p].folder, g_media.videos[p].name, true };
+    p = find(plainClips, true, false);
+    if (p >= 0) probes[3] = { g_media.videos[p].folder, g_media.videos[p].name, true };
+    wchar_t line[1024];
+    int len = _snwprintf(line, 1024, L"handle probe, decoded 5 times on one thread / each on a new thread:");
+    for (auto& d : probes)
+    {
+        if (!d.folder || g_stop || len < 0 || len > 900) continue;
+        long a = count();
+        DecodeProbe(d.folder, d.video, false, 5);
+        long b = count();
+        DecodeProbe(d.folder, d.video, true, 5);
+        long c = count();
+        int n = _snwprintf(line + len, 1024 - len, L" %ls %+ld / %+ld;", d.name, b - a, c - b);
+        if (n > 0) len += n;
+    }
+    line[1023] = 0;
+    Out(L"%ls", line);
 }
 
 // Closes a running control panel (no questions); true when there was one.

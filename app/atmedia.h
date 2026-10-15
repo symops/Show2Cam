@@ -46,6 +46,9 @@ ULONG TestClipColorAt(double seconds);       // the colour field of a clip at th
 bool  MjpegStart(USHORT* port, bool auth);
 void  MjpegSetColor(ULONG color);
 void  MjpegStop();
+// The handle probe: the picture or clip in `folder` decoded `times` times on this thread, or each time on a new thread (as
+// a camera's source does: a thread per run) - tells a decoder that leaks per use from one that leaks per thread.
+void  DecodeProbe(const wchar_t* folder, bool video, bool newThreads, int times);
 LONG  MjpegClients();
 ULONGLONG MjpegFramesSent();
 // A plain client (no WinHTTP): connects, reads ~64 KB of the stream, disconnects (the handle probe: the server's side).
