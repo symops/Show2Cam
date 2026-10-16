@@ -17,7 +17,9 @@ bool SetupTrustCertificate(const wchar_t* rootCerPath, const wchar_t* publisherC
 bool SetupInstallDriver(const wchar_t* infPath, bool* rebootNeeded, SetupLog log, void* ctx);
 // One device per camera: devices for cameras 1..count (missing ones created, with the driver from the driver store
 // when installDriver), those above removed; existing devices without a camera number get one. Administrator rights.
-bool SetupSetCameraCount(int count, bool installDriver, bool* rebootNeeded, SetupLog log, void* ctx);
+// A camera above the count that a program has open is not removed but hidden (*hidden counts them): the program keeps
+// it until it closes it, its device goes with a later call.
+bool SetupSetCameraCount(int count, bool installDriver, bool* rebootNeeded, SetupLog log, void* ctx, int* hidden = nullptr);
 
 // Removes every ROOT\Show2Cam device and deletes the Show2Cam driver package(s) from the driver store.
 // keepSettings (update / reinstall): the camera settings survive for the new version; otherwise (uninstall) all

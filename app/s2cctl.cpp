@@ -250,7 +250,9 @@ static int CmdCount(int argc, wchar_t** argv)
         return ExitAdmin;
     }
     bool reboot = false;
-    bool ok = SetupSetCameraCount((int)n, true, &reboot, [](void*, const wchar_t* line) { Out(L"  %ls", line); }, nullptr);
+    int hidden = 0;
+    bool ok = SetupSetCameraCount((int)n, true, &reboot, [](void*, const wchar_t* line) { Out(L"  %ls", line); }, nullptr, &hidden);
+    if (hidden) Out(L"%d camera(s) above the number that a program has open: hidden, removed with a later change once closed", hidden);
     if (!ok)
     {
         Out(L"could not set the number of cameras to %lu", n);
@@ -480,7 +482,7 @@ static int CmdFormat(int argc, wchar_t** argv)
         if (setFps) configs[i].fps = fps;
     }
     int rc = SaveAll(list, n, configs);
-    Out(L"note: a camera that a program has open gets the new format when it is closed");
+    Out(L"note: a program that has the camera open keeps its format until it opens the camera again");
     return rc;
 }
 

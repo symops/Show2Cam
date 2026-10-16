@@ -5,8 +5,9 @@
 //   S2C_PROPERTY_FRAME  (SET)  S2C_FRAME_HEADER + Width*Height BGRA pixels, top-down: the picture to show
 //                               (any size, scaled to the negotiated one); Width = 0: back to the test pattern
 //   S2C_PROPERTY_STATUS (GET)  S2C_STATUS
-//   S2C_PROPERTY_FORMAT (SET)  S2C_FORMAT: the size and frame rate the camera offers; only while no program has
-//                               the camera open (STATUS_DEVICE_BUSY otherwise). Kept in the driver settings.
+//   S2C_PROPERTY_FORMAT (SET)  S2C_FORMAT: the size and frame rate the camera offers, also while programs have
+//                               it open (they keep the format they negotiated; the next ones get this one). Kept in
+//                               the driver settings.
 //   S2C_PROPERTY_NAME   (SET)  S2C_NAME: the camera's name in Windows (FriendlyName of its device interfaces);
 //                               empty = "Show2Cam Camera N". Kept in the driver settings.
 // {6F1C2A9E-3B57-4E0C-9D1A-5C2E7B3F8A41}
@@ -14,7 +15,13 @@
 //   S2C_PROPERTY_LOG    (GET)  S2C_LOG: the driver's log (kept in memory only; the panel writes it to driver.log - the
 //                               driver itself writes no file / registry value while running: DLP file filters blocked
 //                               those writes while their agent opened a camera, and the camera hung with them)
-enum { S2C_PROPERTY_FRAME = 0, S2C_PROPERTY_STATUS = 1, S2C_PROPERTY_FORMAT = 2, S2C_PROPERTY_NAME = 3, S2C_PROPERTY_LOG = 4 };
+//   S2C_PROPERTY_SHOW   (SET)  S2C_SHOW: shows or hides camera Index (any camera's filter takes it: a hidden camera's
+//                               own interfaces are off). Hidden: programs no longer list it, a program that has it
+//                               open keeps it until it closes - a camera removed while in use (its device stays
+//                               until then; removing it would leave a device a program still reads, but no longer
+//                               the camera of that number).
+enum { S2C_PROPERTY_FRAME = 0, S2C_PROPERTY_STATUS = 1, S2C_PROPERTY_FORMAT = 2, S2C_PROPERTY_NAME = 3, S2C_PROPERTY_LOG = 4,
+       S2C_PROPERTY_SHOW = 5 };
 #define S2C_NAME_CHARS 64
 #define S2C_MIN_WIDTH  160
 #define S2C_MIN_HEIGHT 120
@@ -65,5 +72,11 @@ struct S2C_LOG
 struct S2C_NAME
 {
     WCHAR Name[S2C_NAME_CHARS];         // zero-terminated
+};
+
+struct S2C_SHOW
+{
+    ULONG Index;                        // 0-based camera number (camera 1 is never hidden)
+    ULONG Show;                         // 1 show, 0 hide
 };
 

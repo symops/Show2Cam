@@ -1121,14 +1121,16 @@ static bool IsElevated()
     return elevated;
 }
 
-// 0 ok, 2 driver not installed, 3 device not found, 4 restart failed, 5 reboot needed
+// 0 ok, 2 driver not installed, 3 device not found, 4 restart failed, 5 reboot needed, 6 ok but a camera a program has
+// open was hidden instead of removed
 // One device per camera: the missing devices are created (with the driver), those above removed; the cameras that
 // stay are not touched.
 static int ApplyCount(int count)
 {
     bool reboot = false;
-    bool ok = SetupSetCameraCount(count, true, &reboot, nullptr, nullptr);
-    int rc = !ok ? 4 : (reboot ? 5 : 0);
+    int hidden = 0;
+    bool ok = SetupSetCameraCount(count, true, &reboot, nullptr, nullptr, &hidden);
+    int rc = !ok ? 4 : (reboot ? 5 : (hidden ? 6 : 0));
     AppLog(L"camera count %d -> result %d", count, rc);
     return rc;
 }
@@ -1177,6 +1179,10 @@ static void OnCountApply()
     switch (rc)
     {
     case 0:  AddEventF(TR(L"Количество камер: %d."), want); break;
+    case 6:
+        AddEventF(TR(L"Количество камер: %d."), want);
+        AddEvent(TR(L"Камера, которую держит программа, убрана из списка камер; программа работает с ней, пока не закроет её."));
+        break;
     case -1: AddEvent(TR(L"Нужны права администратора: запрос был отклонён.")); break;
     case 5:  AddEvent(TR(L"Количество камер сохранено. Windows не смогла перезапустить устройство на ходу (камеру держит программа?) — перезагрузите компьютер.")); break;
     default: AddEventF(TR(L"Не удалось изменить количество камер (код %d)."), rc); break;
@@ -1391,7 +1397,11 @@ static void OnCamEvent(int i, int ev)
         break;
     case EvFormatChanged:
         FormatText(fmt, 80, c.status.driver.Width, c.status.driver.Height, c.status.driver.Fps);
-        AddEventF(TR(L"Камера «%ls»: формат %ls."), name, fmt);
+        if (c.status.driver.PinsOpen)
+            AddEventF(TR(L"Камера «%ls»: формат %ls. Программы, у которых камера уже открыта, получат его, когда откроют её снова."),
+                      name, fmt);
+        else
+            AddEventF(TR(L"Камера «%ls»: формат %ls."), name, fmt);
         break;
     case EvFormatWaiting:
         FormatText(fmt, 80, c.status.wantW, c.status.wantH, c.status.wantFps);

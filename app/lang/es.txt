@@ -267,3 +267,5 @@ Generador (figuras en movimiento)
 Estado
 Esta carpeta
 Seleccionar carpeta
+Cámara «%ls»: formato %ls. Los programas que ya tienen la cámara abierta lo recibirán al volver a abrirla.
+Una cámara que un programa tiene abierta se quitó de la lista de cámaras; el programa la usa hasta que la cierre.

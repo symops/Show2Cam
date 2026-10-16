@@ -267,3 +267,5 @@ Générateur (formes en mouvement)
 État
 Ce dossier
 Choisir le dossier
+Caméra « %ls » : format %ls. Les programmes qui ont déjà ouvert la caméra l’obtiendront en la rouvrant.
+Une caméra ouverte par un programme a été retirée de la liste des caméras ; le programme l’utilise jusqu’à ce qu’il la ferme.

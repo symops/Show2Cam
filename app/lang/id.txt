@@ -267,3 +267,5 @@ Generator (bentuk bergerak)
 Status
 Folder ini
 Pilih folder
+Kamera “%ls”: format %ls. Program yang sudah membuka kamera akan mendapatkannya saat membukanya lagi.
+Kamera yang sedang dibuka program dihapus dari daftar kamera; program tetap memakainya sampai menutupnya.

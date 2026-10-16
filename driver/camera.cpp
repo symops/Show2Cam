@@ -567,19 +567,16 @@ static NTSTATUS S2C_CB SetFormat(_In_ PIRP Irp, _In_ PKSIDENTIFIER Request, _Ino
         (f->Width & 1) || (f->Height & 1) || f->Fps < 1 || f->Fps > S2C_MAX_FPS)
         return STATUS_INVALID_PARAMETER;
     if (f->Width == c->Width && f->Height == c->Height && f->Fps == c->Fps) return STATUS_SUCCESS;
-    // The formats are read by every program that opens the camera: they change only while nobody has it open.
-    if (c->PinsOpen > 0)
-    {
-        S2cLog("Camera %lu: format %lux%lu %lu fps refused, the camera is in use", c->Index + 1, f->Width, f->Height, f->Fps);
-        S2cLogFlush();
-        return STATUS_DEVICE_BUSY;
-    }
+    // Also while programs have the camera open: a running pin keeps the format it negotiated (the picture is scaled to
+    // it), the programs that open the camera next get the new one. A DLP agent keeps a camera open for good - waiting
+    // for it to close kept the old size for hours.
     SetRanges(c, f->Width, f->Height, f->Fps);
     NTSTATUS cache = KsFilterFactoryUpdateCacheData(c->Factory, nullptr);
     SaveDword(c, L"Width", f->Width);
     SaveDword(c, L"Height", f->Height);
     SaveDword(c, L"Fps", f->Fps);
-    S2cLog("Camera %lu: format set to %lux%lu %lu fps (cache 0x%08lX)", c->Index + 1, f->Width, f->Height, f->Fps, (ULONG)cache);
+    S2cLog("Camera %lu: format set to %lux%lu %lu fps (cache 0x%08lX, %ld program(s) keep theirs)", c->Index + 1, f->Width,
+           f->Height, f->Fps, (ULONG)cache, c->PinsOpen);
     S2cLogFlush();
     return STATUS_SUCCESS;
 }
@@ -604,6 +601,17 @@ static NTSTATUS S2C_CB SetName(_In_ PIRP Irp, _In_ PKSIDENTIFIER Request, _Inout
     return STATUS_SUCCESS;
 }
 
+static NTSTATUS S2C_CB SetShow(_In_ PIRP Irp, _In_ PKSIDENTIFIER Request, _Inout_ PVOID Data)
+{
+    UNREFERENCED_PARAMETER(Request);
+    S2C_CAMERA* c = CameraFromIrp(Irp);
+    if (!c || PropertyDataSize(Irp) < sizeof(S2C_SHOW)) return STATUS_INVALID_PARAMETER;
+    const S2C_SHOW* s = (const S2C_SHOW*)Data;
+    // another device's camera only (its device mutex; this filter's control mutex is held here) and never camera 1
+    if (s->Index == c->Index || s->Index == 0) return STATUS_INVALID_PARAMETER;
+    return S2cShowCamera(s->Index, s->Show != 0);
+}
+
 static const KSPROPERTY_ITEM kProperties[] = {
     { S2C_PROPERTY_FRAME, { nullptr }, sizeof(KSPROPERTY), sizeof(S2C_FRAME_HEADER), { (PFNKSHANDLER)SetFrame },
       nullptr, 0, nullptr, nullptr, 0 },
@@ -614,6 +622,8 @@ static const KSPROPERTY_ITEM kProperties[] = {
     { S2C_PROPERTY_NAME, { nullptr }, sizeof(KSPROPERTY), sizeof(S2C_NAME), { (PFNKSHANDLER)SetName },
       nullptr, 0, nullptr, nullptr, 0 },
     { S2C_PROPERTY_LOG, { (PFNKSHANDLER)GetLog }, sizeof(KSPROPERTY), sizeof(S2C_LOG), { nullptr },
+      nullptr, 0, nullptr, nullptr, 0 },
+    { S2C_PROPERTY_SHOW, { nullptr }, sizeof(KSPROPERTY), sizeof(S2C_SHOW), { (PFNKSHANDLER)SetShow },
       nullptr, 0, nullptr, nullptr, 0 },
 };
 static const KSPROPERTY_SET kPropertySets[] = {
@@ -704,22 +714,20 @@ static void SetRanges(S2C_CAMERA* c, ULONG Width, ULONG Height, ULONG Fps)
         sizes[n][1] = kUsual[i][1];
         n++;
     }
+    ULONG bank = c->Ranges ? 1 - c->Bank : 0;          // the bank not in use (see S2C_CAMERA)
+    KS_DATARANGE_VIDEO* ranges = c->RangeBanks[bank];
     ULONG maxPixels = 0, minPixels = 0xFFFFFFFF, k = 0;
     for (ULONG i = 0; i < n; i++)
     {
         ULONG w = sizes[i][0], h = sizes[i][1];
-        InitRange(&c->Ranges[k++], kSubYUY2, FOURCC('Y', 'U', 'Y', '2'), 16, w, h, Fps);
-        InitRange(&c->Ranges[k++], kSubNV12, FOURCC('N', 'V', '1', '2'), 12, w, h, Fps);
-        InitRange(&c->Ranges[k++], kSubRGB32, 0, 32, w, h, Fps);
+        InitRange(&ranges[k++], kSubYUY2, FOURCC('Y', 'U', 'Y', '2'), 16, w, h, Fps);
+        InitRange(&ranges[k++], kSubNV12, FOURCC('N', 'V', '1', '2'), 12, w, h, Fps);
+        InitRange(&ranges[k++], kSubRGB32, 0, 32, w, h, Fps);
         if (w * h > maxPixels) maxPixels = w * h;
         if (w * h < minPixels) minPixels = w * h;
     }
-    c->RangeCount = k;
-    for (ULONG i = 0; i < k; i++) c->RangePointers[i] = &c->Ranges[i].DataRange;
-    c->PinDescriptor.PinDescriptor.DataRangesCount = k;
-
     // One frame buffer per sample, system memory, up to the largest format (RGB32 of the largest size).
-    KSALLOCATOR_FRAMING_EX* f = &c->Framing;
+    KSALLOCATOR_FRAMING_EX* f = &c->FramingBanks[bank];
     RtlZeroMemory(f, sizeof(*f));
     f->CountItems = 1;
     f->OutputCompression.RatioNumerator = 1;
@@ -733,6 +741,15 @@ static void SetRanges(S2C_CAMERA* c, ULONG Width, ULONG Height, ULONG Fps)
     f->FramingItem[0].FramingRange.Range.MinFrameSize = minPixels * 3 / 2;
     f->FramingItem[0].FramingRange.Range.MaxFrameSize = maxPixels * 4;
     f->FramingItem[0].FramingRange.Range.Stepping = 1;
+
+    // switch: the pointers first (a reader still on the old count reads valid ranges of either bank), then the count
+    for (ULONG i = 0; i < k; i++) c->RangePointers[i] = &ranges[i].DataRange;
+    __atomic_thread_fence(__ATOMIC_SEQ_CST);
+    c->PinDescriptor.PinDescriptor.DataRangesCount = k;
+    c->PinDescriptor.AllocatorFraming = f;
+    c->RangeCount = k;
+    c->Ranges = ranges;
+    c->Bank = bank;
 }
 
 // The name on the camera's device interfaces (one per category: video, capture, camera): the "FriendlyName" value
@@ -819,7 +836,7 @@ NTSTATUS S2cCameraCreate(_In_ ULONG Index, _In_ ULONG Width, _In_ ULONG Height, 
     pd->Flags = KSPIN_FLAG_PROCESS_IN_RUN_STATE_ONLY | KSPIN_FLAG_DO_NOT_INITIATE_PROCESSING;
     pd->InstancesPossible = 1;
     pd->InstancesNecessary = 1;
-    pd->AllocatorFraming = &c->Framing;
+    pd->AllocatorFraming = &c->FramingBanks[c->Bank];
     pd->IntersectHandler = (PFNKSINTERSECTHANDLEREX)PinIntersect;
 
     KSFILTER_DESCRIPTOR* fd = &c->FilterDescriptor;

@@ -9,10 +9,56 @@
 #include <newdev.h>
 #include <wincrypt.h>
 #include <cfgmgr32.h>
+#include <winioctl.h>
+#include <ks.h>
 #include <stdio.h>
 #include <wchar.h>
+#include "../driver/s2cproto.h"
 
 static const wchar_t kHardwareId[] = L"ROOT\\Show2Cam";
+
+// Shows / hides camera `cam` (S2C_PROPERTY_SHOW) through camera 1's filter: a hidden camera's own interfaces are off.
+static bool ShowCamera(int cam, bool show)
+{
+    static const GUID kCategoryVideo = { 0x6994ad05, 0x93ef, 0x11d0, { 0xa3, 0xcc, 0x00, 0xa0, 0xc9, 0x22, 0x31, 0x96 } };
+    static const GUID kPropSet = { 0x6f1c2a9e, 0x3b57, 0x4e0c, { 0x9d, 0x1a, 0x5c, 0x2e, 0x7b, 0x3f, 0x8a, 0x41 } };
+    HDEVINFO set = SetupDiGetClassDevsW(&kCategoryVideo, nullptr, nullptr, DIGCF_DEVICEINTERFACE | DIGCF_PRESENT);
+    if (set == INVALID_HANDLE_VALUE) return false;
+    bool ok = false;
+    SP_DEVICE_INTERFACE_DATA di = { sizeof(di) };
+    for (DWORD i = 0; !ok && SetupDiEnumDeviceInterfaces(set, nullptr, &kCategoryVideo, i, &di); i++)
+    {
+        BYTE buf[2048];
+        auto* d = (SP_DEVICE_INTERFACE_DETAIL_DATA_W*)buf;
+        d->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_W);
+        SP_DEVINFO_DATA info = { sizeof(info) };
+        if (!SetupDiGetDeviceInterfaceDetailW(set, &di, d, sizeof(buf), nullptr, &info)) continue;
+        wchar_t service[64] = L"";
+        if (!SetupDiGetDeviceRegistryPropertyW(set, &info, SPDRP_SERVICE, nullptr, (BYTE*)service, sizeof(service) - 2, nullptr) ||
+            _wcsicmp(service, L"Show2Cam") != 0)
+            continue;
+        const wchar_t* ref = wcsrchr(d->DevicePath, L'\\');
+        if (!ref || _wcsicmp(ref + 1, L"camera1") != 0) continue;
+        HANDLE h = CreateFileW(d->DevicePath, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+                               OPEN_EXISTING, FILE_FLAG_OVERLAPPED, nullptr);
+        if (h == INVALID_HANDLE_VALUE) continue;
+        KSPROPERTY p = {};
+        p.Set = kPropSet;
+        p.Id = S2C_PROPERTY_SHOW;
+        p.Flags = KSPROPERTY_TYPE_SET;
+        S2C_SHOW s = { (ULONG)cam, show ? 1u : 0u };
+        OVERLAPPED ov = {};
+        ov.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        DWORD got = 0;
+        BOOL done = ov.hEvent && DeviceIoControl(h, IOCTL_KS_PROPERTY, &p, sizeof(p), &s, sizeof(s), &got, &ov);
+        if (!done && ov.hEvent && GetLastError() == ERROR_IO_PENDING) done = GetOverlappedResult(h, &ov, &got, TRUE);
+        if (ov.hEvent) CloseHandle(ov.hEvent);
+        CloseHandle(h);
+        ok = done != FALSE;
+    }
+    SetupDiDestroyDeviceInfoList(set);
+    return ok;
+}
 
 static void Log(SetupLog log, void* ctx, const wchar_t* fmt, ...)
 {
@@ -197,10 +243,13 @@ static bool SetDeviceCameraIndex(HDEVINFO set, SP_DEVINFO_DATA* info, int index)
     return ok;
 }
 
-bool SetupSetCameraCount(int count, bool installDriver, bool* rebootNeeded, SetupLog log, void* ctx)
+bool SetupSetCameraCount(int count, bool installDriver, bool* rebootNeeded, SetupLog log, void* ctx, int* hidden)
 {
     *rebootNeeded = false;
+    if (hidden) *hidden = 0;
     if (count < 1 || count > 10) return false;
+    // First: a device that starts below (created, or restarted) tells from it whether its camera is shown.
+    S2cSetParam(L"CameraCount", (DWORD)count);
     // Present devices only: leftovers of earlier installations (not present) do not hold a camera number.
     HDEVINFO set = SetupDiGetClassDevsW(nullptr, nullptr, nullptr, DIGCF_ALLCLASSES | DIGCF_PRESENT);
     if (set == INVALID_HANDLE_VALUE) return false;
@@ -252,6 +301,20 @@ bool SetupSetCameraCount(int count, bool installDriver, bool* rebootNeeded, Setu
             if (already) continue;
             if (doneCount < 16) wcscpy(done[doneCount++], id);
             removed = true;
+            // A program has it open (Windows refuses): removing it anyway left a half-removed device until a restart,
+            // and the program (a DLP agent) kept reading it as "camera N" while a new device was that camera. It stays
+            // as it is, hidden from the list of cameras; it goes with a later change of the number once closed.
+            PNP_VETO_TYPE veto = PNP_VetoTypeUnknown;
+            wchar_t vetoName[MAX_PATH] = L"";
+            CONFIGRET cr = CM_Query_And_Remove_SubTreeW(d.DevInst, &veto, vetoName, MAX_PATH, CM_REMOVE_NO_RESTART | CM_REMOVE_UI_NOT_OK);
+            if (cr != CR_SUCCESS)
+            {
+                bool off = ShowCamera(cam, false);
+                AppLog(L"camera devices: camera %d in use (0x%lX, veto %d %ls): %ls", cam + 1, (unsigned long)cr, (int)veto, vetoName,
+                       off ? L"hidden until a program closes it" : L"left as it is (could not be hidden)");
+                if (hidden) (*hidden)++;
+                continue;
+            }
             if (!SetupDiCallClassInstaller(DIF_REMOVE, rs, &d))
             {
                 LogError(log, ctx, TR(L"не удалось удалить устройство"), GetLastError());
@@ -268,7 +331,12 @@ bool SetupSetCameraCount(int count, bool installDriver, bool* rebootNeeded, Setu
     // Missing: a new device per camera (with the driver from the driver store when asked).
     for (int cam = 0; cam < count; cam++)
     {
-        if (used[cam]) continue;
+        if (used[cam])
+        {
+            // shown again if it was hidden (removed while in use, the program may still have it: the same device)
+            if (cam > 0 && ShowCamera(cam, true)) AppLog(L"camera devices: camera %d shown", cam + 1);
+            continue;
+        }
         HDEVINFO nset = SetupDiCreateDeviceInfoList(&kClassImage, nullptr);
         if (nset == INVALID_HANDLE_VALUE)
         {
@@ -309,7 +377,6 @@ bool SetupSetCameraCount(int count, bool installDriver, bool* rebootNeeded, Setu
         }
         SetupDiDestroyDeviceInfoList(nset);
     }
-    S2cSetParam(L"CameraCount", (DWORD)count);
     return ok;
 }
 

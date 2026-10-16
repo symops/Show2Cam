@@ -40,6 +40,34 @@ static void FreeCameras(S2C_DEVICE* d)
 
 static NTSTATUS EnableCamera(PKSDEVICE Device, S2C_DEVICE* d, ULONG i, BOOLEAN on);
 
+// The cameras of all devices by number: S2C_PROPERTY_SHOW reaches a hidden camera through another camera's filter (the
+// hidden one's own interfaces are off). A KMUTEX: the interface state changes at PASSIVE_LEVEL.
+static KMUTEX      g_camerasLock;
+static S2C_CAMERA* g_cameras[S2C_MAX_CAMERAS];
+static PKSDEVICE   g_cameraDevices[S2C_MAX_CAMERAS];
+
+static void LockCameras() { KeWaitForSingleObject(&g_camerasLock, Executive, KernelMode, FALSE, nullptr); }
+static void UnlockCameras() { KeReleaseMutex(&g_camerasLock, FALSE); }
+
+NTSTATUS S2cShowCamera(ULONG Index, BOOLEAN Show)
+{
+    if (Index >= S2C_MAX_CAMERAS || (Index == 0 && !Show)) return STATUS_INVALID_PARAMETER;
+    LockCameras();
+    PKSDEVICE device = g_cameraDevices[Index];
+    S2C_DEVICE* d = device ? (S2C_DEVICE*)device->Context : nullptr;
+    NTSTATUS status = STATUS_NOT_FOUND;
+    if (d)
+    {
+        KsAcquireDevice(device);
+        status = EnableCamera(device, d, Index, Show);
+        KsReleaseDevice(device);
+    }
+    UnlockCameras();
+    S2cLog("Camera %lu: %s -> 0x%08lX", Index + 1, Show ? "shown" : "hidden (removed while in use)", (ULONG)status);
+    S2cLogFlush();
+    return status;
+}
+
 // The camera of this device: Device Parameters\CameraIndex (0-based), 0 when not set.
 static ULONG ReadDeviceIndex(PKSDEVICE Device)
 {
@@ -80,9 +108,24 @@ static NTSTATUS S2C_CB DeviceStart(_In_ PKSDEVICE Device, _In_ PIRP Irp, _In_opt
     // its name): which one is in the device's own settings (Device Parameters\CameraIndex, set by the installer).
     ULONG index = ReadDeviceIndex(Device);
     S2cLog("StartDevice: Show2Cam %s, camera %lu", S2C_VER_STR, index + 1);
+    // A camera above the number of cameras is one removed while a program had it open: it stays hidden (its device
+    // goes with the next change of the number of cameras).
+    ULONG count = Clamp(ReadDword(L"CameraCount", 1), 1, S2C_MAX_CAMERAS);
     KsAcquireDevice(Device);
     NTSTATUS status = EnableCamera(Device, d, index, TRUE);
+    if (NT_SUCCESS(status) && index >= count)
+    {
+        EnableCamera(Device, d, index, FALSE);
+        S2cLog("StartDevice: camera %lu is above the number of cameras (%lu): hidden", index + 1, count);
+    }
     KsReleaseDevice(Device);
+    if (NT_SUCCESS(status))
+    {
+        LockCameras();
+        g_cameras[index] = d->Cameras[index];
+        g_cameraDevices[index] = Device;
+        UnlockCameras();
+    }
     ULONG created = NT_SUCCESS(status) ? 1 : 0;
     d->CameraCount = created;
     d->FactoriesCreated = created > 0;
@@ -148,6 +191,14 @@ static void S2C_CB DeviceRemove(_In_ PKSDEVICE Device, _In_ PIRP Irp)
     S2C_DEVICE* d = (S2C_DEVICE*)Device->Context;
     S2cLog("RemoveDevice");
     S2cLogFlushNow();
+    LockCameras();
+    for (ULONG i = 0; i < S2C_MAX_CAMERAS; i++)
+        if (g_cameraDevices[i] == Device)
+        {
+            g_cameraDevices[i] = nullptr;
+            g_cameras[i] = nullptr;
+        }
+    UnlockCameras();
     if (d)
     {
         // The filter factories belong to the device object and go with it; the cameras they point to stay valid
@@ -175,6 +226,7 @@ static const KSDEVICE_DESCRIPTOR kDeviceDescriptor = {
 extern "C" NTSTATUS NTAPI DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
 {
     S2cLogInit();
+    KeInitializeMutex(&g_camerasLock, 0);
     S2cLog("DriverEntry: Show2Cam %s", S2C_VER_STR);
     // The running version for the installer (the log's DriverEntry line may have rotated out of the saved log).
     static const WCHAR kVersion[] = L"" S2C_VER_STR;

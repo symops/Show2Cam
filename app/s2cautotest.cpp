@@ -266,6 +266,29 @@ static bool DeviceName(int index, wchar_t* out, size_t len)
     return found;
 }
 
+// The ROOT\Show2Cam devices of cameras `from` and above: cameras removed while a program had them open (hidden).
+static int HiddenDevices(int from)
+{
+    HDEVINFO set = SetupDiGetClassDevsW(nullptr, L"ROOT", nullptr, DIGCF_ALLCLASSES | DIGCF_PRESENT);
+    if (set == INVALID_HANDLE_VALUE) return 0;
+    int n = 0;
+    SP_DEVINFO_DATA d = { sizeof(d) };
+    for (DWORD i = 0; SetupDiEnumDeviceInfo(set, i, &d); i++)
+    {
+        wchar_t ids[512] = L"";
+        if (!SetupDiGetDeviceRegistryPropertyW(set, &d, SPDRP_HARDWAREID, nullptr, (BYTE*)ids, sizeof(ids) - 4, nullptr)) continue;
+        if (_wcsicmp(ids, S2C_HARDWARE_ID)) continue;
+        HKEY k = SetupDiOpenDevRegKey(set, &d, DICS_FLAG_GLOBAL, 0, DIREG_DEV, KEY_READ);
+        if (k == INVALID_HANDLE_VALUE) continue;
+        DWORD v = 0xFFFFFFFF, size = sizeof(v);
+        RegGetValueW(k, nullptr, L"CameraIndex", RRF_RT_REG_DWORD, nullptr, &v, &size);
+        RegCloseKey(k);
+        if (v != 0xFFFFFFFF && (int)v >= from) n++;
+    }
+    SetupDiDestroyDeviceInfoList(set);
+    return n;
+}
+
 // ---------------------------------------------------------------------------
 // A camera as programs open it (Media Foundation), read as RGB32 (Windows converts the camera's YUY2 / NV12).
 
@@ -674,9 +697,19 @@ static void ActionPicture()
         for (int u = 0; u < S2C_MAX_USERS; u++) user = user || open.UserPids[u] != 0;
         Check(user, L"the driver knows who uses it");
         Check(open.FramesDelivered > st.FramesDelivered, L"frames delivered %llu -> %llu", st.FramesDelivered, open.FramesDelivered);
-        DWORD err = SetFormat(cam, 640, 480, 15);
-        Check(err == ERROR_BUSY || (open.Width == 640 && open.Height == 480 && open.Fps == 15 && err == ERROR_SUCCESS),
-              L"format change refused while open (%lu)", err);
+        // taken while open: this program keeps its format (frames go on), the next opening gets the new one
+        ULONG w = open.Width == 800 ? 640 : 800, h = w == 800 ? 600 : 480;
+        DWORD err = SetFormat(cam, w, h, open.Fps);
+        S2C_STATUS after = {};
+        Status(cam, &after);
+        Check(err == ERROR_SUCCESS && after.Width == w && after.Height == h, L"format change taken while open: %lux%lu (%lu)",
+              after.Width, after.Height, err);
+        Check(SUCCEEDED(CaptureRead(&c)) && SUCCEEDED(CaptureRead(&c)), L"frames go on in the format it opened");
+        c.Close();
+        CheckClosed(cam, 5000, st.PinsOpen, L"not in use after closing");
+        SetFormat(cam, open.Width, open.Height, open.Fps);
+        SendPattern(cam);
+        return;
     }
     c.Close();
     CheckClosed(cam, 5000, st.PinsOpen, L"not in use after closing");
@@ -871,13 +904,19 @@ static void ActionCount()
     for (int i = 0; i < before; i++) wcscpy(names[cams[i].index], cams[i].name);
     Out(L"[count] %d -> %d camera(s)", before, want);
     bool reboot = false;
-    bool ok = SetupSetCameraCount(want, true, &reboot, [](void*, const wchar_t* line) { AppLog(L"  setup: %ls", line); }, nullptr);
+    int hidden = 0;
+    bool ok = SetupSetCameraCount(want, true, &reboot, [](void*, const wchar_t* line) { AppLog(L"  setup: %ls", line); }, nullptr,
+                                  &hidden);
     if (!Check(ok, L"number of cameras set")) return;
     if (reboot) Warn(L"Windows asks for a restart");
+    if (hidden) Out(L"    info %d camera(s) a program has open: hidden instead of removed", hidden);
     int n = 0;
     for (int t = 0; t < 100 && (n = Cameras(cams)) != want; t++) Sleep(200);
     Check(n == want, L"%d camera(s) there", n);
-    Check(SetupDeviceCount() == want, L"%d device(s): one per camera", SetupDeviceCount());
+    // + the hidden ones of this and earlier changes (their devices go once the program closes them)
+    int devices = SetupDeviceCount();
+    Check(devices >= want && devices <= want + HiddenDevices(want), L"%d device(s): one per camera (+%d hidden)", devices,
+          devices - want);
     bool numbers = true;
     for (int i = 0; i < n; i++) numbers = numbers && cams[i].index == i;
     Check(numbers, L"cameras numbered 1..%d", n);

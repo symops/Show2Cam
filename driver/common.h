@@ -43,10 +43,14 @@ struct S2C_CAMERA
     // AVStream descriptors of this camera (its resolution is in the data ranges)
     KSFILTER_DESCRIPTOR     FilterDescriptor;
     KSPIN_DESCRIPTOR_EX     PinDescriptor;
-    KS_DATARANGE_VIDEO      Ranges[S2C_MAX_RANGES];
+    // The formats change while programs have the camera open (a pin keeps its own negotiated format): the new ones go
+    // to the other bank, then the descriptor's pointers switch to it - nothing is rewritten that AVStream may be reading.
+    KS_DATARANGE_VIDEO      RangeBanks[2][S2C_MAX_RANGES];
+    KSALLOCATOR_FRAMING_EX  FramingBanks[2];
+    ULONG                   Bank;                   // the bank in use
+    KS_DATARANGE_VIDEO*     Ranges;                 // = RangeBanks[Bank]
     PKSDATARANGE            RangePointers[S2C_MAX_RANGES];
     ULONG                   RangeCount;
-    KSALLOCATOR_FRAMING_EX  Framing;
     PKSFILTERFACTORY        Factory;
 
     // the picture from the program (BGRA, top-down), guarded by Lock
@@ -71,6 +75,9 @@ struct S2C_DEVICE
     BOOLEAN     FactoriesCreated;
     S2C_CAMERA* Cameras[S2C_MAX_CAMERAS];
 };
+
+// device.cpp: shows / hides camera Index, whichever device it is (S2C_PROPERTY_SHOW)
+NTSTATUS S2cShowCamera(_In_ ULONG Index, _In_ BOOLEAN Show);
 
 // camera.cpp
 NTSTATUS S2cCameraCreate(_In_ ULONG Index, _In_ ULONG Width, _In_ ULONG Height, _In_ ULONG Fps, _Out_ S2C_CAMERA** Camera);

@@ -267,3 +267,5 @@ Generatore (forme in movimento)
 Stato
 Questa cartella
 Seleziona cartella
+Telecamera «%ls»: formato %ls. I programmi che hanno già aperto la telecamera lo riceveranno quando la riapriranno.
+Una telecamera aperta da un programma è stata tolta dall’elenco; il programma la usa finché non la chiude.
