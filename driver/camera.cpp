@@ -164,12 +164,13 @@ static NTSTATUS S2C_CB PinClose(_In_ PKSPIN Pin, _In_ PIRP Irp)
         for (ULONG i = 0; i < S2C_MAX_USERS; i++)
             if (p->Camera->Pins[i] == Pin) p->Camera->Pins[i] = nullptr;
         ExReleaseFastMutex(&p->Camera->Lock);
+        BOOLEAN wasRunning = p->Running;    // closed without a STOP first (the program ended): still counted as streaming
         p->Running = FALSE;
         KeCancelTimer(&p->Timer);
         KeFlushQueuedDpcs();                // a DPC already queued has run before the context goes
         if (p->Clock) p->Clock->Release();
         p->Clock = nullptr;
-        if (p->Running) InterlockedDecrement(&p->Camera->Streaming);
+        if (wasRunning) InterlockedDecrement(&p->Camera->Streaming);
         InterlockedDecrement(&p->Camera->PinsOpen);
         ExAcquireFastMutex(&p->Camera->Lock);
         for (ULONG i = 0; i < S2C_MAX_USERS; i++)
