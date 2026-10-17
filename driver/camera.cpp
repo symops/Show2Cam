@@ -453,7 +453,18 @@ static NTSTATUS S2C_CB SetFrame(_In_ PIRP Irp, _In_ PKSIDENTIFIER Request, _Inou
             return STATUS_INVALID_PARAMETER;
         SIZE_T bytes = (SIZE_T)h->Width * h->Height * 4;
         copy = (ULONG*)ExAllocatePool2(POOL_FLAG_NON_PAGED, bytes, S2C_POOLTAG);
-        if (!copy) return STATUS_INSUFFICIENT_RESOURCES;
+        if (!copy)
+        {
+            if (c->RefusedWidth != h->Width || c->RefusedHeight != h->Height)    // once per size
+            {
+                c->RefusedWidth = h->Width;
+                c->RefusedHeight = h->Height;
+                S2cLog("Camera %lu: picture %lux%lu refused, no non-paged memory for %lu bytes", c->Index + 1, h->Width,
+                       h->Height, (ULONG)bytes);
+                S2cLogFlush();
+            }
+            return STATUS_INSUFFICIENT_RESOURCES;
+        }
         RtlCopyMemory(copy, h + 1, bytes);
     }
     ExAcquireFastMutex(&c->Lock);

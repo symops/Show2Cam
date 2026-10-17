@@ -63,6 +63,10 @@ static thread_local IWICImagingFactory* factory;
 static thread_local int* xs;
 static thread_local int xsCap;
 static thread_local wchar_t (*fileNames)[MAX_PATH];
+static thread_local int decodes;
+
+void MediaCountDecode() { decodes++; }
+int  MediaThreadDecodes() { return decodes; }
 
 void MediaThreadEnd()
 {
@@ -113,6 +117,7 @@ bool ImageFileSize(const wchar_t* path, UINT* w, UINT* h)
     *w = *h = 0;
     IWICImagingFactory* f = Wic();
     IWICBitmapDecoder* decoder = nullptr;
+    MediaCountDecode();
     if (!f || FAILED(f->CreateDecoderFromFilename(path, nullptr, GENERIC_READ, WICDecodeMetadataCacheOnDemand, &decoder)))
         return false;
     IWICBitmapFrameDecode* frame = nullptr;
@@ -127,6 +132,7 @@ bool RenderImageFile(const wchar_t* path, ULONG* dst, int dw, int dh, UINT* sw, 
     *sw = *sh = 0;
     IWICImagingFactory* f = Wic();
     IWICBitmapDecoder* decoder = nullptr;
+    MediaCountDecode();
     if (!f || FAILED(f->CreateDecoderFromFilename(path, nullptr, GENERIC_READ, WICDecodeMetadataCacheOnDemand, &decoder)))
         return false;
     IWICBitmapSource* src = FirstFrameBgra(decoder);

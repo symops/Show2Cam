@@ -57,6 +57,7 @@ struct S2C_CAMERA
     FAST_MUTEX              Lock;
     ULONG*                  Picture;
     ULONG                   PictureWidth, PictureHeight;
+    ULONG                   RefusedWidth, RefusedHeight;   // the last picture size refused for lack of memory (logged once)
 
     volatile LONG           Streaming;
     volatile LONG           PinsOpen;

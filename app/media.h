@@ -7,6 +7,12 @@
 
 // Before CoUninitialize on a thread that decoded pictures: releases that thread's WIC factory.
 void MediaThreadEnd();
+// Files decoded on the calling thread (pictures, clips). Windows' codecs leave a few event handles behind on the thread
+// that opened a decoder - freed only when that thread ends (the autotest's handle probe: AVIF / HEIC / WebP, VP9, also
+// H.264 grew by ~2-10 per file on one thread, by ~0 on a new thread per file). The camera's worker moves to a new thread
+// after a few files.
+void MediaCountDecode();
+int  MediaThreadDecodes();
 
 // A decoded picture (owns its pixels).
 struct Picture

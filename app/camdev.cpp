@@ -168,16 +168,65 @@ bool CamFrame::Resize(ULONG w, ULONG h)
     return true;
 }
 
+static bool SendFrameBuffer(HANDLE cam, BYTE* buffer, ULONG width, ULONG height)
+{
+    auto* h = (S2C_FRAME_HEADER*)buffer;
+    h->Magic = S2C_FRAME_MAGIC;
+    h->Width = width;
+    h->Height = height;
+    h->Flags = 0;
+    return CamProperty(cam, S2C_PROPERTY_FRAME, KSPROPERTY_TYPE_SET, buffer,
+                       (DWORD)(sizeof(S2C_FRAME_HEADER) + (SIZE_T)width * height * 4), nullptr);
+}
+
+static bool OutOfKernelMemory(DWORD err)
+{
+    return err == ERROR_NO_SYSTEM_RESOURCES || err == ERROR_NOT_ENOUGH_MEMORY || err == ERROR_OUTOFMEMORY ||
+           err == ERROR_NOT_ENOUGH_QUOTA || err == ERROR_NONPAGED_SYSTEM_RESOURCES || err == ERROR_WORKING_SET_QUOTA;
+}
+
 bool CamSendFrame(HANDLE cam, CamFrame& frame)
 {
     if (!frame.buffer) return false;
-    auto* h = (S2C_FRAME_HEADER*)frame.buffer;
-    h->Magic = S2C_FRAME_MAGIC;
-    h->Width = frame.width;
-    h->Height = frame.height;
-    h->Flags = 0;
-    return CamProperty(cam, S2C_PROPERTY_FRAME, KSPROPERTY_TYPE_SET, frame.buffer,
-                       (DWORD)(sizeof(S2C_FRAME_HEADER) + (SIZE_T)frame.width * frame.height * 4), nullptr);
+    if (SendFrameBuffer(cam, frame.buffer, frame.width, frame.height)) return true;
+    // The picture goes through non-paged kernel memory twice (KS copies the property data, the driver keeps its own
+    // copy): a large one (2560x1440 = 14.7 MB) can fail where memory is short. The driver scales the picture to the
+    // format anyway, so a half-size one goes instead (the frame itself stays as it is, the preview shows it).
+    DWORD err = GetLastError();
+    ULONG w = frame.width, hgt = frame.height;
+    const ULONG* src = frame.Pixels();
+    BYTE* half = nullptr;
+    bool ok = false;
+    while (!ok && OutOfKernelMemory(err) && w >= 640 && hgt >= 480)
+    {
+        ULONG w2 = w / 2, h2 = hgt / 2;
+        BYTE* next = (BYTE*)VirtualAlloc(nullptr, sizeof(S2C_FRAME_HEADER) + (SIZE_T)w2 * h2 * 4, MEM_COMMIT | MEM_RESERVE,
+                                         PAGE_READWRITE);
+        if (!next) break;
+        ULONG* dst = (ULONG*)(next + sizeof(S2C_FRAME_HEADER));
+        for (ULONG y = 0; y < h2; y++)
+        {
+            const ULONG* r0 = src + (SIZE_T)(y * 2) * w;
+            const ULONG* r1 = r0 + w;
+            for (ULONG x = 0; x < w2; x++)
+            {
+                ULONG a = r0[x * 2], b = r0[x * 2 + 1], c = r1[x * 2], d = r1[x * 2 + 1], px = 0;
+                for (int s = 0; s < 32; s += 8)
+                    px |= ((((a >> s) & 0xFF) + ((b >> s) & 0xFF) + ((c >> s) & 0xFF) + ((d >> s) & 0xFF) + 2) / 4) << s;
+                dst[(SIZE_T)y * w2 + x] = px;
+            }
+        }
+        if (half) VirtualFree(half, 0, MEM_RELEASE);
+        half = next;
+        src = dst;
+        w = w2;
+        hgt = h2;
+        ok = SendFrameBuffer(cam, half, w, hgt);
+        if (!ok) err = GetLastError();
+    }
+    if (half) VirtualFree(half, 0, MEM_RELEASE);
+    SetLastError(ok ? ERROR_SUCCESS : err);
+    return ok;
 }
 
 bool CamSendTestPattern(HANDLE cam)

@@ -670,8 +670,9 @@ static void ActionPicture()
                 frame.Pixels()[y * st.Width + x] = 0xFF000000 | kQuarters[(y >= st.Height / 2 ? 2 : 0) + (x >= st.Width / 2 ? 1 : 0)];
         sent = CamSendFrame(h, frame);
     }
+    DWORD sendErr = sent ? ERROR_SUCCESS : GetLastError();
     if (h != INVALID_HANDLE_VALUE) CloseHandle(h);
-    if (!Check(sent, L"picture sent")) return;
+    if (!Check(sent, L"picture sent (%lu)", sendErr)) return;
 
     Capture c;
     HRESULT hr = CaptureOpen(cam, &c);

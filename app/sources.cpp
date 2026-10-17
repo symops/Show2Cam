@@ -494,6 +494,7 @@ private:
     HRESULT CreateReader(const wchar_t* path, bool videoProcessing, IMFSourceReader** out)
     {
         *out = nullptr;
+        MediaCountDecode();
         IMFAttributes* attr = nullptr;
         HRESULT hr = MFCreateAttributes(&attr, 2);
         if (SUCCEEDED(hr) && videoProcessing) hr = attr->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, TRUE);
@@ -1692,6 +1693,21 @@ private:
 // ---------------------------------------------------------------------------
 // The camera's worker
 
+// The worker's own state: kept here, not on its thread's stack - the worker moves to a new thread after a few decoded
+// files (MediaThreadDecodes), the old thread ends and takes the handles Windows' codecs left on it along.
+struct RunnerState
+{
+    HANDLE   cam = INVALID_HANDLE_VALUE;
+    CamFrame frame;
+    Source*  src = nullptr;
+    CamConfig cfg;
+    S2C_STATUS st = {};
+    bool     have = false, resend = true, force = true, waiting = false, previewWas = false;
+    DWORD    nextOpen = 0, nextStatus = 0, nextFormat = 0;
+    ULONG    lastWantW = 0, lastWantH = 0, lastWantFps = 0;
+};
+static const int kDecodesPerThread = 8;
+
 class CameraRunner
 {
 public:
@@ -1699,7 +1715,10 @@ public:
     wchar_t  path[512];
     EventSink sink;
     HANDLE   thread = nullptr, wake = nullptr;
-    volatile LONG stop = 0;
+    HANDLE   previous = nullptr;            // the thread it moved from (its handle, closed by the new one)
+    CO_MTA_USAGE_COOKIE mta = nullptr;      // the MTA stays while the worker changes threads (its sources' objects live there)
+    RunnerState state;
+    volatile LONG stop = 0;                 // set under cs: no move to a new thread after it
     CRITICAL_SECTION cs;
     CamConfig config;
     bool     configChanged = true;
@@ -1747,18 +1766,46 @@ static void CopyPreview(CameraRunner* r, CamFrame& frame, bool always)
     r->sink.Post(EvPreviewFrame);
 }
 
+static DWORD WINAPI RunnerThread(LPVOID p);
+
+// Starts the worker on a new thread; false when it is stopping (or no thread). Called on the worker's thread.
+static bool RunnerMoveThread(CameraRunner* r)
+{
+    bool moved = false;
+    EnterCriticalSection(&r->cs);
+    if (!r->stop && !r->previous)
+    {
+        HANDLE t = CreateThread(nullptr, 0, RunnerThread, r, CREATE_SUSPENDED, nullptr);
+        if (t)
+        {
+            r->previous = r->thread;
+            r->thread = t;
+            ResumeThread(t);
+            moved = true;
+        }
+    }
+    LeaveCriticalSection(&r->cs);
+    return moved;
+}
+
 static DWORD WINAPI RunnerThread(LPVOID p)
 {
     CameraRunner* r = (CameraRunner*)p;
     CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-    HANDLE cam = INVALID_HANDLE_VALUE;
-    CamFrame frame;
-    Source* src = nullptr;
-    CamConfig cfg;
-    S2C_STATUS st = {};
-    bool have = false, resend = true, force = true, waiting = false, previewWas = false;
-    DWORD nextOpen = 0, nextStatus = 0, nextFormat = 0;
-    ULONG lastWantW = 0, lastWantH = 0, lastWantFps = 0;
+    EnterCriticalSection(&r->cs);
+    HANDLE previous = r->previous;
+    r->previous = nullptr;
+    LeaveCriticalSection(&r->cs);
+    if (previous) CloseHandle(previous);
+    RunnerState& rs = r->state;
+    HANDLE& cam = rs.cam;
+    CamFrame& frame = rs.frame;
+    Source*& src = rs.src;
+    CamConfig& cfg = rs.cfg;
+    S2C_STATUS& st = rs.st;
+    bool &have = rs.have, &resend = rs.resend, &force = rs.force, &waiting = rs.waiting, &previewWas = rs.previewWas;
+    DWORD &nextOpen = rs.nextOpen, &nextStatus = rs.nextStatus, &nextFormat = rs.nextFormat;
+    ULONG &lastWantW = rs.lastWantW, &lastWantH = rs.lastWantH, &lastWantFps = rs.lastWantFps;
 
     while (!r->stop)
     {
@@ -1906,9 +1953,17 @@ static DWORD WINAPI RunnerThread(LPVOID p)
         }
         LeaveCriticalSection(&r->cs);
 
+        // the new thread goes on from here; this one ends (with the codecs' leftovers)
+        if (MediaThreadDecodes() >= kDecodesPerThread && RunnerMoveThread(r))
+        {
+            MediaThreadEnd();
+            CoUninitialize();
+            return 0;
+        }
         WaitForSingleObject(r->wake, wait > 500 ? 500 : wait);
     }
     delete src;
+    src = nullptr;
     if (cam != INVALID_HANDLE_VALUE)
     {
         CamSendTestPattern(cam);
@@ -1929,7 +1984,10 @@ CameraRunner* RunnerStart(int index, const wchar_t* path, const CamConfig& confi
     r->config = config;
     InitializeCriticalSection(&r->cs);
     r->wake = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    CoIncrementMTAUsage(&r->mta);
+    EnterCriticalSection(&r->cs);   // the thread may move on before its handle is stored
     r->thread = CreateThread(nullptr, 0, RunnerThread, r, 0, nullptr);
+    LeaveCriticalSection(&r->cs);
     return r;
 }
 
@@ -1946,13 +2004,17 @@ void RunnerConfigure(CameraRunner* r, const CamConfig& config)
 void RunnerStop(CameraRunner* r)
 {
     if (!r) return;
+    EnterCriticalSection(&r->cs);   // the worker's current thread: it moves no more once stop is set
     InterlockedExchange(&r->stop, 1);
+    HANDLE thread = r->thread;
+    LeaveCriticalSection(&r->cs);
     SetEvent(r->wake);
-    if (r->thread)
+    if (thread)
     {
-        WaitForSingleObject(r->thread, 15000);
-        CloseHandle(r->thread);
+        WaitForSingleObject(thread, 15000);
+        CloseHandle(thread);
     }
+    if (r->mta) CoDecrementMTAUsage(r->mta);
     CloseHandle(r->wake);
     DeleteCriticalSection(&r->cs);
     delete r;
