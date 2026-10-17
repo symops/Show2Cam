@@ -269,3 +269,4 @@ Esta pasta
 Selecionar pasta
 Câmera “%ls”: formato %ls. Os programas que já estão com a câmera aberta o receberão ao abri-la novamente.
 Uma câmera aberta por um programa foi retirada da lista de câmeras; o programa continua a usá-la até fechá-la.
+✔  Driver Show2Cam atualizado para a versão %ls — reinicie o computador (até lá funciona a %ls)

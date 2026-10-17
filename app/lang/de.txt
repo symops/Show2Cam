@@ -269,3 +269,4 @@ Dieser Ordner
 Ordner auswählen
 Kamera „%ls“: Format %ls. Programme, die die Kamera bereits geöffnet haben, erhalten es beim nächsten Öffnen.
 Eine Kamera, die ein Programm geöffnet hat, wurde aus der Kameraliste entfernt; das Programm nutzt sie, bis es sie schließt.
+✔  Show2Cam-Treiber auf Version %ls aktualisiert — Computer neu starten (bis dahin läuft %ls)

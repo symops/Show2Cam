@@ -16,6 +16,8 @@ DiagResult RunDiagnostics(SetupLog log, void* ctx);
 
 // Version of the driver that last started (from its log), e.g. "1.0.279.19"; false if unknown.
 bool DiagRunningDriverVersion(wchar_t* out, size_t len);
+// The driver version Windows installed on the device (may be newer than the running one until a restart).
+bool DiagInstalledDriverVersion(wchar_t* out, size_t len);
 // Driver version of the Show2Cam.inf next to this program; false if there is none.
 bool DiagPackageDriverVersion(wchar_t* out, size_t len);
 
