@@ -213,8 +213,7 @@ static void RefreshState()
     if (!g_driverOk)
         wcscpy(text, TR(L"•  Драйвер Show2Cam не установлен"));
     else if (g_rebootPending && installed[0])
-        _snwprintf(text, 200, TR(L"✔  Драйвер Show2Cam обновлён до версии %ls — перезагрузите компьютер (до перезагрузки работает %ls)"),
-                   installed, running[0] ? running : L"?");
+        _snwprintf(text, 200, TR(L"✔  Драйвер Show2Cam обновлён до %ls — нужна перезагрузка"), installed);
     else if (!running[0])
         wcscpy(text, TR(L"✔  Драйвер Show2Cam установлен"));
     else if (wcscmp(running, L"" S2C_VER_STR) == 0)

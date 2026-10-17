@@ -269,4 +269,4 @@ Folder ini
 Pilih folder
 Kamera “%ls”: format %ls. Program yang sudah membuka kamera akan mendapatkannya saat membukanya lagi.
 Kamera yang sedang dibuka program dihapus dari daftar kamera; program tetap memakainya sampai menutupnya.
-✔  Driver Show2Cam diperbarui ke versi %ls — mulai ulang komputer (sampai itu versi %ls yang berjalan)
+✔  Driver Show2Cam diperbarui ke %ls — perlu mulai ulang

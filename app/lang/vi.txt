@@ -269,4 +269,4 @@ Thư mục này
 Chọn thư mục
 Camera “%ls”: định dạng %ls. Các chương trình đang mở camera sẽ nhận định dạng này khi mở lại camera.
 Camera đang được một chương trình mở đã bị bỏ khỏi danh sách camera; chương trình vẫn dùng nó cho đến khi đóng.
-✔  Trình điều khiển Show2Cam đã cập nhật lên phiên bản %ls — hãy khởi động lại máy (đến lúc đó vẫn chạy %ls)
+✔  Trình điều khiển Show2Cam đã cập nhật lên %ls — cần khởi động lại
