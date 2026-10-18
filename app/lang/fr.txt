@@ -270,3 +270,6 @@ Choisir le dossier
 Caméra « %ls » : format %ls. Les programmes qui ont déjà ouvert la caméra l’obtiendront en la rouvrant.
 Une caméra ouverte par un programme a été retirée de la liste des caméras ; le programme l’utilise jusqu’à ce qu’il la ferme.
 ✔  Pilote Show2Cam mis à jour en %ls — redémarrage requis
+Dossier d’installation :
+Parcourir…
+Choisissez l’emplacement d’installation (un dossier %ls y est créé)

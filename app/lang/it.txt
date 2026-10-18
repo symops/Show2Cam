@@ -270,3 +270,6 @@ Seleziona cartella
 Telecamera «%ls»: formato %ls. I programmi che hanno già aperto la telecamera lo riceveranno quando la riapriranno.
 Una telecamera aperta da un programma è stata tolta dall’elenco; il programma la usa finché non la chiude.
 ✔  Driver Show2Cam aggiornato a %ls — riavvio necessario
+Cartella di installazione:
+Sfoglia…
+Scegliere il percorso di installazione (vi viene creata la cartella %ls)

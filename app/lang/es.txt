@@ -270,3 +270,6 @@ Seleccionar carpeta
 Cámara «%ls»: formato %ls. Los programas que ya tienen la cámara abierta lo recibirán al volver a abrirla.
 Una cámara que un programa tiene abierta se quitó de la lista de cámaras; el programa la usa hasta que la cierre.
 ✔  Controlador Show2Cam actualizado a %ls — reinicio necesario
+Carpeta de instalación:
+Examinar…
+Elija la ubicación de instalación (se crea en ella la carpeta %ls)

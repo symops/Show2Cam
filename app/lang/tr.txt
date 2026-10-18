@@ -270,3 +270,6 @@ Klasörü seç
 “%ls” kamerası: %ls biçimi. Kamerayı zaten açmış olan programlar onu yeniden açtıklarında alacak.
 Bir programın açık tuttuğu kamera listeden kaldırıldı; program kamerayı kapatana kadar kullanmaya devam eder.
 ✔  Show2Cam sürücüsü %ls sürümüne güncellendi — yeniden başlatma gerekli
+Kurulum klasörü:
+Gözat…
+Kurulum konumunu seçin (içinde %ls klasörü oluşturulur)

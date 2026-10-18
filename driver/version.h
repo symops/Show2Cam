@@ -3,8 +3,8 @@
 #define S2C_VER_MAJOR 1
 #define S2C_VER_MINOR 0
 #define S2C_VER_BUILD 291
-#define S2C_VER_REV   999
-#define S2C_VER_STR   "1.0.291.999"
+#define S2C_VER_REV   1109
+#define S2C_VER_STR   "1.0.291.1109"
 #define S2C_AUTHOR    "Symo"
 #define S2C_EMAIL     "symops@gmail.com"
 #define S2C_COPYRIGHT "Copyright (C) 2026 Symo <symops@gmail.com>"

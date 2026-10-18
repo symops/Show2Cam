@@ -270,3 +270,6 @@ Wybierz folder
 Kamera „%ls”: format %ls. Programy, które mają już otwartą kamerę, otrzymają go po ponownym otwarciu.
 Kamera otwarta przez program została usunięta z listy kamer; program korzysta z niej, dopóki jej nie zamknie.
 ✔  Sterownik Show2Cam zaktualizowany do %ls — wymagany restart
+Folder instalacji:
+Przeglądaj…
+Wybierz miejsce instalacji (zostanie w nim utworzony folder %ls)

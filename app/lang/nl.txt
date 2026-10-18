@@ -270,3 +270,6 @@ Map selecteren
 Camera ‘%ls’: formaat %ls. Programma’s die de camera al open hebben, krijgen het wanneer ze hem opnieuw openen.
 Een camera die een programma open heeft, is uit de cameralijst gehaald; het programma gebruikt hem tot het hem sluit.
 ✔  Show2Cam-stuurprogramma bijgewerkt naar %ls — herstart nodig
+Installatiemap:
+Bladeren…
+Kies de installatielocatie (daarin wordt de map %ls gemaakt)
