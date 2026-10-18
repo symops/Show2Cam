@@ -29,6 +29,7 @@
 // %ProgramData%\Show2Cam\logs\autotest.log; exit code 1 if anything failed.
 #include "camcfg.h"
 #include <psapi.h>
+#include <tlhelp32.h>
 #include "atmedia.h"
 #include "camdev.h"
 #include "applog.h"
@@ -1084,6 +1085,21 @@ static void StopSource(CameraRunner* r, const CamInfo& cam, Capture* c)
     WaitClosed(cam, 5000);
 }
 
+// The Speak2Mic autotest on this PC: it measures silence on the Speak2Mic microphone and restarts Windows Audio, so
+// the clips' sound spoiled its measurements (~95 % of its "microphone not silent" failures came while a clip played
+// here) and its restarts our sound checks. Clips play without sound while it runs.
+static bool S2mAutotestRunning()
+{
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snap == INVALID_HANDLE_VALUE) return false;
+    PROCESSENTRY32W pe = { sizeof(pe) };
+    bool found = false;
+    for (BOOL ok = Process32FirstW(snap, &pe); ok && !found; ok = Process32NextW(snap, &pe))
+        found = _wcsicmp(pe.szExeFile, L"s2mautotest.exe") == 0;
+    CloseHandle(snap);
+    return found;
+}
+
 static CamConfig TestConfig(int index, int kind)
 {
     CamConfig cfg;
@@ -1092,7 +1108,7 @@ static CamConfig TestConfig(int index, int kind)
     cfg.width = kTestW;
     cfg.height = kTestH;
     cfg.fps = 15;
-    cfg.audioMode = AudioSpeak2Mic;
+    cfg.audioMode = kind == SourceVideo && S2mAutotestRunning() ? AudioOff : AudioSpeak2Mic;
     return cfg;
 }
 
@@ -1205,6 +1221,8 @@ static void ActionVideos()
     wcscpy(cfg.videoFolder, v.folder);
     Out(L"[videos] camera %d: %ls (%ls)", cam.index + 1, v.name, v.sound ? (v.channels == 6 ? L"5.1 sound" : L"sound") :
         v.soundless ? L"sound not decodable here" : L"no sound");
+    bool sound = v.sound && cfg.audioMode == AudioSpeak2Mic;
+    if (v.sound && !sound) Out(L"  info played without sound: the Speak2Mic autotest runs on this PC");
     Capture c;
     CameraRunner* r = StartSource(cam, cfg, &c);
     if (!r) return;
@@ -1239,7 +1257,7 @@ static void ActionVideos()
     };
     sample((DWORD)(kClipSeconds * 1000) + 700);
     MicResult mic = {};
-    if (v.sound)
+    if (sound)
     {
         // Silence between the passes (the player first tries the broken clips next to it, ~0.5 s each) is measured
         // again: the sound must come with the clip's next pass.
@@ -1249,7 +1267,7 @@ static void ActionVideos()
     sample((DWORD)(kClipSeconds * 2000) + 1500);
     Check(samples >= 10 && matched * 10 >= samples * 8, L"clip colours shown: %d of %d samples", matched, samples);
     Check(distinct >= v.minColors, L"the picture moves (%d of 4 colour fields seen, %d wanted)", distinct, v.minColors);
-    if (v.sound)
+    if (sound)
     {
         if (!mic.found) Warn(L"Speak2Mic Microphone not found: the clip's sound not checked");
         else if (FAILED(mic.hr)) Warn(L"Speak2Mic Microphone cannot be recorded (0x%08lX)", (unsigned long)mic.hr);
