@@ -1739,7 +1739,8 @@ static void HandleProbe()
     static const wchar_t* const storePics[] = { L"avif", L"heic", L"webp", nullptr };
     static const wchar_t* const storeClips[] = { L"vp9", L"av1", L"hevc", L"vp8", nullptr };
     static const wchar_t* const plainClips[] = { L"h264", L"mpeg2", nullptr };
-    struct { const wchar_t* folder; const wchar_t* name; bool video; } probes[4] = {};
+    static const wchar_t* const brokenClips[] = { L"broken clips", nullptr };
+    struct { const wchar_t* folder; const wchar_t* name; bool video; } probes[5] = {};
     int p = find(storePics, false, true);
     if (p >= 0) probes[0] = { g_media.images[p].folder, g_media.images[p].format, false };
     probes[1] = { g_media.images[0].folder, g_media.images[0].format, false };
@@ -1747,20 +1748,45 @@ static void HandleProbe()
     if (p >= 0) probes[2] = { g_media.videos[p].folder, g_media.videos[p].name, true };
     p = find(plainClips, true, false);
     if (p >= 0) probes[3] = { g_media.videos[p].folder, g_media.videos[p].name, true };
-    wchar_t line[1024];
-    int len = _snwprintf(line, 1024, L"handle probe, decoded 5 times on one thread / each on a new thread:");
+    p = find(brokenClips, true, false);
+    if (p >= 0) probes[4] = { g_media.videos[p].folder, L"broken clips", true };
+    // ... and as the actions use them (an [images] action with AVIF still grew the count by ~30, though its source runs
+    // on a thread of its own that ends): a source showing the file alone, then with the camera read as in the action
+    wchar_t line[1400];
+    int len = _snwprintf(line, 1400, L"handle probe, 5 times: decoded on one thread / each on a new thread / its source "
+                                     L"alone / source + camera:");
     for (auto& d : probes)
     {
-        if (!d.folder || g_stop || len < 0 || len > 900) continue;
+        if (!d.folder || g_stop || len < 0 || len > 1250) continue;
         long a = count();
-        DecodeProbe(d.folder, d.video, false, 5);
+        if (!d.video || wcscmp(d.name, L"broken clips")) DecodeProbe(d.folder, d.video, false, 5);
         long b = count();
-        DecodeProbe(d.folder, d.video, true, 5);
+        if (!d.video || wcscmp(d.name, L"broken clips")) DecodeProbe(d.folder, d.video, true, 5);
         long c = count();
-        int n = _snwprintf(line + len, 1024 - len, L" %ls %+ld / %+ld;", d.name, b - a, c - b);
+        CamConfig sc = TestConfig(cam.index, d.video ? SourceVideo : SourceImages);
+        sc.audioMode = AudioOff;            // the sound has its own probe (clip with sound, microphone)
+        wcscpy(d.video ? sc.videoFolder : sc.imageFolder, d.folder);
+        for (int i = 0; i < 5 && !g_stop; i++)
+        {
+            CameraRunner* r = RunnerStart(cam.index, cam.path, sc, nullptr, 0);
+            Sleep(d.video ? 2500 : 1200);
+            RunnerStop(r);
+        }
+        long e = count();
+        for (int i = 0; i < 5 && !g_stop; i++)
+        {
+            Capture cap;
+            CameraRunner* r = StartSource(cam, sc, &cap);
+            if (!r) break;
+            Fresh(&cap);
+            Sleep(d.video ? 1500 : 300);
+            StopSource(r, cam, &cap);
+        }
+        long f = count();
+        int n = _snwprintf(line + len, 1400 - len, L" %ls %+ld / %+ld / %+ld / %+ld;", d.name, b - a, c - b, e - c, f - e);
         if (n > 0) len += n;
     }
-    line[1023] = 0;
+    line[1399] = 0;
     Out(L"%ls", line);
 }
 
