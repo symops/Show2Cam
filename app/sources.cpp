@@ -122,7 +122,8 @@ public:
             wchar_t next[MAX_PATH];
             if ((int)(now - m_badReset) >= 0)
             {
-                m_badCount = 0;                     // files may have been replaced: tried again after a minute
+                // the broken files known to the process; one that was changed or replaced is tried again
+                m_badCount = MediaBrokenIn(m_folder, m_bad, 16);
                 m_badReset = now + 60000;
             }
             // A file Windows cannot decode is remembered (it used to show the error screen for a second: dark frames
@@ -141,7 +142,8 @@ public:
                     m_next = now + 5000;
                     return Remaining(now);
                 }
-                AppLog(L"camera %d: cannot decode %ls (skipped for a minute)", m_sink.index + 1, next);
+                AppLog(L"camera %d: cannot decode %ls (skipped until the file changes)", m_sink.index + 1, next);
+                MediaMarkBroken(next);
                 if (m_badCount < 16) wcscpy(m_bad[m_badCount++], next);
                 m_next = now;                       // another one at once (the current picture stays meanwhile)
                 return 1;
@@ -226,9 +228,9 @@ private:
     int     m_state = StateStarting;
     DWORD   m_next = GetTickCount();
     UINT    m_nativeW = 0, m_nativeH = 0;
-    wchar_t m_bad[16][MAX_PATH];                // files Windows could not decode (skipped for a minute)
+    wchar_t m_bad[16][MAX_PATH];                // files Windows could not decode (MediaBrokenIn)
     int     m_badCount = 0;
-    DWORD   m_badReset = GetTickCount() + 60000;
+    DWORD   m_badReset = GetTickCount();        // at once: the broken files the process knows already
 };
 
 // ---------------------------------------------------------------------------
@@ -412,11 +414,12 @@ private:
         DWORD now = GetTickCount();
         if ((int)(now - m_badReset) >= 0)
         {
-            m_badCount = 0;                     // files may have been replaced: tried again after a minute
+            // the broken files known to the process; one that was changed or replaced is tried again
+            m_badCount = MediaBrokenIn(m_folder, m_bad, 16);
             m_badReset = now + 60000;
         }
-        // Files Windows cannot play are remembered for a minute and not picked again meanwhile (with several broken
-        // ones in the folder the good one was often not reached within the attempts: error screen for 5 s).
+        // Files Windows cannot play are remembered and not picked again (with several broken ones in the folder the
+        // good one was often not reached within the attempts: error screen for 5 s; each attempt also left handles).
         for (int attempt = 0; attempt < 24; attempt++)
         {
             wchar_t path[MAX_PATH];
@@ -450,7 +453,9 @@ private:
                 m_sink.Post(EvVideoFile);
                 return true;
             }
-            AppLog(L"camera %d: cannot play %ls (0x%08lX; skipped for a minute)", m_sink.index + 1, path, (unsigned long)hr);
+            AppLog(L"camera %d: cannot play %ls (0x%08lX; skipped until the file changes)", m_sink.index + 1, path,
+                   (unsigned long)hr);
+            MediaMarkBroken(path);
             if (m_badCount < 16) wcscpy(m_bad[m_badCount++], path);
             _snwprintf(m_detail, 256, L"%ls (0x%08lX)", FileName(path), (unsigned long)hr);
             m_detail[255] = 0;
@@ -1033,9 +1038,9 @@ private:
 
     AudioOut m_audio;
     bool    m_audioStream = false;          // the file's sound track is decoded (it has one and sound is on)
-    wchar_t m_bad[16][MAX_PATH];            // files Windows could not play (skipped for a minute)
+    wchar_t m_bad[16][MAX_PATH];            // files Windows could not play (MediaBrokenIn)
     int     m_badCount = 0;
-    DWORD   m_badReset = GetTickCount() + 60000;
+    DWORD   m_badReset = GetTickCount();    // at once: the broken files the process knows already
     UINT32  m_audioRate = 0, m_audioCh = 0;
     DWORD   m_audioRetryAt = 0;
     HRESULT m_audioLastErr = S_OK;

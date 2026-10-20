@@ -68,6 +68,72 @@ static thread_local int decodes;
 void MediaCountDecode() { decodes++; }
 int  MediaThreadDecodes() { return decodes; }
 
+struct BrokenFile { wchar_t path[MAX_PATH]; ULONGLONG size; FILETIME time; };
+static BrokenFile g_broken[256];
+static int        g_brokenCount, g_brokenNext;     // the oldest is replaced when it is full
+static SRWLOCK    g_brokenLock = SRWLOCK_INIT;
+
+static bool FileStamp(const wchar_t* path, ULONGLONG* size, FILETIME* time)
+{
+    WIN32_FILE_ATTRIBUTE_DATA a;
+    if (!GetFileAttributesExW(path, GetFileExInfoStandard, &a)) return false;
+    *size = ((ULONGLONG)a.nFileSizeHigh << 32) | a.nFileSizeLow;
+    *time = a.ftLastWriteTime;
+    return true;
+}
+
+void MediaMarkBroken(const wchar_t* path)
+{
+    BrokenFile f = {};
+    wcsncpy(f.path, path, MAX_PATH - 1);
+    if (!FileStamp(path, &f.size, &f.time)) return;
+    AcquireSRWLockExclusive(&g_brokenLock);
+    int i = 0;
+    while (i < g_brokenCount && _wcsicmp(g_broken[i].path, path) != 0) i++;
+    if (i == g_brokenCount)
+    {
+        if (g_brokenCount < 256) i = g_brokenCount++;
+        else
+        {
+            i = g_brokenNext;
+            g_brokenNext = (g_brokenNext + 1) % 256;
+        }
+    }
+    g_broken[i] = f;
+    ReleaseSRWLockExclusive(&g_brokenLock);
+}
+
+int MediaBrokenIn(const wchar_t* folder, wchar_t (*bad)[MAX_PATH], int max)
+{
+    size_t len = wcslen(folder);
+    while (len && folder[len - 1] == L'\\') len--;
+    int n = 0;
+    AcquireSRWLockExclusive(&g_brokenLock);
+    for (int i = 0; i < g_brokenCount;)
+    {
+        BrokenFile& f = g_broken[i];
+        bool here = _wcsnicmp(f.path, folder, len) == 0 && f.path[len] == L'\\' && !wcschr(f.path + len + 1, L'\\');
+        if (!here)
+        {
+            i++;
+            continue;
+        }
+        ULONGLONG size = 0;
+        FILETIME time = {};
+        if (!FileStamp(f.path, &size, &time) || size != f.size || CompareFileTime(&time, &f.time) != 0)
+        {
+            // changed, replaced or gone: forgotten (tried again)
+            g_broken[i] = g_broken[--g_brokenCount];
+            if (g_brokenNext >= g_brokenCount) g_brokenNext = 0;
+            continue;
+        }
+        if (n < max) wcscpy(bad[n++], f.path);
+        i++;
+    }
+    ReleaseSRWLockExclusive(&g_brokenLock);
+    return n;
+}
+
 void MediaThreadEnd()
 {
     if (factory) factory->Release();

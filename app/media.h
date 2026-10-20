@@ -13,6 +13,13 @@ void MediaThreadEnd();
 // after a few files.
 void MediaCountDecode();
 int  MediaThreadDecodes();
+// Files Windows could not decode / play, for the whole process (every source, also a new one after a settings change).
+// Each attempt to open a broken clip left 5..30 handles behind inside Media Foundation (the autotest's handle probe),
+// and the sources tried their broken files again every minute: thousands of handles a day with one broken file in the
+// folder. A file is tried again only once it has changed (size or time), been replaced or removed.
+void MediaMarkBroken(const wchar_t* path);
+// The known broken files directly in `folder` that are unchanged (up to `max`); their count.
+int  MediaBrokenIn(const wchar_t* folder, wchar_t (*bad)[MAX_PATH], int max);
 
 // A decoded picture (owns its pixels).
 struct Picture
