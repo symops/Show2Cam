@@ -19,23 +19,30 @@ mkdir -p "$T"
 CXX="clang++ --target=$TARGET -std=c++17 -O2 -fno-exceptions -fno-rtti -municode
      -D_WIN32_WINNT=0x0A00 -DWINVER=0x0A00 -DUNICODE -D_UNICODE -Wall -Wextra -Wno-unused-parameter
      -Wno-missing-field-initializers -isystem /usr/$TRIPLE/include"
+YUV=../third_party/libyuv
+CXX="$CXX -I$YUV/include"
+# libyuv (ARGBScale for the frame scaling in media.cpp): its own warnings off, a static library, only what is used linked
+for f in scale_argb scale_common scale_any scale_gcc row_common row_any row_gcc cpu_id planar_functions convert_argb; do
+    $CXX -w -c "$YUV/src/$f.cc" -o "$T/yuv_$f.o"
+done
+$TRIPLE-ar rcs "$T/libyuv.a" "$T"/yuv_*.o
 for f in applog lang setupcore setupfiles devctl diag s2csetup s2cinstall camdev media audioout sources camcfg drvlog s2cpanel cxxrt s2ccamdiag s2cctl s2cautotest atmedia; do $CXX -c $f.cpp -o "$T/$f.o"; done
 for r in s2csetup s2cinstall s2cpanel s2ccamdiag s2cctl s2cautotest; do $TRIPLE-windres $r.rc -O coff -o "$T/$r.res.o"; done
 $TRIPLE-gcc -municode -mwindows -static -s -o "$O/Show2Cam-Setup.exe" "$T/s2csetup.o" "$T/devctl.o" "$T/setupcore.o" \
     "$T/setupfiles.o" "$T/diag.o" "$T/applog.o" "$T/lang.o" "$T/s2csetup.res.o" \
     -lsetupapi -lnewdev -lcfgmgr32 -lcrypt32 -lcomctl32 -lshell32 -lgdi32 -ladvapi32 -luser32 -lole32 -lwevtapi -luuid
 $TRIPLE-gcc -municode -mwindows -static -s -Wl,-Map,"$O/Show2Cam.map" -o "$O/Show2Cam.exe" "$T/s2cpanel.o" "$T/sources.o" "$T/camcfg.o" "$T/drvlog.o" "$T/media.o" "$T/audioout.o" \
-    "$T/camdev.o" "$T/cxxrt.o" "$T/devctl.o" "$T/setupcore.o" "$T/applog.o" "$T/lang.o" "$T/s2cpanel.res.o" \
+    "$T/camdev.o" "$T/cxxrt.o" "$T/devctl.o" "$T/setupcore.o" "$T/applog.o" "$T/lang.o" "$T/s2cpanel.res.o" "$T/libyuv.a" \
     -lmf -lmfplat -lmfreadwrite -lmfuuid -lwindowscodecs -lwinhttp -lcrypt32 -lbcrypt -lsetupapi -lnewdev -lcfgmgr32 -lcomctl32 \
     -lshell32 -lgdi32 -ladvapi32 -luser32 -lole32 -loleaut32 -luuid -lpropsys -lcomdlg32
 $TRIPLE-gcc -municode -static -s -o "$O/s2ccamdiag.exe" "$T/s2ccamdiag.o" "$T/camdev.o" "$T/s2ccamdiag.res.o" \
     -lstrmiids -lmf -lmfplat -lmfreadwrite -lmfuuid -lavicap32 -lsetupapi -lshell32 -ladvapi32 -lole32 -loleaut32 -luuid
 $TRIPLE-gcc -municode -static -s -o "$O/s2cctl.exe" "$T/s2cctl.o" "$T/camcfg.o" "$T/camdev.o" "$T/media.o" "$T/audioout.o" \
-    "$T/cxxrt.o" "$T/devctl.o" "$T/setupcore.o" "$T/applog.o" "$T/lang.o" "$T/s2cctl.res.o" \
+    "$T/cxxrt.o" "$T/devctl.o" "$T/setupcore.o" "$T/applog.o" "$T/lang.o" "$T/s2cctl.res.o" "$T/libyuv.a" \
     -lwindowscodecs -lsetupapi -lnewdev -lcfgmgr32 -lcrypt32 -lgdi32 -lshell32 -ladvapi32 -luser32 -lole32 -loleaut32 -luuid \
     -lpropsys -lmfplat -lmfuuid -lbcrypt
 $TRIPLE-gcc -municode -static -s -Wl,-Map,"$O/s2cautotest.map" -o "$O/s2cautotest.exe" "$T/s2cautotest.o" "$T/atmedia.o" "$T/sources.o" "$T/camcfg.o" "$T/media.o" "$T/audioout.o" \
-    "$T/camdev.o" "$T/drvlog.o" "$T/cxxrt.o" "$T/devctl.o" "$T/setupcore.o" "$T/applog.o" "$T/lang.o" "$T/s2cautotest.res.o" \
+    "$T/camdev.o" "$T/drvlog.o" "$T/cxxrt.o" "$T/devctl.o" "$T/setupcore.o" "$T/applog.o" "$T/lang.o" "$T/s2cautotest.res.o" "$T/libyuv.a" \
     -lmf -lmfplat -lmfreadwrite -lmfuuid -lwindowscodecs -lwinhttp -lcrypt32 -lbcrypt -lsetupapi -lnewdev -lcfgmgr32 \
     -lshell32 -lgdi32 -ladvapi32 -luser32 -lole32 -loleaut32 -luuid -lpropsys -lws2_32 -lpsapi
 $TRIPLE-gcc -municode -static -s -o "$O/s2cinstall.exe" "$T/s2cinstall.o" "$T/setupcore.o" "$T/devctl.o" "$T/applog.o" "$T/lang.o" "$T/s2cinstall.res.o" \

@@ -1,6 +1,7 @@
 // Pictures for the cameras (see media.h).
 #include "media.h"
 #include <wincodec.h>
+#include "libyuv/scale_argb.h"
 #include <bcrypt.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -58,8 +59,8 @@ static void FitRect(int sw, int sh, int dw, int dh, int* x, int* y, int* w, int*
 // One per thread (the callers' threads each initialised COM); released by MediaThreadEnd (each source thread used to
 // leave its factory behind: the autotest's thousands of source starts ran the process out of memory).
 static thread_local IWICImagingFactory* factory;
-// FitPixels' column table and PickRandomFile's file list: per thread too, freed by MediaThreadEnd (each source thread
-// used to leave ~0.5 MB behind: the autotest's 5 hours grew the process by ~400 MB).
+// ScaleBilinear's column table and PickRandomFile's file list: per thread too, freed by MediaThreadEnd (each source
+// thread used to leave ~0.5 MB behind: the autotest's 5 hours grew the process by ~400 MB).
 static thread_local int* xs;
 static thread_local int xsCap;
 static thread_local wchar_t (*fileNames)[MAX_PATH];
@@ -258,25 +259,14 @@ bool DecodeImageMemory(const BYTE* data, size_t size, Picture* out)
 }
 
 // ---------------------------------------------------------------------------
-// Scaling (video frames, stream pictures): bilinear, 16.16 fixed point
+// Scaling (video frames, stream pictures). Shrinking to half or less (a 4K or 1080p picture into 640x480): libyuv's
+// ARGBScale with its box filter - every source pixel counts, without the aliasing and shimmer plain bilinear sampling
+// gives there; SIMD. Otherwise our own bilinear, 16.16 fixed point: libyuv's bilinear rows weight the two neighbours
+// 127/128 in all (7-bit weights), a flat colour came out ~1 % darker (0xE0 -> 0xDE) when enlarging. BGRA in memory is
+// libyuv's "ARGB".
 
-void FitPixels(const BYTE* src, int sw, int sh, LONG stride, ULONG* dst, int dw, int dh)
+static void ScaleBilinear(const BYTE* src, int sw, int sh, LONG stride, ULONG* dst, int dw, int rx, int ry, int rw, int rh)
 {
-    if (sw <= 0 || sh <= 0) { FillBlack(dst, dw, dh); return; }
-    if (sw == dw && sh == dh)
-    {
-        for (int y = 0; y < dh; y++)
-        {
-            const ULONG* s = (const ULONG*)(src + (LONG_PTR)y * stride);
-            ULONG* d = dst + (SIZE_T)y * dw;
-            for (int x = 0; x < dw; x++) d[x] = s[x] | 0xFF000000;
-        }
-        return;
-    }
-    int rx, ry, rw, rh;
-    FitRect(sw, sh, dw, dh, &rx, &ry, &rw, &rh);
-    FillBlack(dst, dw, dh);
-
     // Source position of every target column: index and weight of the right neighbour (0..255).
     if (xsCap < rw)
     {
@@ -321,6 +311,36 @@ void FitPixels(const BYTE* src, int sw, int sh, LONG stride, ULONG* dst, int dw,
             d[x] = out;
         }
     }
+}
+
+void FitPixels(const BYTE* src, int sw, int sh, LONG stride, ULONG* dst, int dw, int dh)
+{
+    if (sw <= 0 || sh <= 0) { FillBlack(dst, dw, dh); return; }
+    if (sw == dw && sh == dh)
+    {
+        for (int y = 0; y < dh; y++)
+        {
+            const ULONG* s = (const ULONG*)(src + (LONG_PTR)y * stride);
+            ULONG* d = dst + (SIZE_T)y * dw;
+            for (int x = 0; x < dw; x++) d[x] = s[x] | 0xFF000000;
+        }
+        return;
+    }
+    int rx, ry, rw, rh;
+    FitRect(sw, sh, dw, dh, &rx, &ry, &rw, &rh);
+    if (rw != dw || rh != dh) FillBlack(dst, dw, dh);
+    ULONG* d = dst + (SIZE_T)ry * dw + rx;
+    if (rw * 2 <= sw && rh * 2 <= sh &&
+        libyuv::ARGBScale(src, (int)stride, sw, sh, (uint8_t*)d, dw * 4, rw, rh, libyuv::kFilterBox) == 0)
+    {
+        for (int y = 0; y < rh; y++)
+        {
+            ULONG* row = d + (SIZE_T)y * dw;
+            for (int x = 0; x < rw; x++) row[x] |= 0xFF000000;      // opaque (the sources' alpha is not set)
+        }
+        return;
+    }
+    ScaleBilinear(src, sw, sh, stride, dst, dw, rx, ry, rw, rh);
 }
 
 // ---------------------------------------------------------------------------

@@ -1,0 +1,3 @@
+libyuv (https://chromium.googlesource.com/libyuv/libyuv), commit 4ce4edd (2026-10-08), BSD 3-clause (LICENSE, PATENTS).
+Only what ARGBScale needs: the headers and src/{scale_argb,scale_common,scale_any,scale_gcc,row_common,row_any,row_gcc,
+cpu_id,planar_functions,convert_argb}.cc, unmodified. Built by app/build.sh into a static library.
