@@ -41,6 +41,7 @@
 #include <mfreadwrite.h>
 #include <mferror.h>
 #include <setupapi.h>
+#include <cfgmgr32.h>
 #include <shellapi.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -315,6 +316,8 @@ struct Capture
     ULONG* px = nullptr;                   // the last frame, top-down
     CamInfo cam = {};                      // the camera (for the read watchdog's report)
     LONGLONG ts = 0;                       // its time stamp (100 ns)
+    UINT32 wantW = 0, wantH = 0, fps = 0;  // as it was opened (to open it again)
+    int    reopened = 0;                   // times opened again after Windows dropped the stream
 
     ~Capture() { Close(); }
     void Close()
@@ -363,9 +366,13 @@ static HRESULT ActivateCamera(const CamInfo& cam, IMFMediaSource** source)
 // Opens the camera; wantW / wantH: that native size (else the camera's default), fps: that rate (0: as offered).
 static HRESULT CaptureOpenOnce(const CamInfo& cam, Capture* c, UINT32 wantW, UINT32 wantH, UINT32 fps)
 {
+    CamInfo self = cam;                    // cam may be c->cam itself (opened again)
     c->Close();
-    c->cam = cam;
-    HRESULT hr = ActivateCamera(cam, &c->source);
+    c->cam = self;
+    c->wantW = wantW;
+    c->wantH = wantH;
+    c->fps = fps;
+    HRESULT hr = ActivateCamera(self, &c->source);
     if (FAILED(hr)) return hr;
     bool typeSet = false;
     if (wantW && fps)
@@ -541,7 +548,83 @@ static HRESULT ReadSampleWatched(Capture* c, DWORD* streamIndex, DWORD* flags, L
     return hr;
 }
 
+// Device interfaces of other devices coming and going (Show2Cam's own cameras, ROOT\CAMERA\NNNN, left out): on Windows
+// 11 the Frame Server drops the open camera streams (0xC00D3E82) when another capture device is disabled / enabled -
+// Speak2Mic's autotest restarts its audio device on the same PC 450 times in two hours.
+static volatile LONG g_devTick, g_devCount;
+static CRITICAL_SECTION g_devLock;
+static wchar_t g_devLink[200];
+
+static DWORD CALLBACK DeviceInterfaceChanged(HCMNOTIFICATION, PVOID, CM_NOTIFY_ACTION action, PCM_NOTIFY_EVENT_DATA data, DWORD)
+{
+    if (action != CM_NOTIFY_ACTION_DEVICEINTERFACEARRIVAL && action != CM_NOTIFY_ACTION_DEVICEINTERFACEREMOVAL) return ERROR_SUCCESS;
+    wchar_t low[200];
+    wcsncpy(low, data->u.DeviceInterface.SymbolicLink, 199);
+    low[199] = 0;
+    _wcslwr(low);
+    if (wcsstr(low, L"root#camera#")) return ERROR_SUCCESS;
+    EnterCriticalSection(&g_devLock);
+    wcscpy(g_devLink, low);
+    LeaveCriticalSection(&g_devLock);
+    InterlockedIncrement(&g_devCount);
+    InterlockedExchange(&g_devTick, (LONG)GetTickCount());
+    return ERROR_SUCCESS;
+}
+
+static HCMNOTIFICATION DeviceChangesWatch()
+{
+    InitializeCriticalSection(&g_devLock);
+    CM_NOTIFY_FILTER f = {};
+    f.cbSize = sizeof(f);
+    f.FilterType = CM_NOTIFY_FILTER_TYPE_DEVICEINTERFACE;
+    f.Flags = CM_NOTIFY_FILTER_FLAG_ALL_INTERFACE_CLASSES;
+    HCMNOTIFICATION n = nullptr;
+    if (CM_Register_Notification(&f, nullptr, DeviceInterfaceChanged, &n) != CR_SUCCESS) n = nullptr;
+    return n;
+}
+
+// Another device changed in the last 5 s (or does within 2 s): which one, into `what`.
+static bool ForeignDeviceChange(wchar_t* what, size_t len)
+{
+    for (int i = 0; i <= 20; i++)
+    {
+        if (g_devCount && GetTickCount() - (DWORD)g_devTick < 5000)
+        {
+            EnterCriticalSection(&g_devLock);
+            _snwprintf(what, len, L"%ls", g_devLink);
+            LeaveCriticalSection(&g_devLock);
+            what[len - 1] = 0;
+            return true;
+        }
+        Sleep(100);
+    }
+    return false;
+}
+
+static HRESULT CaptureReadOnce(Capture* c);
+
+// Reads the next frame. When Windows dropped the stream (0xC00D3E82, MF_E_VIDEO_RECORDING_DEVICE_INVALIDATED) while
+// another device changed at that moment, the camera is opened again as it was (a warning) - without such a change the
+// read fails.
 static HRESULT CaptureRead(Capture* c)
+{
+    const HRESULT kInvalidated = (HRESULT)0xC00D3E82;
+    HRESULT hr = CaptureReadOnce(c);
+    while (hr == kInvalidated && c->reopened < 3 && !g_stop)
+    {
+        wchar_t what[200];
+        if (!ForeignDeviceChange(what, 200)) break;
+        c->reopened++;
+        HRESULT ro = CaptureOpenOnce(c->cam, c, c->wantW, c->wantH, c->fps);
+        Warn(L"camera %d: Windows dropped the stream (0x%08lX) while another device changed (%ls): opened again (0x%08lX)",
+             c->cam.index + 1, (unsigned long)hr, what, (unsigned long)ro);
+        if (FAILED(ro)) return ro;
+        hr = CaptureReadOnce(c);
+    }
+    return hr;
+}
+
+static HRESULT CaptureReadOnce(Capture* c)
 {
     for (int tries = 0; tries < 50; tries++)
     {
@@ -595,6 +678,14 @@ static HRESULT CaptureRead(Capture* c)
 static HRESULT CaptureOpen(const CamInfo& cam, Capture* c, UINT32 wantW = 0, UINT32 wantH = 0, UINT32 fps = 0)
 {
     HRESULT hr = CaptureOpenOnce(cam, c, wantW, wantH, fps);
+    wchar_t what[200];
+    if (hr == (HRESULT)0xC00D3E82 && ForeignDeviceChange(what, 200))
+    {
+        HRESULT first = hr;
+        hr = CaptureOpenOnce(cam, c, wantW, wantH, fps);
+        Warn(L"camera %d: Windows refused to open it (0x%08lX) while another device changed (%ls): opened again (0x%08lX)",
+             cam.index + 1, (unsigned long)first, what, (unsigned long)hr);
+    }
     if (FAILED(hr)) return hr;
     HRESULT rh = CaptureRead(c);
     if (rh != HRESULT_FROM_WIN32(ERROR_NO_MATCH)) return hr;
@@ -1151,10 +1242,15 @@ static void ActionTextGen()
         memcpy(first, c.px, (size_t)c.w * c.h * 4);
         RunnerConfigure(r, b);
         Sleep(1000);
-        if (Check(Fresh(&c, 5), L"frames read after the change"))
+        // frames queued before the change are read first (a slow PC: 5 of them were all still the old text): read on
+        // until the picture changes, at most 4 s
+        bool read = Fresh(&c, 5);
+        double d = read ? Difference(first, c.px, (size_t)c.w * c.h) : 0;
+        for (DWORD t0 = GetTickCount(); read && d <= 1.0 && GetTickCount() - t0 < 4000;)
+            if ((read = Fresh(&c, 1))) d = Difference(first, c.px, (size_t)c.w * c.h);
+        if (Check(read, L"frames read after the change"))
         {
             Check(NotEmpty(c), L"new text picture not empty");
-            double d = Difference(first, c.px, (size_t)c.w * c.h);
             Check(d > 1.0, L"the picture changed with the text (mean difference %.1f)", d);
         }
     }
@@ -1852,6 +1948,8 @@ int wmain(int argc, wchar_t** argv)
     Out(L"Show2Cam autotest %ls: %d minute(s), seed %u (repeat with --seed %u). Ctrl+C stops and restores.", L"" S2C_VER_STR,
         minutes, seed, seed);
     Out(L"Log: %ls", AppLogPath());
+    HCMNOTIFICATION devWatch = DeviceChangesWatch();
+    if (!devWatch) Out(L"  info other devices' changes are not watched (CM_Register_Notification failed)");
 
     // The control panel would send its own pictures to the cameras: close it (no questions), start it again at the end.
     bool panelWasRunning = ClosePanel(L"Closing the Show2Cam control panel.");
@@ -1965,6 +2063,7 @@ int wmain(int argc, wchar_t** argv)
     Out(L"==== %d action(s): %d passed, %d FAILED, %d warning(s); seed %u ====", iteration, g_pass, g_fail, g_warn, seed);
     Out(L"Log: %ls", AppLogPath());
     MediaThreadEnd();
+    if (devWatch) CM_Unregister_Notification(devWatch);
     MFShutdown();
     CoUninitialize();
 
