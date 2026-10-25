@@ -1806,6 +1806,29 @@ static void HandleProbe()
         Sleep(300);                         // its client threads end
         server = count() - a;
     }
+    // a stream source running 30 s with its server up, then 30 s with it down (a reconnect every 3 s): a camera whose
+    // stream is gone for hours keeps reconnecting in the panel - a handle or two per attempt would be thousands a day
+    long streamUp = 0, streamDown = 0;
+    if (g_mjOk)
+    {
+        CamConfig sc = TestConfig(cam.index, SourceStream);
+        _snwprintf(sc.url, 512, L"http://127.0.0.1:%u/", g_mjPort);
+        for (int down = 0; down < 2 && !g_stop; down++)
+        {
+            USHORT port = g_mjPort;
+            if (down) MjpegStop();
+            long a = count();
+            CameraRunner* r = RunnerStart(cam.index, cam.path, sc, nullptr, 0);
+            for (int t = 0; t < 300 && !g_stop; t++) Sleep(100);
+            RunnerStop(r);
+            (down ? streamDown : streamUp) = count() - a;
+            if (down)
+            {
+                g_mjOk = MjpegStart(&port, false);
+                if (!g_mjOk || port != g_mjPort) Warn(L"MJPEG test server not restarted on port %u", g_mjPort);
+            }
+        }
+    }
     // the test's own microphone measurement (the clips with sound grew the count most, the source playing them did not)
     long mic;
     {
@@ -1818,8 +1841,8 @@ static void HandleProbe()
         mic = count() - a;
     }
     Out(L"handle probe, camera %d, 5 times each: source alone %+ld, camera opened alone %+ld, both %+ld; stream %+ld, clip "
-        L"with sound %+ld, test server alone %+ld, microphone measured %+ld", cam.index + 1, h1 - h0, h2 - h1, h3 - h2, stream,
-        clip, server, mic);
+        L"with sound %+ld, test server alone %+ld, microphone measured %+ld; stream 30 s with its server up %+ld, down "
+        L"(~10 reconnects) %+ld", cam.index + 1, h1 - h0, h2 - h1, h3 - h2, stream, clip, server, mic, streamUp, streamDown);
 
     // the actions that grew the count most decode with a codec from a Store extension (AVIF / HEIC / WebP, VP9 / AV1 /
     // HEVC / VP8), the built-in ones grew nothing: per use or per thread (a source runs on a new thread each time)?
