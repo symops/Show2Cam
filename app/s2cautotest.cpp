@@ -1104,6 +1104,94 @@ static USHORT    g_mjPort;
 static void MediaLog(const wchar_t* line) { Out(L"%ls", line); }
 static void MediaWarn(const wchar_t* line) { Warn(L"%ls", line); }
 
+// Reads every file under `dir` once (the antivirus scans a new file at its first opening: in a fresh Windows 11 opening a
+// clip took 9.5 s then and a check failed); the slowest one into slowName / slowMs.
+static void ReadAll(const wchar_t* dir, int* files, double* mb, DWORD* slowMs, wchar_t* slowName)
+{
+    wchar_t pattern[MAX_PATH];
+    _snwprintf(pattern, MAX_PATH, L"%ls\\*", dir);
+    pattern[MAX_PATH - 1] = 0;
+    WIN32_FIND_DATAW fd;
+    HANDLE f = FindFirstFileW(pattern, &fd);
+    if (f == INVALID_HANDLE_VALUE) return;
+    static BYTE buf[1 << 16];
+    do
+    {
+        if (!wcscmp(fd.cFileName, L".") || !wcscmp(fd.cFileName, L"..")) continue;
+        wchar_t path[MAX_PATH];
+        _snwprintf(path, MAX_PATH, L"%ls\\%ls", dir, fd.cFileName);
+        path[MAX_PATH - 1] = 0;
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+        {
+            ReadAll(path, files, mb, slowMs, slowName);
+            continue;
+        }
+        DWORD t0 = GetTickCount();
+        HANDLE h = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
+        if (h == INVALID_HANDLE_VALUE) continue;
+        DWORD got = 0;
+        while (ReadFile(h, buf, sizeof(buf), &got, nullptr) && got) *mb += got / 1048576.0;
+        CloseHandle(h);
+        (*files)++;
+        DWORD ms = GetTickCount() - t0;
+        if (ms > *slowMs)
+        {
+            *slowMs = ms;
+            wcsncpy(slowName, fd.cFileName, 63);
+            slowName[63] = 0;
+        }
+    } while (FindNextFileW(f, &fd));
+    FindClose(f);
+}
+
+// The test media read once and every clip opened once by Media Foundation (its decoders loaded) before the checks.
+static void WarmMedia()
+{
+    DWORD t0 = GetTickCount(), slow = 0;
+    int files = 0;
+    double mb = 0;
+    wchar_t slowName[64] = L"-";
+    ReadAll(g_media.root, &files, &mb, &slow, slowName);
+    DWORD t1 = GetTickCount(), slowClip = 0;
+    const wchar_t* slowClipName = L"-";
+    for (int v = 0; v < g_media.videoCount; v++)
+    {
+        wchar_t pattern[MAX_PATH];
+        _snwprintf(pattern, MAX_PATH, L"%ls\\*", g_media.videos[v].folder);
+        pattern[MAX_PATH - 1] = 0;
+        WIN32_FIND_DATAW fd;
+        HANDLE f = FindFirstFileW(pattern, &fd);
+        if (f == INVALID_HANDLE_VALUE) continue;
+        do
+        {
+            if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+            wchar_t path[MAX_PATH];
+            _snwprintf(path, MAX_PATH, L"%ls\\%ls", g_media.videos[v].folder, fd.cFileName);
+            path[MAX_PATH - 1] = 0;
+            DWORD c0 = GetTickCount();
+            IMFSourceReader* r = nullptr;
+            if (SUCCEEDED(MFCreateSourceReaderFromURL(path, nullptr, &r)))
+            {
+                DWORD si = 0, flags = 0;
+                LONGLONG ts = 0;
+                IMFSample* s = nullptr;
+                r->ReadSample((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, &si, &flags, &ts, &s);
+                if (s) s->Release();
+                r->Release();
+            }
+            if (GetTickCount() - c0 > slowClip)
+            {
+                slowClip = GetTickCount() - c0;
+                slowClipName = g_media.videos[v].name;
+            }
+        } while (FindNextFileW(f, &fd));
+        FindClose(f);
+    }
+    Out(L"test media warmed up: %d file(s), %.1f MB read in %lu ms (slowest %ls %lu ms); %d clip(s) opened in %lu ms "
+        L"(slowest %ls %lu ms)", files, mb, t1 - t0, slowName, slow, g_media.videoCount, GetTickCount() - t1, slowClipName,
+        slowClip);
+}
+
 // The average colour of a 9x9 patch (compression noise).
 static ULONG AvgColor(const Capture& c, double fx, double fy)
 {
@@ -1998,6 +2086,7 @@ int wmain(int argc, wchar_t** argv)
     CloseHandle(CreateThread(nullptr, 0, ReadWatchdog, nullptr, 0, nullptr));
     // the test media: made now, removed at the end
     g_haveMedia = TestMediaCreate(&g_media, MediaLog, MediaWarn);
+    if (g_haveMedia) WarmMedia();
     g_mjPort = 0;
     g_mjOk = MjpegStart(&g_mjPort, false);
     if (g_mjOk) Out(L"MJPEG test server: http://127.0.0.1:%u/", g_mjPort);
