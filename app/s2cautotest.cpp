@@ -601,6 +601,14 @@ static bool ForeignDeviceChange(wchar_t* what, size_t len)
     return false;
 }
 
+// A device restart is a series of changes over seconds (removed, Audiosrv restarted, back): opened again in the middle of
+// it, the camera was dropped three times in a row. Waits until other devices are quiet for 1.5 s (at most 10 s).
+static void WaitDevicesQuiet()
+{
+    for (DWORD t0 = GetTickCount(); GetTickCount() - t0 < 10000 && !g_stop; Sleep(100))
+        if (GetTickCount() - (DWORD)g_devTick >= 1500) return;
+}
+
 static HRESULT CaptureReadOnce(Capture* c);
 
 // Reads the next frame. When Windows dropped the stream (0xC00D3E82, MF_E_VIDEO_RECORDING_DEVICE_INVALIDATED) while
@@ -615,6 +623,7 @@ static HRESULT CaptureRead(Capture* c)
         wchar_t what[200];
         if (!ForeignDeviceChange(what, 200)) break;
         c->reopened++;
+        WaitDevicesQuiet();
         HRESULT ro = CaptureOpenOnce(c->cam, c, c->wantW, c->wantH, c->fps);
         Warn(L"camera %d: Windows dropped the stream (0x%08lX) while another device changed (%ls): opened again (0x%08lX)",
              c->cam.index + 1, (unsigned long)hr, what, (unsigned long)ro);
@@ -682,6 +691,7 @@ static HRESULT CaptureOpen(const CamInfo& cam, Capture* c, UINT32 wantW = 0, UIN
     if (hr == (HRESULT)0xC00D3E82 && ForeignDeviceChange(what, 200))
     {
         HRESULT first = hr;
+        WaitDevicesQuiet();
         hr = CaptureOpenOnce(cam, c, wantW, wantH, fps);
         Warn(L"camera %d: Windows refused to open it (0x%08lX) while another device changed (%ls): opened again (0x%08lX)",
              cam.index + 1, (unsigned long)first, what, (unsigned long)hr);
