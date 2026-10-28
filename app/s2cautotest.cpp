@@ -1539,7 +1539,22 @@ static void ActionMjpeg()
             Check(WaitColor(&c, a, 16000, true), L"\"No signal\" within 16 s after the server stopped");
             g_mjOk = MjpegStart(&port, false);
             if (!g_mjOk || port != g_mjPort) Warn(L"MJPEG test server not restarted on port %u", g_mjPort);
-            else Check(WaitColor(&c, a, 12000), L"reconnected within 12 s after the server came back");
+            else if (WaitColor(&c, a, 12000)) Check(true, L"reconnected within 12 s after the server came back");
+            else
+            {
+                // Why not (a fresh Windows 11: no attempt logged for 13 s): the source's state and last error now, then
+                // whether it comes back at all (a receive timeout is 20 s, the next attempt 3 s later)
+                CamRunStatus st = {};
+                RunnerGetStatus(r, &st);
+                DWORD t0 = GetTickCount();
+                bool late = WaitColor(&c, a, 25000);
+                wchar_t after[80];
+                if (late) _snwprintf(after, 80, L"back %lu s later", (GetTickCount() - t0 + 999) / 1000);
+                else _snwprintf(after, 80, L"not back 25 s later either");
+                after[79] = 0;
+                Check(false, L"reconnected within 12 s after the server came back (source state %d, \"%ls\"; %ls)", st.state,
+                      st.detail, after);
+            }
         }
         StopSource(r, cam, &c);
     }
