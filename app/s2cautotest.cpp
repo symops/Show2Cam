@@ -1957,6 +1957,33 @@ static void HandleProbe()
         L"with sound %+ld, test server alone %+ld, microphone measured %+ld; stream 30 s with its server up %+ld, down "
         L"(~10 reconnects) %+ld", cam.index + 1, h1 - h0, h2 - h1, h3 - h2, stream, clip, server, mic, streamUp, streamDown);
 
+    // [videos] grew the memory most in every VM run (+70..200 MB in 2 h). The panel plays a clip over and over, opening
+    // the file again each time: one video source looping a clip for 60 s, the private bytes and handles at its start,
+    // after 30 s and 60 s of it and after it stopped - a leak per loop shows as the second half growing like the first.
+    for (int v = 0; v < g_media.videoCount && !g_stop; v++)
+    {
+        if (g_media.videos[v].optional || g_media.videos[v].soundless) continue;
+        CamConfig vc = TestConfig(cam.index, SourceVideo);
+        wcscpy(vc.videoFolder, g_media.videos[v].folder);
+        vc.audioMode = AudioOff;
+        DWORD h[4] = {};
+        double mb[4];
+        mb[0] = ProcessMb(&h[0]);
+        CameraRunner* r = RunnerStart(cam.index, cam.path, vc, nullptr, 0);
+        if (!r) break;
+        for (int t = 0; t < 300 && !g_stop; t++) Sleep(100);
+        mb[1] = ProcessMb(&h[1]);
+        for (int t = 0; t < 300 && !g_stop; t++) Sleep(100);
+        mb[2] = ProcessMb(&h[2]);
+        RunnerStop(r);
+        Sleep(500);
+        mb[3] = ProcessMb(&h[3]);
+        Out(L"memory probe, %ls looping on camera %d: %.1f MB / %lu handles at the start, %+.1f MB / %+ld after 30 s, %+.1f MB / "
+            L"%+ld after 60 s, stopped: %+.1f MB / %+ld", g_media.videos[v].name, cam.index + 1, mb[0], h[0], mb[1] - mb[0],
+            (long)(h[1] - h[0]), mb[2] - mb[0], (long)(h[2] - h[0]), mb[3] - mb[0], (long)(h[3] - h[0]));
+        break;
+    }
+
     // the actions that grew the count most decode with a codec from a Store extension (AVIF / HEIC / WebP, VP9 / AV1 /
     // HEVC / VP8), the built-in ones grew nothing: per use or per thread (a source runs on a new thread each time)?
     auto find = [](const wchar_t* const* keys, bool video, bool store) -> int {
