@@ -949,9 +949,27 @@ static void ActionSizes()
     }
     if (Check(SUCCEEDED(hr) && c.w == 640 && c.h == 480, L"640x480 frames at 3 fps: %ux%u (0x%08lX)", c.w, c.h, (unsigned long)hr))
     {
-        double ms = (c.ts - t0) / 10000.0;
-        if (ms > 200 && ms < 500) Check(true, L"3 fps: %.0f ms between frames", ms);
-        else Warn(L"3 fps asked, %.0f ms between frames", ms);
+        // the mean of 5 intervals: one alone was 500 or 173 ms in a busy VM (a late frame and the next one right after it)
+        double ms[5];
+        int n = 0;
+        LONGLONG prev = t0;
+        for (; n < 5; n++)
+        {
+            if (n && FAILED(CaptureRead(&c))) break;
+            ms[n] = (c.ts - prev) / 10000.0;
+            prev = c.ts;
+        }
+        double mean = 0;
+        for (int i = 0; i < n; i++) mean += ms[i] / n;
+        wchar_t list[80] = L"";
+        for (int i = 0; i < n; i++)
+        {
+            size_t len = wcslen(list);
+            _snwprintf(list + len, 80 - len, L"%ls%.0f", i ? L" " : L"", ms[i]);
+        }
+        list[79] = 0;
+        if (n == 5 && mean > 250 && mean < 450) Check(true, L"3 fps: %.0f ms between frames on average (%ls)", mean, list);
+        else Warn(L"3 fps asked, %.0f ms between frames on average (%d interval(s): %ls)", mean, n, list);
     }
     c.Close();
     WaitClosed(cam, 5000);
