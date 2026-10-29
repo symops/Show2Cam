@@ -1724,6 +1724,8 @@ public:
     CO_MTA_USAGE_COOKIE mta = nullptr;      // the MTA stays while the worker changes threads (its sources' objects live there)
     RunnerState state;
     volatile LONG stop = 0;                 // set under cs: no move to a new thread after it
+    bool     finished = false;              // (under cs) the thread is done with the runner
+    bool     detached = false;              // (under cs) RunnerStop gave up waiting: the thread frees the runner itself
     CRITICAL_SECTION cs;
     CamConfig config;
     bool     configChanged = true;
@@ -1772,6 +1774,14 @@ static void CopyPreview(CameraRunner* r, CamFrame& frame, bool always)
 }
 
 static DWORD WINAPI RunnerThread(LPVOID p);
+
+static void RunnerFree(CameraRunner* r)
+{
+    if (r->mta) CoDecrementMTAUsage(r->mta);
+    CloseHandle(r->wake);
+    DeleteCriticalSection(&r->cs);
+    delete r;
+}
 
 // Starts the worker on a new thread; false when it is stopping (or no thread). Called on the worker's thread.
 static bool RunnerMoveThread(CameraRunner* r)
@@ -1971,9 +1981,18 @@ static DWORD WINAPI RunnerThread(LPVOID p)
     src = nullptr;
     if (cam != INVALID_HANDLE_VALUE)
     {
-        CamSendTestPattern(cam);
+        EnterCriticalSection(&r->cs);
+        bool left = r->detached;
+        LeaveCriticalSection(&r->cs);
+        if (!left) CamSendTestPattern(cam);     // left behind: the camera may have a new source by now
         CloseHandle(cam);
     }
+    // the runner is not touched after this (RunnerStop may free it as soon as it sees `finished`)
+    EnterCriticalSection(&r->cs);
+    r->finished = true;
+    bool detached = r->detached;
+    LeaveCriticalSection(&r->cs);
+    if (detached) RunnerFree(r);
     MediaThreadEnd();
     CoUninitialize();
     return 0;
@@ -2016,13 +2035,24 @@ void RunnerStop(CameraRunner* r)
     SetEvent(r->wake);
     if (thread)
     {
-        WaitForSingleObject(thread, 15000);
+        bool ended = WaitForSingleObject(thread, 15000) == WAIT_OBJECT_0;
         CloseHandle(thread);
+        if (!ended)
+        {
+            // Still in a call of its source (opening a clip took 45 s in a busy VM): the runner freed under it, the
+            // thread went on in freed memory and crashed the program. The thread frees the runner when it ends.
+            EnterCriticalSection(&r->cs);
+            bool finished = r->finished;
+            if (!finished) r->detached = true;
+            LeaveCriticalSection(&r->cs);
+            if (!finished)
+            {
+                AppLog(L"camera %d: its worker is still busy after 15 s: it ends by itself", r->index + 1);
+                return;
+            }
+        }
     }
-    if (r->mta) CoDecrementMTAUsage(r->mta);
-    CloseHandle(r->wake);
-    DeleteCriticalSection(&r->cs);
-    delete r;
+    RunnerFree(r);
 }
 
 void RunnerGetStatus(CameraRunner* r, CamRunStatus* status)
