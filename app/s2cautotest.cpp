@@ -1436,6 +1436,37 @@ static void ActionImages()
     StopSource(r, cam, &c);
 }
 
+// How busy all CPUs were between Start() and Busy() (%; -1: not known). A clip's checks in a VM whose host ran two more
+// VMs: a 3-s clip took 13.6 s to play (34 of its 45 frames skipped late, as they should be) and only 2 samples were read;
+// with the CPUs 85 % busy or more such checks are warnings that say so (the same rule as Speak2Mic's [signal]).
+struct CpuMeter
+{
+    ULONGLONG idle = 0, total = 0;
+    bool ok = false;
+    static ULONGLONG U(const FILETIME& f) { return ((ULONGLONG)f.dwHighDateTime << 32) | f.dwLowDateTime; }
+    void Start()
+    {
+        FILETIME i, k, u;
+        ok = GetSystemTimes(&i, &k, &u) != 0;
+        idle = U(i);
+        total = U(k) + U(u);         // kernel time holds the idle time
+    }
+    int Busy() const
+    {
+        FILETIME i, k, u;
+        if (!ok || !GetSystemTimes(&i, &k, &u)) return -1;
+        ULONGLONG di = U(i) - idle, dt = U(k) + U(u) - total;
+        return dt ? (int)((dt - di) * 100 / dt) : -1;
+    }
+};
+
+// A check that fails only when the PC was not overloaded meanwhile (see CpuMeter).
+static void CheckUnlessBusy(bool ok, int busy, const wchar_t* what)
+{
+    if (ok || busy < 85) Check(ok, L"%ls", what);
+    else Warn(L"%ls (the CPUs %d %% busy meanwhile: the PC too slow, not checked)", what, busy);
+}
+
 static void ActionVideos()
 {
     if (!g_media.videoCount) return;
@@ -1466,6 +1497,8 @@ static void ActionVideos()
     }
     bool seen[4] = {};
     int samples = 0, matched = 0, distinct = 0;
+    CpuMeter cpu;
+    cpu.Start();
     DWORD start = GetTickCount();
     auto sample = [&](DWORD until) {
         while (GetTickCount() - start < until && !g_stop)
@@ -1490,8 +1523,14 @@ static void ActionVideos()
         for (int k = 0; k < 3 && mic.found && SUCCEEDED(mic.hr) && mic.rms <= 0.003 && !g_stop; k++) MicMeasure(1500, &mic);
     }
     sample((DWORD)(kClipSeconds * 2000) + 1500);
-    Check(samples >= 10 && matched * 10 >= samples * 8, L"clip colours shown: %d of %d samples", matched, samples);
-    Check(distinct >= v.minColors, L"the picture moves (%d of 4 colour fields seen, %d wanted)", distinct, v.minColors);
+    int busy = cpu.Busy();
+    wchar_t line[160];
+    _snwprintf(line, 160, L"clip colours shown: %d of %d samples", matched, samples);
+    line[159] = 0;
+    CheckUnlessBusy(samples >= 10 && matched * 10 >= samples * 8, busy, line);
+    _snwprintf(line, 160, L"the picture moves (%d of 4 colour fields seen, %d wanted)", distinct, v.minColors);
+    line[159] = 0;
+    CheckUnlessBusy(distinct >= v.minColors, busy, line);
     if (sound)
     {
         if (!mic.found) Warn(L"Speak2Mic Microphone not found: the clip's sound not checked");
@@ -1567,7 +1606,10 @@ static void ActionMjpeg()
         {
             USHORT port = g_mjPort;
             MjpegStop();
-            Check(WaitColor(&c, a, 16000, true), L"\"No signal\" within 16 s after the server stopped");
+            CpuMeter cpu;
+            cpu.Start();
+            bool noSignal = WaitColor(&c, a, 16000, true);
+            CheckUnlessBusy(noSignal, cpu.Busy(), L"\"No signal\" within 16 s after the server stopped");
             g_mjOk = MjpegStart(&port, false);
             if (!g_mjOk || port != g_mjPort) Warn(L"MJPEG test server not restarted on port %u", g_mjPort);
             else if (WaitColor(&c, a, 12000)) Check(true, L"reconnected within 12 s after the server came back");
