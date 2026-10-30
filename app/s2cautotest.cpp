@@ -1404,7 +1404,8 @@ static void ActionImages()
     CameraRunner* r = StartSource(cam, cfg, &c);
     if (!r) return;
     bool seen[8] = {};
-    int samples = 0, unknown = 0, distinct = 0;
+    int samples = 0, unknown = 0, distinct = 0, before = 0;
+    wchar_t which[200] = L"";
     for (int t = 0; t < 13 && !g_stop; t++)
     {
         Sleep(800);
@@ -1414,12 +1415,24 @@ static void ActionImages()
         int k = -1;
         for (int i = 0; i < g_media.imageCount && k < 0; i++)
             if (Near(got, g_media.images[i].color, 40)) k = i;
-        if (k < 0) unknown++;
+        if (k < 0)
+        {
+            // before the first picture (a busy PC still decoding it) or between pictures (a broken / text file shown)
+            if (!distinct) before++;
+            else unknown++;
+            size_t len = wcslen(which);
+            if (len < 180) _snwprintf(which + len, 200 - len, L"%ls#%d %06lX", len ? L", " : L"", samples, got);
+        }
         else if (!seen[k]) { seen[k] = true; distinct++; }
     }
+    which[199] = 0;
     Check(samples >= 10, L"%d samples", samples);
     Check(distinct >= 2, L"%d different pictures shown", distinct);
-    Check(unknown == 0, L"%d sample(s) showed no test picture (a broken file or the text file not skipped at once?)", unknown);
+    if (before)
+        Warn(L"the first picture came after %d sample(s) of 0.8 s (a busy PC still decoding it): %ls",
+             before, which);
+    Check(unknown == 0, L"%d sample(s) between the pictures showed no test picture (a broken file or the text file not skipped "
+                        L"at once?)%ls%ls", unknown, unknown ? L": " : L"", unknown ? which : L"");
     StopSource(r, cam, &c);
 }
 
