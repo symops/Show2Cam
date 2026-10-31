@@ -485,12 +485,45 @@ static HRESULT CaptureOpenOnce(const CamInfo& cam, Capture* c, UINT32 wantW, UIN
     return hr;
 }
 
+// How busy all CPUs were between Start() and Busy() (%; -1: not known). A clip's checks in a VM whose host ran two more
+// VMs: a 3-s clip took 13.6 s to play (34 of its 45 frames skipped late, as they should be) and only 2 samples were read;
+// with the CPUs 85 % busy or more such checks are warnings that say so (the same rule as Speak2Mic's [signal]).
+struct CpuMeter
+{
+    ULONGLONG idle = 0, total = 0;
+    bool ok = false;
+    static ULONGLONG U(const FILETIME& f) { return ((ULONGLONG)f.dwHighDateTime << 32) | f.dwLowDateTime; }
+    void Start()
+    {
+        FILETIME i, k, u;
+        ok = GetSystemTimes(&i, &k, &u) != 0;
+        idle = U(i);
+        total = U(k) + U(u);         // kernel time holds the idle time
+    }
+    int Busy() const
+    {
+        FILETIME i, k, u;
+        if (!ok || !GetSystemTimes(&i, &k, &u)) return -1;
+        ULONGLONG di = U(i) - idle, dt = U(k) + U(u) - total;
+        return dt ? (int)((dt - di) * 100 / dt) : -1;
+    }
+};
+
+// A check that fails only when the PC was not overloaded meanwhile (see CpuMeter).
+static void CheckUnlessBusy(bool ok, int busy, const wchar_t* what)
+{
+    if (ok) Check(true, L"%ls", what);
+    else if (busy < 85) Check(false, L"%ls (the CPUs %d %% busy meanwhile)", what, busy);
+    else Warn(L"%ls (the CPUs %d %% busy meanwhile: the PC too slow, not checked)", what, busy);
+}
+
 // Reads the next frame into c->px (skipping stream ticks without a sample).
 // Read watchdog: a synchronous ReadSample has no timeout - a camera that never sends a frame hung the autotest for good.
 // After 20 s the reader's source is shut down (ReadSample returns an error: FAIL, the test goes on); 30 s later still
 // stuck: everything is restored and the autotest ends (exit code 1).
 static Capture* volatile g_reading;
 static volatile LONG     g_readSince, g_readStage;
+static CpuMeter          g_readCpu;       // from the start of the read being watched
 static void (*g_emergencyExit)();
 
 // Windows' camera privacy setting for desktop programs ("Allow"/"Deny", "-": not set), for the watchdog's report.
@@ -524,9 +557,11 @@ static DWORD WINAPI ReadWatchdog(LPVOID)
             bool okB = Status(c->cam, &b);
             wchar_t consent[120];
             CameraConsent(consent, 120);
+            int busy = g_readCpu.Busy();
             Check(false, L"no frame from camera %d for 20 s: ReadSample does not return (driver: %ls, streaming %lu, open %lu, "
-                         L"frames delivered %llu -> %llu in 1 s, dropped %llu; %ls)", c->cam.index + 1, okA && okB ? L"answers" : L"NO ANSWER",
-                  b.Streaming, b.PinsOpen, a.FramesDelivered, b.FramesDelivered, b.FramesDropped, consent);
+                         L"frames delivered %llu -> %llu in 1 s, dropped %llu; %ls; the CPUs %d %% busy over these 20 s)", c->cam.index + 1,
+                  okA && okB ? L"answers" : L"NO ANSWER", b.Streaming, b.PinsOpen, a.FramesDelivered, b.FramesDelivered, b.FramesDropped,
+                  consent, busy);
             if (c->source) c->source->Shutdown();
         }
         else if (t > 50000 && InterlockedCompareExchange(&g_readStage, 2, 1) == 1)
@@ -542,6 +577,7 @@ static HRESULT ReadSampleWatched(Capture* c, DWORD* streamIndex, DWORD* flags, L
 {
     InterlockedExchange(&g_readSince, (LONG)GetTickCount());
     InterlockedExchange(&g_readStage, 0);
+    g_readCpu.Start();
     g_reading = c;
     HRESULT hr = c->reader->ReadSample((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, streamIndex, flags, ts, sample);
     g_reading = nullptr;
@@ -1436,37 +1472,6 @@ static void ActionImages()
     StopSource(r, cam, &c);
 }
 
-// How busy all CPUs were between Start() and Busy() (%; -1: not known). A clip's checks in a VM whose host ran two more
-// VMs: a 3-s clip took 13.6 s to play (34 of its 45 frames skipped late, as they should be) and only 2 samples were read;
-// with the CPUs 85 % busy or more such checks are warnings that say so (the same rule as Speak2Mic's [signal]).
-struct CpuMeter
-{
-    ULONGLONG idle = 0, total = 0;
-    bool ok = false;
-    static ULONGLONG U(const FILETIME& f) { return ((ULONGLONG)f.dwHighDateTime << 32) | f.dwLowDateTime; }
-    void Start()
-    {
-        FILETIME i, k, u;
-        ok = GetSystemTimes(&i, &k, &u) != 0;
-        idle = U(i);
-        total = U(k) + U(u);         // kernel time holds the idle time
-    }
-    int Busy() const
-    {
-        FILETIME i, k, u;
-        if (!ok || !GetSystemTimes(&i, &k, &u)) return -1;
-        ULONGLONG di = U(i) - idle, dt = U(k) + U(u) - total;
-        return dt ? (int)((dt - di) * 100 / dt) : -1;
-    }
-};
-
-// A check that fails only when the PC was not overloaded meanwhile (see CpuMeter).
-static void CheckUnlessBusy(bool ok, int busy, const wchar_t* what)
-{
-    if (ok || busy < 85) Check(ok, L"%ls", what);
-    else Warn(L"%ls (the CPUs %d %% busy meanwhile: the PC too slow, not checked)", what, busy);
-}
-
 static void ActionVideos()
 {
     if (!g_media.videoCount) return;
@@ -1609,6 +1614,14 @@ static void ActionMjpeg()
             CpuMeter cpu;
             cpu.Start();
             bool noSignal = WaitColor(&c, a, 16000, true);
+            if (!noSignal)
+            {
+                // did the source not switch, or did its picture not reach this reader? (0.2 % of the outages, no pattern)
+                CamRunStatus st = {};
+                RunnerGetStatus(r, &st);
+                Out(L"  info no \"No signal\" seen: source state %d (%d = no signal), \"%ls\"; last frame's centre %06lX, stream colour %06lX",
+                    st.state, (int)StateNoSignal, st.detail, AvgColor(c, 0.5, 0.5), a);
+            }
             CheckUnlessBusy(noSignal, cpu.Busy(), L"\"No signal\" within 16 s after the server stopped");
             g_mjOk = MjpegStart(&port, false);
             if (!g_mjOk || port != g_mjPort) Warn(L"MJPEG test server not restarted on port %u", g_mjPort);
