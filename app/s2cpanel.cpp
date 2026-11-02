@@ -1490,7 +1490,7 @@ static void Layout()
     Place(IDC_L_PARAM, L1, 398, 100, 20);  Place(IDC_PARAM, C1, 394, R - 80 - C1, 23);
     Place(IDC_BROWSE, R - 74, 392, 74, 27);
     Place(IDC_L_AUDIO, L1, 432, 100, 20);  Place(IDC_AUDIO, C1, 428, R - C1, 300);
-    Place(IDC_TEST, L1, 464, 150, 28);     Place(IDC_PLAY, L1 + 156, 464, 110, 28);
+    Place(IDC_PLAY, L1, 464, 110, 28);     Place(IDC_TEST, L1 + 116, 464, 150, 28);
     Place(IDC_CAM_APPLY, C2, 464, W2, 28);
     if (g_sel >= 0) LayoutParamRow(g_cams[g_sel].config.kind);
 
@@ -1608,8 +1608,8 @@ static void CreateControls()
     Create(L"BUTTON", TR(L"Обзор…"), BS_PUSHBUTTON | WS_TABSTOP, IDC_BROWSE);
     Create(L"STATIC", TR(L"Звук видео:"), 0, IDC_L_AUDIO);
     Create(WC_COMBOBOXW, L"", CBS_DROPDOWNLIST | WS_TABSTOP | WS_VSCROLL, IDC_AUDIO);
-    Create(L"BUTTON", TR(L"Проверка"), BS_PUSHBUTTON | WS_TABSTOP, IDC_TEST);
     Create(L"BUTTON", TR(L"Пауза"), BS_PUSHBUTTON | WS_TABSTOP, IDC_PLAY);
+    Create(L"BUTTON", TR(L"Проверка"), BS_PUSHBUTTON | WS_TABSTOP, IDC_TEST);
     Create(L"BUTTON", TR(L"Применить"), BS_PUSHBUTTON | WS_TABSTOP, IDC_CAM_APPLY);
 
     Create(WC_COMBOBOXW, L"", CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, IDC_EVENTS);
