@@ -16,6 +16,8 @@
 //   sources    the panel's sources (text, generator) drive a camera: frames not empty, the generator moves
 //   stress     open / close a camera many times
 //   cli        s2cctl.exe with random commands: exit codes and the resulting state
+//   settings   export, every setting of every camera changed, import: all back; a damaged file refused, invalid values
+//              in a file ignored
 //   text       random texts (Latin, Cyrillic, CJK, long) on the Text source: the picture is not empty and follows the text
 //   images     pictures made in every format Windows encodes (PNG, JPEG, BMP, GIF, TIFF, JPEG XR): each one shown
 //              with its colour; all together with a broken picture and a text file: they change, the junk is skipped
@@ -1672,6 +1674,139 @@ static int RunCtl(const wchar_t* args)
     return (int)code;
 }
 
+// The fields of two cameras' settings that differ ("" = none), into `out`.
+static void ConfigDiff(const CamConfig& a, const CamConfig& b, wchar_t* out, size_t len)
+{
+    out[0] = 0;
+    auto add = [&](const wchar_t* what) {
+        size_t n = wcslen(out);
+        _snwprintf(out + n, len - n, L" %ls", what);
+        out[len - 1] = 0;
+    };
+    if (a.kind != b.kind) add(L"source");
+    if (wcscmp(a.text, b.text)) add(L"text");
+    if (wcscmp(a.imageFolder, b.imageFolder)) add(L"image folder");
+    if (wcscmp(a.videoFolder, b.videoFolder)) add(L"video folder");
+    if (wcscmp(a.url, b.url)) add(L"address");
+    if (a.audioMode != b.audioMode) add(L"sound");
+    if (wcscmp(a.audioDevice, b.audioDevice)) add(L"sound device");
+    if (a.width != b.width || a.height != b.height) add(L"size");
+    if (a.fps != b.fps) add(L"frame rate");
+    if (a.paused != b.paused) add(L"pause");
+}
+
+// Settings that differ from `c` in every field (all valid).
+static void OtherConfig(const CamConfig& c, CamConfig* o)
+{
+    static const ULONG sizes[][2] = { { 0, 0 }, { 640, 480 }, { 1280, 720 }, { 1920, 1080 }, { 800, 600 } };
+    *o = c;
+    while (o->kind == c.kind) o->kind = Rand(0, SourceKindCount - 1);
+    _snwprintf(o->text, 256, L"Settings %d · Настройки", Rand(0, 99999));
+    _snwprintf(o->imageFolder, MAX_PATH, L"C:\\S2cSettings\\images %d", Rand(0, 99999));
+    _snwprintf(o->videoFolder, MAX_PATH, L"C:\\S2cSettings\\видео %d", Rand(0, 99999));
+    _snwprintf(o->url, 512, L"http://user:pass@127.0.0.1:%d/stream?x=%d", Rand(1024, 65000), Rand(0, 99));
+    while (o->audioMode == c.audioMode) o->audioMode = Rand(AudioSpeak2Mic, AudioDevice);
+    _snwprintf(o->audioDevice, 256, L"{0.0.0.00000000}.{%08x-0000-0000-0000-000000000000}", Rand(1, 0x7FFFFFFF));
+    while (o->width == c.width)
+    {
+        int k = Rand(0, 4);
+        o->width = sizes[k][0];
+        o->height = sizes[k][1];
+    }
+    while (o->fps == c.fps) o->fps = (ULONG)Rand(0, S2C_MAX_FPS);
+    o->paused = !c.paused;
+}
+
+// [settings] export -> every setting of every camera and its name changed -> import: all back. Then a damaged file:
+// refused, nothing changed; a file with invalid values: those settings kept, its valid ones taken. (The panel's Export /
+// Import write and read the file with the same code, camcfg.)
+static void ActionSettings()
+{
+    CamInfo cams[S2C_MAX_CAMERAS_UI];
+    int n = Cameras(cams);
+    if (!n) return;
+    Out(L"[settings] %d camera(s): export, everything changed, import; a damaged file; a file with invalid values", n);
+    wchar_t file[MAX_PATH], bad[MAX_PATH], args[MAX_PATH + 40], diff[300];
+    GetTempPathW(MAX_PATH - 40, file);
+    wcscpy(bad, file);
+    wcscat(file, L"s2cautotest-settings.ini");
+    wcscat(bad, L"s2cautotest-settings-bad.ini");
+    CamConfig before[S2C_MAX_CAMERAS_UI], now;
+    for (int i = 0; i < n; i++) CamConfigLoad(cams[i].index, &before[i]);
+    _snwprintf(args, MAX_PATH + 40, L"export \"%ls\"", file);
+    if (!Check(RunCtl(args) == 0, L"export exit code 0")) return;
+    for (int i = 0; i < n; i++)
+    {
+        CamConfig o;
+        OtherConfig(before[i], &o);
+        CamConfigSave(cams[i].index, o);
+        wchar_t name[S2C_NAME_CHARS];
+        _snwprintf(name, S2C_NAME_CHARS, L"Settings test %d", Rand(0, 99999));
+        SetName(cams[i], name);
+    }
+    _snwprintf(args, MAX_PATH + 40, L"import \"%ls\"", file);
+    Check(RunCtl(args) == 0, L"import exit code 0");
+    for (int i = 0; i < n; i++)
+    {
+        CamConfigLoad(cams[i].index, &now);
+        ConfigDiff(before[i], now, diff, 300);
+        Check(!diff[0], L"camera %d: every setting back%ls%ls", cams[i].index + 1, diff[0] ? L"; differs:" : L"", diff);
+        CamInfo c;
+        Check(FindCam(cams[i].index, &c) && !wcscmp(c.name, cams[i].name), L"camera %d: name back \"%ls\"", cams[i].index + 1,
+              FindCam(cams[i].index, &c) ? c.name : L"?");
+    }
+
+    // a damaged file (random bytes): refused, nothing changed
+    HANDLE f = CreateFileW(bad, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, 0, nullptr);
+    if (f != INVALID_HANDLE_VALUE)
+    {
+        BYTE junk[900];
+        for (int i = 0; i < 900; i++) junk[i] = (BYTE)Rand(0, 255);
+        DWORD w = 0;
+        WriteFile(f, junk, sizeof(junk), &w, nullptr);
+        CloseHandle(f);
+    }
+    _snwprintf(args, MAX_PATH + 40, L"import \"%ls\"", bad);
+    int rc = RunCtl(args);
+    Check(rc != 0, L"a damaged settings file refused (exit code %d)", rc);
+    bool same = true;
+    for (int i = 0; i < n; i++)
+    {
+        CamConfigLoad(cams[i].index, &now);
+        ConfigDiff(before[i], now, diff, 300);
+        if (diff[0]) same = false;
+    }
+    Check(same, L"nothing changed by it");
+
+    // invalid values for camera 1 (of the file): those settings kept, its valid text taken
+    CopyFileW(file, bad, FALSE);
+    wchar_t text[64];
+    _snwprintf(text, 64, L"Imported %d", Rand(0, 99999));
+    WritePrivateProfileStringW(L"Camera1", L"Source", L"77", bad);
+    WritePrivateProfileStringW(L"Camera1", L"AudioMode", L"9", bad);
+    WritePrivateProfileStringW(L"Camera1", L"Width", L"99999", bad);
+    WritePrivateProfileStringW(L"Camera1", L"Height", L"7", bad);
+    WritePrivateProfileStringW(L"Camera1", L"Fps", L"999", bad);
+    WritePrivateProfileStringW(L"Camera1", L"Paused", L"5", bad);
+    WritePrivateProfileStringW(L"Camera1", L"Text", text, bad);
+    WritePrivateProfileStringW(nullptr, nullptr, nullptr, bad);
+    rc = RunCtl(args);
+    Check(rc == 0, L"a file with invalid values imported (exit code %d)", rc);
+    for (int i = 0; i < n; i++)
+        if (cams[i].index == 0)
+        {
+            CamConfig want = before[i];
+            wcscpy(want.text, text);
+            CamConfigLoad(0, &now);
+            ConfigDiff(want, now, diff, 300);
+            Check(!diff[0], L"camera 1: its invalid values ignored, the valid text taken%ls", diff);
+        }
+    _snwprintf(args, MAX_PATH + 40, L"import \"%ls\"", file);
+    RunCtl(args);                                       // back to how it was
+    DeleteFileW(file);
+    DeleteFileW(bad);
+}
+
 static void ActionCli()
 {
     CamInfo cam;
@@ -2237,7 +2372,7 @@ int wmain(int argc, wchar_t** argv)
     struct { void (*fn)(); int weight; const wchar_t* name; double grown; int runs; } actions[] = {
         { ActionPicture, 20, L"picture" }, { ActionPattern, 8, L"pattern" }, { ActionFormat, 14, L"format" },
         { ActionSizes, 8, L"sizes" }, { ActionRename, 12, L"rename" }, { ActionCount, 5, L"count" },
-        { ActionSources, 10, L"sources" }, { ActionStress, 6, L"stress" }, { ActionCli, 15, L"cli" },
+        { ActionSources, 10, L"sources" }, { ActionStress, 6, L"stress" }, { ActionCli, 15, L"cli" }, { ActionSettings, 4, L"settings" },
         { ActionTextGen, 8, L"text" }, { ActionImages, 10, L"images" }, { ActionVideos, 12, L"videos" },
         { ActionMjpeg, 10, L"mjpeg" },
     };
