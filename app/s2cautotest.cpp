@@ -526,6 +526,7 @@ static void CheckUnlessBusy(bool ok, int busy, const wchar_t* what)
 static Capture* volatile g_reading;
 static volatile LONG     g_readSince, g_readStage;
 static CpuMeter          g_readCpu;       // from the start of the read being watched
+static volatile LONG     g_readExtended;  // times that read got 20 s more on a busy PC
 static void (*g_emergencyExit)();
 
 // Windows' camera privacy setting for desktop programs ("Allow"/"Deny", "-": not set), for the watchdog's report.
@@ -553,13 +554,25 @@ static DWORD WINAPI ReadWatchdog(LPVOID)
         DWORD t = GetTickCount() - (DWORD)g_readSince;
         if (t > 20000 && InterlockedCompareExchange(&g_readStage, 1, 0) == 0)
         {
+            int busy = g_readCpu.Busy();
+            if (busy >= 85 && g_readExtended < 2)
+            {
+                // A PC whose CPUs are all taken (Windows 11 nine minutes after its start, the host running two more VMs:
+                // both autotests stood still for 21 s, the driver idle) - not the camera: 20 s more, twice at most.
+                InterlockedIncrement(&g_readExtended);
+                Warn(L"no frame from camera %d for 20 s, the CPUs %d %% busy meanwhile: the PC too slow, waiting 20 s more",
+                     c->cam.index + 1, busy);
+                g_readCpu.Start();
+                InterlockedExchange(&g_readSince, (LONG)GetTickCount());
+                InterlockedExchange(&g_readStage, 0);
+                continue;
+            }
             S2C_STATUS a = {}, b = {};
             bool okA = Status(c->cam, &a);
             Sleep(1000);
             bool okB = Status(c->cam, &b);
             wchar_t consent[120];
             CameraConsent(consent, 120);
-            int busy = g_readCpu.Busy();
             Check(false, L"no frame from camera %d for 20 s: ReadSample does not return (driver: %ls, streaming %lu, open %lu, "
                          L"frames delivered %llu -> %llu in 1 s, dropped %llu; %ls; the CPUs %d %% busy over these 20 s)", c->cam.index + 1,
                   okA && okB ? L"answers" : L"NO ANSWER", b.Streaming, b.PinsOpen, a.FramesDelivered, b.FramesDelivered, b.FramesDropped,
@@ -579,6 +592,7 @@ static HRESULT ReadSampleWatched(Capture* c, DWORD* streamIndex, DWORD* flags, L
 {
     InterlockedExchange(&g_readSince, (LONG)GetTickCount());
     InterlockedExchange(&g_readStage, 0);
+    InterlockedExchange(&g_readExtended, 0);
     g_readCpu.Start();
     g_reading = c;
     HRESULT hr = c->reader->ReadSample((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, streamIndex, flags, ts, sample);
