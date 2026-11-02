@@ -498,6 +498,167 @@ void DecodeProbe(const wchar_t* folder, bool video, bool newThreads, int times)
     }
 }
 
+// Broken samples are not carried in the program (nor so in its installer): made here on every run, a new random choice and
+// new random bytes each time.
+static unsigned BrokenRand(unsigned lo, unsigned hi)
+{
+    static unsigned s;
+    if (!s)
+    {
+        LARGE_INTEGER q;
+        QueryPerformanceCounter(&q);
+        s = (q.LowPart ^ GetCurrentProcessId() * 2654435761u) | 1;
+    }
+    s ^= s << 13;
+    s ^= s >> 17;
+    s ^= s << 5;
+    return lo + s % (hi - lo + 1);
+}
+
+static bool ReadWholeFile(const wchar_t* path, BYTE** data, DWORD* size)
+{
+    *data = nullptr;
+    *size = 0;
+    HANDLE f = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
+    if (f == INVALID_HANDLE_VALUE) return false;
+    DWORD n = GetFileSize(f, nullptr), got = 0;
+    BYTE* p = n != INVALID_FILE_SIZE ? (BYTE*)malloc(n ? n : 1) : nullptr;
+    bool ok = p && ReadFile(f, p, n, &got, nullptr) && got == n;
+    CloseHandle(f);
+    if (!ok) { free(p); return false; }
+    *data = p;
+    *size = n;
+    return true;
+}
+
+// `head` `repeat` times, then `junk` random bytes.
+static bool WriteBroken(const wchar_t* path, const void* head, DWORD headLen, unsigned repeat, DWORD junk)
+{
+    HANDLE f = CreateFileW(path, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, 0, nullptr);
+    if (f == INVALID_HANDLE_VALUE) return false;
+    bool ok = true;
+    DWORD n = 0;
+    for (unsigned i = 0; i < repeat && headLen && ok; i++) ok = WriteFile(f, head, headLen, &n, nullptr) && n == headLen;
+    BYTE* b = junk ? (BYTE*)malloc(junk) : nullptr;
+    if (b)
+    {
+        for (DWORD i = 0; i < junk; i++) b[i] = (BYTE)BrokenRand(0, 255);
+        ok = ok && WriteFile(f, b, junk, &n, nullptr) && n == junk;
+        free(b);
+    }
+    CloseHandle(f);
+    return ok;
+}
+
+// Which of n entries are used: at least `least`, in a random selection.
+static void BrokenPick(bool* use, int n, int least)
+{
+    int want = (int)BrokenRand((unsigned)least, (unsigned)n);
+    for (int i = 0; i < n; i++) use[i] = false;
+    for (int have = 0; have < want;)
+    {
+        int k = (int)BrokenRand(0, (unsigned)n - 1);
+        if (!use[k]) { use[k] = true; have++; }
+    }
+}
+
+struct BrokenSpec { const wchar_t* name; int source; unsigned repeat; DWORD junkMin, junkMax; int cutMin, cutMax; };   // source: below
+
+// Pictures among the good ones, clips into their own folder. Only damage Windows really refuses: what it still decodes
+// here is left out (a cut JPEG / GIF decodes partly, so none are made; the check below catches the rest).
+static void MakeBrokenSamples(TestMedia* m, const wchar_t* goodClip, wchar_t* brokenFolder, TestLog log, int* pictures, int* clips)
+{
+    BYTE* png = nullptr;
+    BYTE* clip = nullptr;
+    DWORD pngLen = 0, clipLen = 0;
+    if (m->imageCount)
+    {
+        wchar_t path[MAX_PATH];
+        for (int i = 0; i < m->imageCount && !png; i++)
+            if (!wcscmp(m->images[i].format, L"PNG"))
+            {
+                Join(path, m->images[i].folder, L"picture.png");
+                ReadWholeFile(path, &png, &pngLen);
+            }
+    }
+    if (goodClip[0]) ReadWholeFile(goodClip, &clip, &clipLen);
+    static const char picText[] = "this is not a picture\r\n", clipText[] = "RIFF?? not a video, just text\r\n";
+    static const BYTE tiff[] = { 'I', 'I', '*', 0 }, mkv[] = { 0x1A, 0x45, 0xDF, 0xA3 };
+    // BMP: a header promising 60000 x 60000 pixels, with 16 bytes of them
+    static const BYTE bmp[54] = { 'B', 'M', 70, 0, 0, 0, 0, 0, 0, 0, 54, 0, 0, 0, 40, 0, 0, 0, 0x60, 0xEA, 0, 0, 0x60, 0xEA, 0, 0, 1, 0, 32, 0 };
+    enum { None, PicText, ClipText, Tiff, Mkv, Bmp, PngHead, ClipHead, PngCut, ClipCut };
+    static const BrokenSpec kPics[] = {
+        { L"broken-empty.jpg", None, 0, 0, 0, 0, 0 },          { L"broken-text.png", PicText, 20, 0, 0, 0, 0 },
+        { L"broken-cut-%d.png", PngCut, 1, 0, 0, 20, 70 },     { L"broken-header-junk.png", PngHead, 1, 500, 4000, 0, 0 },
+        { L"broken-random.webp", None, 0, 1000, 8000, 0, 0 },  { L"broken-random.tif", Tiff, 1, 500, 3000, 0, 0 },
+        { L"broken-bmp-size.bmp", Bmp, 1, 16, 16, 0, 0 },
+    };
+    static const BrokenSpec kClips[] = {
+        { L"broken-empty.mp4", None, 0, 0, 0, 0, 0 },          { L"broken-text.avi", ClipText, 30, 0, 0, 0, 0 },
+        { L"broken-random.mkv", Mkv, 1, 2000, 20000, 0, 0 },   { L"broken-cut-%d.mp4", ClipCut, 1, 0, 0, 5, 60 },
+        { L"broken-header-junk.mov", ClipHead, 1, 2000, 20000, 0, 0 }, { L"broken-random.wmv", None, 0, 2000, 20000, 0, 0 },
+    };
+    for (int group = 0; group < 2; group++)
+    {
+        const BrokenSpec* specs = group ? kClips : kPics;
+        int count = group ? 6 : 7;
+        bool use[7];
+        BrokenPick(use, count, group ? 3 : 4);
+        wchar_t folder[MAX_PATH];
+        if (group)
+        {
+            Join(folder, m->root, L"videos-broken");
+            CreateDirectoryW(folder, nullptr);
+        }
+        else wcscpy(folder, m->allImages);
+        for (int i = 0; i < count; i++)
+        {
+            if (!use[i]) continue;
+            const BrokenSpec& b = specs[i];
+            const void* head = nullptr;
+            DWORD len = 0;
+            switch (b.source)
+            {
+            case PicText:  head = picText; len = sizeof(picText) - 1; break;
+            case ClipText: head = clipText; len = sizeof(clipText) - 1; break;
+            case Tiff:     head = tiff; len = sizeof(tiff); break;
+            case Mkv:      head = mkv; len = sizeof(mkv); break;
+            case Bmp:      head = bmp; len = sizeof(bmp); break;
+            case PngHead:  head = png; len = pngLen > 33 ? 33 : 0; break;
+            case ClipHead: head = clip; len = clipLen > 32 ? 32 : 0; break;
+            case PngCut:   head = png; len = pngLen; break;
+            case ClipCut:  head = clip; len = clipLen; break;
+            }
+            if (b.source != None && !len) continue;            // its good source is not there
+            wchar_t name[64], path[MAX_PATH];
+            int cut = b.cutMax ? (int)BrokenRand((unsigned)b.cutMin, (unsigned)b.cutMax) : 0;
+            _snwprintf(name, 64, b.name, cut);
+            name[63] = 0;
+            if (cut) len = (DWORD)((ULONGLONG)len * cut / 100);
+            Join(path, folder, name);
+            if (!WriteBroken(path, head, len, b.repeat, b.junkMax ? BrokenRand(b.junkMin, b.junkMax) : 0))
+            {
+                LogF(log, L"  broken sample %ls not written", name);
+                continue;
+            }
+            if (group ? SUCCEEDED(ProbeVideo(path)) : SUCCEEDED(ProbePicture(path)))
+            {
+                LogF(log, L"  broken sample %ls: Windows decodes it anyway - left out", name);
+                DeleteFileW(path);
+                continue;
+            }
+            if (group)
+            {
+                if (!*clips) wcscpy(brokenFolder, folder);
+                (*clips)++;
+            }
+            else (*pictures)++;
+        }
+    }
+    free(png);
+    free(clip);
+}
+
 static void AddSamples(TestMedia* m, TestLog log, TestLog warn)
 {
     HRSRC r = FindResourceW(nullptr, MAKEINTRESOURCEW(500), (LPCWSTR)RT_RCDATA);
@@ -541,41 +702,12 @@ static void AddSamples(TestMedia* m, TestLog log, TestLog warn)
         _snwprintf(sub, 160, L"sample-%ls", wfile);
         for (wchar_t* q = sub; *q; q++)
             if (*q == L'.') *q = L'-';
-        bool brokenImage = !strcmp(kind, "broken-image"), brokenVideo = !strcmp(kind, "broken-video");
-        if (brokenImage) wcscpy(folder, m->allImages);          // among the good pictures
-        else if (brokenVideo)
-        {
-            Join(folder, m->root, L"videos-broken");          // broken clips + one good one
-            if (!brokenClips) CreateDirectoryW(folder, nullptr);
-        }
-        else
-        {
-            Join(folder, m->root, sub);
-            CreateDirectoryW(folder, nullptr);
-        }
+        Join(folder, m->root, sub);
+        CreateDirectoryW(folder, nullptr);
         Join(path, folder, wfile);
         if (!ResourceToFile(id, path))
         {
             LogF(log, L"  sample %ls not written", wfile);
-            continue;
-        }
-        // A "broken" file Windows can still decode (a cut PNG is drawn as far as it goes) is not broken for this
-        // system: left out, the sources have to skip only what Windows refuses.
-        if ((brokenImage && SUCCEEDED(ProbePicture(path))) || (brokenVideo && SUCCEEDED(ProbeVideo(path))))
-        {
-            LogF(log, L"  broken sample %ls: Windows decodes it anyway - left out", wfile);
-            DeleteFileW(path);
-            continue;
-        }
-        if (brokenImage)
-        {
-            brokenPictures++;
-            continue;
-        }
-        if (brokenVideo)
-        {
-            if (!brokenClips) wcscpy(brokenFolder, folder);
-            brokenClips++;
             continue;
         }
         if (!strcmp(kind, "image") && m->imageCount < 16)
@@ -642,6 +774,7 @@ static void AddSamples(TestMedia* m, TestLog log, TestLog warn)
             videos++;
         }
     }
+    MakeBrokenSamples(m, goodClip, brokenFolder, log, &brokenPictures, &brokenClips);
     // The broken clips' folder gets one good clip: the source must skip the others and play it.
     if (brokenClips && goodClip[0] && m->videoCount < 48)
     {
