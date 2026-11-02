@@ -28,7 +28,7 @@ static const wchar_t* kFiles[] = {
                            // a release installed over it removes them
     L"s2ccamdiag.exe", L"s2ccamdiag32.exe",
     L"Show2Cam.sys", L"Show2Cam.inf", L"Show2Cam.cat", L"Show2Cam.cer", L"Show2Cam-Publisher.cer",
-    L"uninstall.cmd",
+    L"uninstall.cmd",       // the debug package only (package.sh)
 };
 // Media folders of the package copied next to the programs (files the user added there are kept).
 static const wchar_t* kMediaFolders[] = { L"images", L"mp4" };

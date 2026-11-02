@@ -3,9 +3,9 @@
 #   dist/Show2Cam-Setup.exe     the release: ONE file - the launcher with the whole package below appended
 #                               (a cabinet, MSZIP; extracted to a temporary folder when it runs)
 #   dist/Show2Cam/              the same package unpacked (for development / testing)
-#   dist/Show2Cam-Debug-Setup.exe, dist/Show2Cam-Debug/   the same plus the test tools (s2cautotest.exe, s2cinstall.exe, s2cctl.exe, s2ccamdiag.exe, s2ccamdiag32.exe), for testing only
+#   dist/Show2Cam-Debug-Setup.exe, dist/Show2Cam-Debug/   the same plus uninstall.cmd and the test tools (s2cautotest.exe, s2cinstall.exe, s2cctl.exe, s2ccamdiag.exe, s2ccamdiag32.exe), for testing only
 #     Show2Cam-Setup.exe        x86 launcher: starts x64\ or x86\Show2Cam-Setup.exe (whichever Windows this is)
-#     uninstall.cmd             removal without a window
+#     uninstall.cmd             (debug package only) removal without a window
 #     images\  mp4\              media for the cameras (installed to Program Files\Show2Cam)
 #     x64\  x86\                 the programs, the driver (.sys, .inf, .cat) and the test certificates of each
 set -e
@@ -75,11 +75,13 @@ done
 DD=dist/Show2Cam-Debug
 cp -a $D $DD
 for f in s2cautotest.exe s2cinstall.exe s2cctl.exe s2ccamdiag.exe s2ccamdiag32.exe; do rm -f $D/x64/$f $D/x86/$f; done
+# uninstall.cmd too: Windows' Apps, the installer's Remove button and "-Setup.exe /remove" do the same
+rm -f $D/uninstall.cmd $D/x64/uninstall.cmd $D/x86/uninstall.cmd
 
 # One file each: the launcher + the package as a cabinet (MSZIP; Windows extracts it with SetupIterateCabinet) + a
 # trailer "S2CPAYLD" + the cabinet's size (little endian, 8 bytes). See app/s2clauncher.cpp.
 one_file() {        # package folder, setup file
-    (cd $1 && find uninstall.cmd images mp4 x64 x86 -type f | sort | xargs gcab -c -z ../payload.cab)
+    (cd $1 && find . -type f ! -name Show2Cam-Setup.exe -o -type f -path "./x*" | sed "s|^\./||" | sort | xargs gcab -c -z ../payload.cab)
     python3 - "$2" <<'PY'
 import struct, sys
 launcher = open('app/x86/s2clauncher.exe', 'rb').read()
