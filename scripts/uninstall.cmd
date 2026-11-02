@@ -3,10 +3,9 @@ rem Removes the Show2Cam device and its driver packages. Run as Administrator.
 net session >nul 2>&1 || (echo Запустите этот файл от имени администратора. & pause & exit /b 1)
 cd /d "%~dp0"
 
-rem The package root has x64\ and x86\ (64-bit / 32-bit Windows); an installed copy has s2cinstall.exe next to it.
-set ARCH=x86
-if /i "%PROCESSOR_ARCHITECTURE%"=="AMD64" set ARCH=x64
-if /i "%PROCESSOR_ARCHITEW6432%"=="AMD64" set ARCH=x64
-if exist s2cinstall.exe (s2cinstall.exe remove) else (%ARCH%\s2cinstall.exe remove)
+rem The installer removes without a window ("/remove"): the package root has the launcher, x64\ / x86\ and an
+rem installed copy have the installer itself. ("start /wait": cmd does not wait for a program with a window.)
+start "" /wait "Show2Cam-Setup.exe" /remove
+if errorlevel 2 (echo Перезагрузите компьютер, чтобы закончить удаление.) else if errorlevel 1 (echo Удаление не удалось — см. %ProgramData%\Show2Cam\logs\setup.log)
 echo Готово.
 pause

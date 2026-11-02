@@ -3,7 +3,7 @@
 #   dist/Show2Cam-Setup.exe     the release: ONE file - the launcher with the whole package below appended
 #                               (a cabinet, MSZIP; extracted to a temporary folder when it runs)
 #   dist/Show2Cam/              the same package unpacked (for development / testing)
-#   dist/Show2Cam-Debug-Setup.exe, dist/Show2Cam-Debug/   the same plus the autotest (s2cautotest.exe), for testing only
+#   dist/Show2Cam-Debug-Setup.exe, dist/Show2Cam-Debug/   the same plus the test tools (s2cautotest.exe, s2cinstall.exe, s2cctl.exe, s2ccamdiag.exe, s2ccamdiag32.exe), for testing only
 #     Show2Cam-Setup.exe        x86 launcher: starts x64\ or x86\Show2Cam-Setup.exe (whichever Windows this is)
 #     uninstall.cmd             removal without a window
 #     images\  mp4\              media for the cameras (installed to Program Files\Show2Cam)
@@ -69,12 +69,12 @@ for f in $D/uninstall.cmd $D/x64/uninstall.cmd $D/x86/uninstall.cmd; do
     iconv -f UTF-8 -t CP866 "$f" | sed 's/$/\r/' > "$f.tmp" && mv "$f.tmp" "$f"
 done
 
-# Two packages from this one build: the release, without the autotest, and a debug package - the release plus the
-# autotest (s2cautotest.exe) for the test PCs and VMs. The installer removes a file its package does not have, so the release
+# Two packages from this one build: the release, without the test and administration tools, and a debug package - the
+# release plus them (s2cautotest.exe s2cinstall.exe s2cctl.exe s2ccamdiag.exe s2ccamdiag32.exe) for the test PCs and VMs. The installer removes a file its package does not have, so the release
 # installed over the debug one takes the autotest away again.
 DD=dist/Show2Cam-Debug
 cp -a $D $DD
-rm -f $D/x64/s2cautotest.exe $D/x86/s2cautotest.exe
+for f in s2cautotest.exe s2cinstall.exe s2cctl.exe s2ccamdiag.exe s2ccamdiag32.exe; do rm -f $D/x64/$f $D/x86/$f; done
 
 # One file each: the launcher + the package as a cabinet (MSZIP; Windows extracts it with SetupIterateCabinet) + a
 # trailer "S2CPAYLD" + the cabinet's size (little endian, 8 bytes). See app/s2clauncher.cpp.
