@@ -433,7 +433,7 @@ static void PrintDriverLog()
     {
         Out(L"---- driver log ----");
         wchar_t* ctx = nullptr;
-        for (wchar_t* line = wcstok(text, L"\r\n", &ctx); line; line = wcstok(nullptr, L"\r\n", &ctx)) Out(L"  %ls", line);
+        for (wchar_t* line = wcstok_s(text, L"\r\n", &ctx); line; line = wcstok_s(nullptr, L"\r\n", &ctx)) Out(L"  %ls", line);
     }
     HeapFree(GetProcessHeap(), 0, text);
 }

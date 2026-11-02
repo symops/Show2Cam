@@ -23,9 +23,12 @@ fi
 MINGW=/usr/$TRIPLE/include
 mkdir -p "$OBJ" "$OUT"
 
+# _MM3DNOW_H_INCLUDED: MinGW-w64 12 (Debian 13) has ntddk.h -> wdm.h -> intrin.h include <mm3dnow.h>, which clang 19
+# warns about as deprecated (3DNow!, empty, nothing here uses it); newer MinGW no longer includes it. Its guard
+# defined keeps it out on both.
 CXXFLAGS="$ARCHFLAGS -std=c++17 -O2 -fms-extensions -fno-exceptions -fno-rtti
   -fno-stack-protector -fno-threadsafe-statics -fno-use-cxa-atexit
-  -DNTDDI_VERSION=0x0A00000C -D_WIN32_WINNT=0x0A00 -D_KERNEL_MODE=1
+  -DNTDDI_VERSION=0x0A00000C -D_WIN32_WINNT=0x0A00 -D_KERNEL_MODE=1 -D_MM3DNOW_H_INCLUDED
   -include $DRV/check_prelude.h -isystem $MINGW/ddk -isystem $MINGW -I$DRV
   -Wall -Wno-unknown-pragmas -Wno-ignored-attributes -Wno-microsoft-anon-tag -Wno-nonportable-include-path
   -Wno-missing-braces -Wno-missing-field-initializers"
@@ -41,7 +44,7 @@ $TRIPLE-windres -c 65001 -I$DRV $DRV/Show2Cam.rc -O coff -o "$OBJ/resources.o"
 $TRIPLE-nm -u "$OBJ"/*.o | sed -n 's/^ *U //p' | sort -u | ARCH=$ARCH OBJ=$OBJ python3 -c "
 import os, sys
 x86 = os.environ['ARCH'] == 'x86'
-crt = {'memset', 'memcpy', 'memmove', '_snprintf', '_vsnprintf', '_vsnwprintf', '_snwprintf', 'strlen', 'wcslen'}
+crt = {'memset', 'memcpy', 'memmove', 'memcmp', '_snprintf', '_vsnprintf', '_vsnwprintf', '_snwprintf', 'strlen', 'wcslen'}
 hal = {'KfAcquireSpinLock', 'KfReleaseSpinLock', 'KeQueryPerformanceCounter', 'KeGetCurrentIrql', 'KfRaiseIrql',
        'KfLowerIrql', 'ExAcquireFastMutex', 'ExReleaseFastMutex', 'ExTryToAcquireFastMutex'}
 defs = {'ks.sys': [], 'ntoskrnl.exe': [], 'hal.dll': []}

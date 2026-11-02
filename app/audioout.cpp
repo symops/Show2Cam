@@ -3,11 +3,18 @@
 #include "applog.h"
 #include <mmdeviceapi.h>
 #include <audioclient.h>
-#include <functiondiscoverykeys_devpkey.h>
+#include <propsys.h>
 #include <mmreg.h>
 #include <ks.h>
 #include <ksmedia.h>
 #include <wchar.h>
+
+// PKEY_Device_FriendlyName / PKEY_DeviceInterface_FriendlyName, declared here: MinGW-w64 12's libuuid (Debian 13) does
+// not define them.
+static const PROPERTYKEY kDeviceFriendlyName = {
+    { 0xa45c254e, 0xdf1c, 0x4efd, { 0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0 } }, 14 };
+static const PROPERTYKEY kInterfaceFriendlyName = {
+    { 0x026e516e, 0xb814, 0x414b, { 0x83, 0xcd, 0x85, 0x6d, 0x6f, 0xef, 0x48, 0x22 } }, 2 };
 
 static const GUID kSubtypeFloat = { 0x00000003, 0x0000, 0x0010, { 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71 } };
 
@@ -43,8 +50,8 @@ int ListRenderDevices(RenderDevice* out, int max)
                 RenderDevice& d = out[n++];
                 wcsncpy(d.id, id, 255);
                 d.id[255] = 0;
-                ReadString(props, PKEY_Device_FriendlyName, d.name, 256);
-                ReadString(props, PKEY_DeviceInterface_FriendlyName, d.adapter, 128);
+                ReadString(props, kDeviceFriendlyName, d.name, 256);
+                ReadString(props, kInterfaceFriendlyName, d.adapter, 128);
             }
             if (id) CoTaskMemFree(id);
             if (props) props->Release();

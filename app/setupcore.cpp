@@ -366,7 +366,7 @@ bool SetupSetCameraCount(int count, bool installDriver, bool* rebootNeeded, Setu
                 // the driver store on this one device, the other cameras are not touched.
                 typedef BOOL(WINAPI * DiInstallDeviceFn)(HWND, HDEVINFO, PSP_DEVINFO_DATA, PSP_DRVINFO_DATA_W, DWORD, PBOOL);
                 DiInstallDeviceFn diInstallDevice =
-                    (DiInstallDeviceFn)GetProcAddress(LoadLibraryW(L"newdev.dll"), "DiInstallDevice");
+                    (DiInstallDeviceFn)(void*)GetProcAddress(LoadLibraryW(L"newdev.dll"), "DiInstallDevice");
                 if (!diInstallDevice || !diInstallDevice(nullptr, nset, &d, nullptr, 0, &reboot))
                 {
                     LogError(log, ctx, TR(L"не удалось установить драйвер"), GetLastError());

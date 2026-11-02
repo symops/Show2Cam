@@ -689,7 +689,7 @@ int wmain(int argc, wchar_t** argv)
     GetLocalTime(&t);
     OSVERSIONINFOW os = { sizeof(os) };
     typedef LONG(WINAPI * RtlGetVersionFn)(OSVERSIONINFOW*);
-    auto rgv = (RtlGetVersionFn)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "RtlGetVersion");
+    auto rgv = (RtlGetVersionFn)(void*)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "RtlGetVersion");
     if (rgv) rgv(&os);
     Out(L"Show2Cam camera diagnostics %ls (%ls), %04u-%02u-%02u %02u:%02u, Windows %lu.%lu.%lu", L"" S2C_VER_STR, Bitness(), t.wYear,
         t.wMonth, t.wDay, t.wHour, t.wMinute, os.dwMajorVersion, os.dwMinorVersion, os.dwBuildNumber);

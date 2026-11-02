@@ -1773,11 +1773,30 @@ static void CopyPreview(CameraRunner* r, CamFrame& frame, bool always)
     r->sink.Post(EvPreviewFrame);
 }
 
+// CoIncrementMTAUsage / CoDecrementMTAUsage (ole32, Windows 8 and later) through GetProcAddress: MinGW-w64 12's 32-bit
+// libole32 (Debian 13) has no import entries for them. Looked up on each call (a runner's start / stop): a static
+// would need the C++ runtime's guard functions, which these programs do not link.
+typedef HRESULT (WINAPI* MtaIncrementFn)(CO_MTA_USAGE_COOKIE*);
+typedef HRESULT (WINAPI* MtaDecrementFn)(CO_MTA_USAGE_COOKIE);
+
+static HRESULT MtaUsageIncrement(CO_MTA_USAGE_COOKIE* cookie)
+{
+    MtaIncrementFn fn = (MtaIncrementFn)(void*)GetProcAddress(LoadLibraryW(L"ole32.dll"), "CoIncrementMTAUsage");
+    *cookie = nullptr;
+    return fn ? fn(cookie) : E_NOTIMPL;
+}
+
+static void MtaUsageDecrement(CO_MTA_USAGE_COOKIE cookie)
+{
+    MtaDecrementFn fn = (MtaDecrementFn)(void*)GetProcAddress(LoadLibraryW(L"ole32.dll"), "CoDecrementMTAUsage");
+    if (fn) fn(cookie);
+}
+
 static DWORD WINAPI RunnerThread(LPVOID p);
 
 static void RunnerFree(CameraRunner* r)
 {
-    if (r->mta) CoDecrementMTAUsage(r->mta);
+    if (r->mta) MtaUsageDecrement(r->mta);
     CloseHandle(r->wake);
     DeleteCriticalSection(&r->cs);
     delete r;
@@ -2008,7 +2027,7 @@ CameraRunner* RunnerStart(int index, const wchar_t* path, const CamConfig& confi
     r->config = config;
     InitializeCriticalSection(&r->cs);
     r->wake = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-    CoIncrementMTAUsage(&r->mta);
+    MtaUsageIncrement(&r->mta);
     EnterCriticalSection(&r->cs);   // the thread may move on before its handle is stored
     r->thread = CreateThread(nullptr, 0, RunnerThread, r, 0, nullptr);
     LeaveCriticalSection(&r->cs);

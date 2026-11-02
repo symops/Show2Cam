@@ -617,7 +617,10 @@ static HCMNOTIFICATION DeviceChangesWatch()
     f.FilterType = CM_NOTIFY_FILTER_TYPE_DEVICEINTERFACE;
     f.Flags = CM_NOTIFY_FILTER_FLAG_ALL_INTERFACE_CLASSES;
     HCMNOTIFICATION n = nullptr;
-    if (CM_Register_Notification(&f, nullptr, DeviceInterfaceChanged, &n) != CR_SUCCESS) n = nullptr;
+    // through GetProcAddress: MinGW-w64 12's 32-bit libcfgmgr32 (Debian 13) has no import entries for it
+    typedef CONFIGRET (WINAPI* RegisterFn)(PCM_NOTIFY_FILTER, PVOID, PCM_NOTIFY_CALLBACK, PHCMNOTIFICATION);
+    RegisterFn reg = (RegisterFn)(void*)GetProcAddress(LoadLibraryW(L"cfgmgr32.dll"), "CM_Register_Notification");
+    if (!reg || reg(&f, nullptr, DeviceInterfaceChanged, &n) != CR_SUCCESS) n = nullptr;
     return n;
 }
 
@@ -2448,7 +2451,12 @@ int wmain(int argc, wchar_t** argv)
     Out(L"==== %d action(s): %d passed, %d FAILED, %d warning(s); seed %u ====", iteration, g_pass, g_fail, g_warn, seed);
     Out(L"Log: %ls", AppLogPath());
     MediaThreadEnd();
-    if (devWatch) CM_Unregister_Notification(devWatch);
+    if (devWatch)
+    {
+        typedef CONFIGRET (WINAPI* UnregisterFn)(HCMNOTIFICATION);
+        UnregisterFn unreg = (UnregisterFn)(void*)GetProcAddress(LoadLibraryW(L"cfgmgr32.dll"), "CM_Unregister_Notification");
+        if (unreg) unreg(devWatch);
+    }
     MFShutdown();
     CoUninitialize();
 

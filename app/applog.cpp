@@ -126,7 +126,7 @@ static LONG WINAPI CrashFilter(EXCEPTION_POINTERS* e)
     line[699] = 0;
     WriteUtf8(line);
     HMODULE dbg = LoadLibraryW(L"dbghelp.dll");
-    MiniDumpWriteDumpFn write = dbg ? (MiniDumpWriteDumpFn)GetProcAddress(dbg, "MiniDumpWriteDump") : nullptr;
+    MiniDumpWriteDumpFn write = dbg ? (MiniDumpWriteDumpFn)(void*)GetProcAddress(dbg, "MiniDumpWriteDump") : nullptr;
     HANDLE f = write ? CreateFileW(dump, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr) : INVALID_HANDLE_VALUE;
     if (f != INVALID_HANDLE_VALUE)
     {
@@ -174,7 +174,7 @@ void AppLogOpen(const wchar_t* name)
     GetModuleFileNameW(nullptr, exe, MAX_PATH);
     OSVERSIONINFOEXW os = { sizeof(os) };
     typedef LONG(WINAPI * RtlGetVersionFn)(OSVERSIONINFOEXW*);
-    RtlGetVersionFn getVersion = (RtlGetVersionFn)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "RtlGetVersion");
+    RtlGetVersionFn getVersion = (RtlGetVersionFn)(void*)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "RtlGetVersion");
     if (getVersion) getVersion(&os);
     AppLog(L"==== %ls started (pid %lu), Show2Cam build %ls, Windows %lu.%lu.%lu ====", exe, GetCurrentProcessId(),
            L"" S2C_VER_STR, os.dwMajorVersion, os.dwMinorVersion, os.dwBuildNumber);
