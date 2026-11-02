@@ -22,7 +22,8 @@ static const IID kIidPersistFile        = { 0x0000010b, 0x0000, 0x0000, { 0xc0, 
 
 // Files of the package that are installed to Program Files.
 static const wchar_t* kFiles[] = {
-    L"Show2Cam.exe", L"Show2Cam-Setup.exe", L"s2cinstall.exe", L"s2cautotest.exe", L"s2cctl.exe",
+    L"Show2Cam.exe", L"Show2Cam-Setup.exe", L"s2cinstall.exe", L"s2cctl.exe",
+    L"s2cautotest.exe",    // the debug package only (package.sh); removed when the release is installed over it
     L"s2ccamdiag.exe", L"s2ccamdiag32.exe",
     L"Show2Cam.sys", L"Show2Cam.inf", L"Show2Cam.cat", L"Show2Cam.cer", L"Show2Cam-Publisher.cer",
     L"uninstall.cmd",
