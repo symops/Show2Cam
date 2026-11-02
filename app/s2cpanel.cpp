@@ -2314,6 +2314,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show)
     InitCommonControlsEx(&icc);
 
     WNDCLASSEXW pc = { sizeof(pc) };
+    pc.style = CS_HREDRAW | CS_VREDRAW;     // the whole picture is scaled anew: without them a resize repainted only the new strip
     pc.lpfnWndProc = PreviewProc;
     pc.hInstance = inst;
     pc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
