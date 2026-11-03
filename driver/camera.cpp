@@ -79,6 +79,8 @@ static ULONGLONG QpcNow100ns(S2C_PIN* p)
     return (ticks / f) * 10000000ULL + ((ticks % f) * 10000000ULL) / f;
 }
 
+static KDEFERRED_ROUTINE FrameTimer;      // its role type (CodeQL / Code Analysis check DPC routines by it)
+
 static VOID NTAPI FrameTimer(_In_ PKDPC Dpc, _In_opt_ PVOID Context, _In_opt_ PVOID Arg1, _In_opt_ PVOID Arg2)
 {
     UNREFERENCED_PARAMETER(Dpc);

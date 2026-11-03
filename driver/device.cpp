@@ -299,6 +299,8 @@ static const KSDEVICE_DESCRIPTOR kDeviceDescriptor = {
     &kDeviceDispatch, 0, nullptr, 0
 };
 
+extern "C" DRIVER_INITIALIZE DriverEntry;     // its role type
+
 extern "C" NTSTATUS NTAPI DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
 {
     S2cLogInit();
