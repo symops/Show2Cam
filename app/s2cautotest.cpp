@@ -751,6 +751,17 @@ static HRESULT CaptureOpen(const CamInfo& cam, Capture* c, UINT32 wantW = 0, UIN
         Warn(L"camera %d: Windows refused to open it (0x%08lX) while another device changed (%ls): opened again (0x%08lX)",
              cam.index + 1, (unsigned long)first, what, (unsigned long)hr);
     }
+    if (hr == HRESULT_FROM_WIN32(ERROR_SHUTDOWN_IN_PROGRESS))
+    {
+        // seen once on Windows 11 for a camera whose device had appeared a few seconds before (the number of cameras
+        // went up): Windows' Frame Server answered "shutdown in progress" while it took the new device in
+        HRESULT first = hr;
+        Sleep(1500);
+        WaitDevicesQuiet();
+        hr = CaptureOpenOnce(cam, c, wantW, wantH, fps);
+        Warn(L"camera %d: Windows refused to open it (0x%08lX, its Frame Server busy with a new device): opened again (0x%08lX)",
+             cam.index + 1, (unsigned long)first, (unsigned long)hr);
+    }
     if (FAILED(hr)) return hr;
     HRESULT rh = CaptureRead(c);
     if (rh != HRESULT_FROM_WIN32(ERROR_NO_MATCH)) return hr;
