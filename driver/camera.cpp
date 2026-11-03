@@ -830,9 +830,10 @@ static void ApplyName(S2C_CAMERA* c, PCWSTR Name)
 
 void S2cCameraApplySavedName(_In_ S2C_CAMERA* Camera)
 {
-    WCHAR value[32], buffer[S2C_NAME_CHARS] = {};
+    // room for the longest name (S2C_NAME_CHARS - 1 characters) and its terminator: the registry value includes it
+    WCHAR value[32], buffer[S2C_NAME_CHARS + 1] = {};
     RtlStringCchPrintfW(value, 32, L"Camera%luName", Camera->Index + 1);
-    UNICODE_STRING name = { 0, (USHORT)(sizeof(buffer) - sizeof(WCHAR)), buffer };
+    UNICODE_STRING name = { 0, (USHORT)(S2C_NAME_CHARS * sizeof(WCHAR)), buffer };
     RTL_QUERY_REGISTRY_TABLE q[2];
     RtlZeroMemory(q, sizeof(q));
     q[0].Flags = RTL_QUERY_REGISTRY_DIRECT | RTL_QUERY_REGISTRY_REQUIRED | RTL_QUERY_REGISTRY_TYPECHECK;

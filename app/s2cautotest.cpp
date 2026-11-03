@@ -1136,7 +1136,13 @@ static bool WaitCameraSet(int count, DWORD off, DWORD ms = 20000)
         bool ok = n == want;
         for (int k = 0; ok && k < n; k++) ok = cams[k].index < count && !(off & (1u << cams[k].index));
         if (ok) return true;
-        if (GetTickCount() - t0 > ms) return false;
+        if (GetTickCount() - t0 > ms)
+        {
+            wchar_t seen[200] = L"";
+            for (int k = 0; k < n; k++) _snwprintf(seen + wcslen(seen), 200 - wcslen(seen), L" %d", cams[k].index + 1);
+            Out(L"    info listed for programs:%ls (of %d, switched off 0x%lX)", n ? seen : L" none", count, (unsigned long)off);
+            return false;
+        }
         Sleep(200);
     }
 }

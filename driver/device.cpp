@@ -62,7 +62,9 @@ NTSTATUS S2cShowCamera(ULONG Index, BOOLEAN Show)
     PKSDEVICE device = g_cameraDevices[Index];
     S2C_DEVICE* d = device ? (S2C_DEVICE*)device->Context : nullptr;
     NTSTATUS status = STATUS_NOT_FOUND;
-    if (d)
+    if (d && Show && d->Cameras[Index] && d->Cameras[Index]->Off)
+        status = STATUS_SUCCESS;        // switched off: stays hidden (only S2C_PROPERTY_ENABLED switches it on)
+    else if (d)
     {
         KsAcquireDevice(device);
         status = EnableCamera(device, d, Index, Show);

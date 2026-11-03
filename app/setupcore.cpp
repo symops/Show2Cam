@@ -342,7 +342,8 @@ bool SetupSetCameraCount(int count, bool installDriver, bool* rebootNeeded, Setu
         if (used[cam])
         {
             // shown again if it was hidden (removed while in use, the program may still have it: the same device)
-            if (cam > 0 && ShowCamera(cam, true)) AppLog(L"camera devices: camera %d shown", cam + 1);
+            // (not one switched off: it stays hidden)
+            if (cam > 0 && SetupCameraEnabled(cam) && ShowCamera(cam, true)) AppLog(L"camera devices: camera %d shown", cam + 1);
             continue;
         }
         HDEVINFO nset = SetupDiCreateDeviceInfoList(&kClassImage, nullptr);
