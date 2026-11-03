@@ -23,10 +23,12 @@ bool SetupInstallDriver(const wchar_t* infPath, bool* rebootNeeded, SetupLog log
 bool SetupSetCameraCount(int count, bool installDriver, bool* rebootNeeded, SetupLog log, void* ctx, int* hidden = nullptr);
 // Camera `cam` (0-based) switched on (the default) or off: driver setting Camera<N>Disabled; no rights needed to read.
 bool SetupCameraEnabled(int cam);
-// Switches camera `cam` on / off: the setting and its device (disabled as in Device Manager: programs no longer see the
-// camera, also after a restart). 0 done, 1 no device for it (the setting applies when it is created), 2 a program has
-// it open (not switched off), 3 failed, 5 done after a restart. Administrator rights.
+// Switches camera `cam` on / off through its driver (its control interface, S2C_PROPERTY_ENABLED): off, programs no
+// longer list it at once and one that has it open gets black frames; the driver keeps the setting. No administrator
+// rights needed while its device runs. 0 done, 1 no device for it (the setting only: administrator rights), 3 failed.
 int SetupSetCameraEnabled(int cam, bool enable);
+// What the driver says: 1 switched off, 0 on, -1 no device / no answer.
+int SetupCameraSwitchedOff(int cam);
 // Deletes camera `cam`: the cameras after it take its place (their driver settings and on / off state move down one
 // number) and the number of cameras goes down by one. 0 done, 4 failed, 5 reboot needed, 6 the last device is in use
 // (hidden), 7 a camera could not take the on / off state of the one it replaces. The per-user source settings

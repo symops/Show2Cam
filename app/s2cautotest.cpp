@@ -1141,28 +1141,35 @@ static bool WaitCameraSet(int count, DWORD off, DWORD ms = 20000)
     }
 }
 
-// The device of camera `index` is disabled (as in Device Manager).
-static bool DeviceDisabled(int index)
+// Mean brightness (0..255) of a frame, on a grid.
+static double Brightness(const Capture& c)
 {
-    HDEVINFO set = SetupDiGetClassDevsW(nullptr, L"ROOT", nullptr, DIGCF_ALLCLASSES | DIGCF_PRESENT);
-    if (set == INVALID_HANDLE_VALUE) return false;
-    bool off = false;
-    SP_DEVINFO_DATA d = { sizeof(d) };
-    for (DWORD i = 0; SetupDiEnumDeviceInfo(set, i, &d); i++)
-    {
-        wchar_t ids[512] = L"";
-        if (!SetupDiGetDeviceRegistryPropertyW(set, &d, SPDRP_HARDWAREID, nullptr, (BYTE*)ids, sizeof(ids) - 4, nullptr)) continue;
-        if (_wcsicmp(ids, S2C_HARDWARE_ID)) continue;
-        HKEY k = SetupDiOpenDevRegKey(set, &d, DICS_FLAG_GLOBAL, 0, DIREG_DEV, KEY_READ);
-        if (k == INVALID_HANDLE_VALUE) continue;
-        DWORD v = 0xFFFFFFFF, size = sizeof(v);
-        RegGetValueW(k, nullptr, L"CameraIndex", RRF_RT_REG_DWORD, nullptr, &v, &size);
-        RegCloseKey(k);
-        ULONG st = 0, pr = 0;
-        if ((int)v == index && CM_Get_DevNode_Status(&st, &pr, d.DevInst, 0) == CR_SUCCESS && pr == CM_PROB_DISABLED) off = true;
-    }
-    SetupDiDestroyDeviceInfoList(set);
-    return off;
+    if (!c.px || !c.w || !c.h) return -1;
+    double sum = 0;
+    int n = 0;
+    for (UINT32 y = c.h / 16; y < c.h; y += c.h / 8 ? c.h / 8 : 1)
+        for (UINT32 x = c.w / 16; x < c.w; x += c.w / 8 ? c.w / 8 : 1)
+        {
+            ULONG p = c.px[(size_t)y * c.w + x];
+            sum += (((p >> 16) & 0xFF) + ((p >> 8) & 0xFF) + (p & 0xFF)) / 3.0;
+            n++;
+        }
+    return n ? sum / n : -1;
+}
+
+// Camera `k` switched on / off through its driver, checked: the setting, the driver's answer, and whether programs
+// list it (`off`: the cameras that are off afterwards, for the list of cameras).
+static bool SwitchChecked(int k, bool on, int count, DWORD off)
+{
+    int r = SetupSetCameraEnabled(k, on);
+    if (!Check(r == 0, L"camera %d switched %ls (%d)", k + 1, on ? L"on" : L"off", r)) return false;
+    CamConfig c;
+    CamConfigLoad(k, &c);
+    Check(SetupCameraEnabled(k) == on && c.enabled == on, L"camera %d: %ls in the driver settings and in its settings", k + 1,
+          on ? L"on" : L"off");
+    Check(SetupCameraSwitchedOff(k) == (on ? 0 : 1), L"camera %d: the driver says %ls", k + 1, on ? L"on" : L"off");
+    Check(WaitCameraSet(count, off), L"cameras listed for programs: 1..%d without the ones off (0x%lX)", count, (unsigned long)off);
+    return true;
 }
 
 static bool SameConfig(const CamConfig& a, const CamConfig& b)
@@ -1181,8 +1188,16 @@ static bool IsDefaultName(const wchar_t* name, int index)
 
 // Cameras 1..count have the names / settings expected (name of a camera that was "Show2Cam Camera N": the default of
 // its new number).
-static void CheckCameras(int count, const int* src, wchar_t (*names)[S2C_NAME_CHARS], const CamConfig* cfg, const wchar_t* what)
+static void CheckCameras(int count, const int* src, wchar_t (*names)[S2C_NAME_CHARS], const CamConfig* cfg, const wchar_t* what,
+                         DWORD offBefore = 0)
 {
+    DWORD offNow = 0;
+    for (int i = 0; i < count; i++)
+        if (offBefore & (1u << src[i])) offNow |= 1u << i;
+    Check(OffMask() == offNow, L"%ls: cameras off 0x%lX (0x%lX expected)", what, (unsigned long)OffMask(), (unsigned long)offNow);
+    Check(WaitCameraSet(count, offNow), L"%ls: cameras listed for programs: 1..%d without the ones off", what, count);
+    for (int i = 0; i < count; i++)
+        if (offNow & (1u << i)) Check(SetupCameraSwitchedOff(i) == 1, L"%ls: camera %d is off in the driver", what, i + 1);
     for (int i = 0; i < count; i++)
     {
         wchar_t want[S2C_NAME_CHARS];
@@ -1190,8 +1205,17 @@ static void CheckCameras(int count, const int* src, wchar_t (*names)[S2C_NAME_CH
         else wcscpy(want, names[src[i]]);
         CamInfo cam;
         bool named = false;
-        for (int t = 0; t < 40 && !(named = FindCam(i, &cam) && !wcscmp(cam.name, want)); t++) Sleep(100);
-        Check(named, L"%ls: camera %d is \"%ls\" (\"%ls\" expected)", what, i + 1, FindCam(i, &cam) ? cam.name : L"-", want);
+        if (offNow & (1u << i))
+        {
+            wchar_t saved[S2C_NAME_CHARS];
+            CamSavedName(i, saved);
+            Check(!wcscmp(saved, want), L"%ls: camera %d (off) is \"%ls\" (\"%ls\" expected)", what, i + 1, saved, want);
+        }
+        else
+        {
+            for (int t = 0; t < 40 && !(named = FindCam(i, &cam) && !wcscmp(cam.name, want)); t++) Sleep(100);
+            Check(named, L"%ls: camera %d is \"%ls\" (\"%ls\" expected)", what, i + 1, FindCam(i, &cam) ? cam.name : L"-", want);
+        }
         CamConfig c;
         CamConfigLoad(i, &c);
         Check(SameConfig(c, cfg[src[i]]), L"%ls: camera %d has the settings of former camera %d", what, i + 1, src[i] + 1);
@@ -1205,15 +1229,117 @@ static bool MoveChecked(int from, int to, int count)
     CamNamesNow(count, names);
     CamConfig cfg[S2C_MAX_CAMERAS_UI];
     for (int i = 0; i < count; i++) CamConfigLoad(i, &cfg[i]);
+    DWORD off = OffMask();
     int src[S2C_MAX_CAMERAS_UI];
     int n = CamMovePermutation(from, to, count, src);
     int r = SetupMoveCamera(from, to);
     if (!Check(r == 0, L"camera %d -> number %d (%d)", from + 1, to + 1, r)) return false;
     CamConfigPermute(src, n, count);
-    Check(WaitCameraSet(count, 0), L"after the move: cameras 1..%d there", count);
     CamNamesAfterPermute(src, n, names);
-    CheckCameras(count, src, names, cfg, L"moved");
+    CheckCameras(count, src, names, cfg, L"moved", off);    // a camera switched off stays off at its new number
     return true;
+}
+
+// Pause / play: the source's frames stop (the camera keeps its last picture) and move again.
+static void ManagePause(int count)
+{
+    CamInfo cam;
+    if (!PickCam(&cam) || !WaitClosed(cam, 3000)) return;
+    CamConfig cfg;
+    CamConfigDefault(cam.index, &cfg);
+    cfg.kind = SourceGenerator;
+    cfg.width = 640;
+    cfg.height = 480;
+    cfg.fps = 15;
+    Out(L"[manage] camera %d: generator paused and played", cam.index + 1);
+    CameraRunner* r = RunnerStart(cam.index, cam.path, cfg, nullptr, 0);
+    if (!Check(r != nullptr, L"source started")) return;
+    Capture c;
+    HRESULT hr = CaptureOpen(cam, &c, 640, 480, 15);
+    if (Check(SUCCEEDED(hr), L"opened (0x%08lX)", (unsigned long)hr) && SUCCEEDED(hr = CaptureRead(&c)))
+    {
+        size_t n = (size_t)c.w * c.h;
+        ULONG* a = new ULONG[n];
+        auto sample = [&](ULONG* to) {
+            Sleep(1200);
+            for (int i = 0; i < 20 && SUCCEEDED(hr); i++) hr = CaptureRead(&c);     // drain the queued frames
+            if (SUCCEEDED(hr)) memcpy(to, c.px, n * 4);
+        };
+        CpuMeter cpu;
+        cpu.Start();
+        wchar_t t[160];
+        cfg.paused = true;
+        RunnerConfigure(r, cfg);
+        sample(a);
+        Sleep(1500);
+        for (int i = 0; i < 20 && SUCCEEDED(hr); i++) hr = CaptureRead(&c);
+        double still = SUCCEEDED(hr) ? Difference(a, c.px, n) : -1;
+        _snwprintf(t, 160, L"paused: the picture stands still (mean difference %.2f)", still);
+        CheckUnlessBusy(still >= 0 && still < 1.0, cpu.Busy(), t);
+        cpu.Start();
+        cfg.paused = false;
+        RunnerConfigure(r, cfg);
+        sample(a);
+        Sleep(1500);
+        for (int i = 0; i < 20 && SUCCEEDED(hr); i++) hr = CaptureRead(&c);
+        double moving = SUCCEEDED(hr) ? Difference(a, c.px, n) : -1;
+        _snwprintf(t, 160, L"played: the picture moves again (mean difference %.2f)", moving);
+        CheckUnlessBusy(moving > 1.0, cpu.Busy(), t);
+        delete[] a;
+    }
+    Check(SUCCEEDED(hr), L"frames read (0x%08lX)", (unsigned long)hr);
+    c.Close();
+    RunnerStop(r);
+    WaitClosed(cam, 5000);
+    (void)count;
+}
+
+// Off and on, sometimes while a program has the camera open: it goes from the list of cameras at once and the program
+// gets black frames (or loses the stream), never the picture.
+static void ManageOffOn(int count, DWORD off0)
+{
+    int k = Rand(0, count - 1);
+    for (int t = 0; t < count && (off0 & (1u << k)); t++) k = (k + 1) % count;
+    if (off0 & (1u << k)) return;
+    CamInfo cam;
+    bool inUse = Rand(0, 1) && FindCam(k, &cam) && WaitClosed(cam, 3000);
+    Out(L"[manage] camera %d off and on again%ls", k + 1, inUse ? L", while a program reads it" : L"");
+    Capture c;
+    HRESULT hr = S_OK;
+    if (inUse)
+    {
+        hr = CaptureOpen(cam, &c);
+        if (SUCCEEDED(hr)) hr = CaptureRead(&c);
+        if (!Check(SUCCEEDED(hr), L"camera %d opened and read (0x%08lX)", k + 1, (unsigned long)hr)) inUse = false;
+        else Check(Brightness(c) > 30, L"camera %d: a picture (brightness %.0f)", k + 1, Brightness(c));
+    }
+    if (!SwitchChecked(k, false, count, off0 | (1u << k)))
+    {
+        SetupSetCameraEnabled(k, true);
+        return;
+    }
+    if (inUse)
+    {
+        // what the program gets now: black frames, or the stream ends (Windows dropped the device)
+        double light = -1;
+        for (int i = 0; i < 40 && SUCCEEDED(hr); i++) hr = CaptureReadOnce(&c);
+        if (SUCCEEDED(hr)) light = Brightness(c);
+        Check(FAILED(hr) || (light >= 0 && light < 25), L"camera %d off while read: %ls (brightness %.0f, 0x%08lX)", k + 1,
+              FAILED(hr) ? L"the stream ended" : L"black frames", light, (unsigned long)hr);
+        c.Close();
+    }
+    Sleep(Rand(0, 1500));
+    if (!SwitchChecked(k, true, count, off0)) return;
+    if (FindCam(k, &cam))
+    {
+        Capture again;
+        hr = CaptureOpen(cam, &again);
+        if (SUCCEEDED(hr)) hr = CaptureRead(&again);
+        Check(SUCCEEDED(hr) && Brightness(again) > 30, L"camera %d on: a picture again (brightness %.0f, 0x%08lX)", k + 1,
+              SUCCEEDED(hr) ? Brightness(again) : -1.0, (unsigned long)hr);
+        again.Close();
+        WaitClosed(cam, 5000);
+    }
 }
 
 static void ActionManage()
@@ -1221,49 +1347,39 @@ static void ActionManage()
     int count = CountParam();
     if (count < 1 || count > S2C_MAX_CAMERAS_UI) return;
     DWORD off0 = OffMask() & ((1u << count) - 1);
-    int what = Rand(0, 3);
-    if (off0 || (count < 2 && (what == 1 || what == 2))) what = 0;     // cameras the user switched off: only off / on
+    int what = Rand(0, 4);
+    if (off0 && what >= 1 && what <= 3) what = 0;          // cameras the user switched off: only off / on and pause
+    if (count < 2 && (what == 1 || what == 2)) what = 0;
+    if (what == 0)
+    {
+        ManageOffOn(count, off0);
+        return;
+    }
+    if (what == 4)
+    {
+        ManagePause(count);
+        return;
+    }
     wchar_t names[S2C_MAX_CAMERAS_UI][S2C_NAME_CHARS];
     CamNamesNow(count, names);
     CamConfig cfg[S2C_MAX_CAMERAS_UI];
     for (int i = 0; i < count; i++) CamConfigLoad(i, &cfg[i]);
     int same[S2C_MAX_CAMERAS_UI];
     for (int i = 0; i < S2C_MAX_CAMERAS_UI; i++) same[i] = i;
-    if (what == 0)
+    // half of the moves / deletions with one camera switched off: it stays off at its new number
+    int offCam = (what != 3 && Rand(0, 1)) ? Rand(0, count - 1) : -1;
+    if (offCam >= 0)
     {
-        int k = Rand(0, count - 1);
-        for (int t = 0; t < count && (off0 & (1u << k)); t++) k = (k + 1) % count;
-        if (off0 & (1u << k)) return;
-        Out(L"[manage] camera %d off and on again", k + 1);
-        int r = SetupSetCameraEnabled(k, false);
-        if (r == 2)
-        {
-            Warn(L"camera %d: a program has it open, not switched off", k + 1);
-            return;
-        }
-        if (!Check(r == 0, L"camera %d switched off (%d)", k + 1, r))
-        {
-            SetupSetCameraEnabled(k, true);
-            return;
-        }
-        CamConfig c;
-        CamConfigLoad(k, &c);
-        Check(!SetupCameraEnabled(k) && !c.enabled, L"camera %d: off in the driver settings and in its settings", k + 1);
-        Check(DeviceDisabled(k), L"camera %d: its device is disabled", k + 1);
-        Check(WaitCameraSet(count, off0 | (1u << k)), L"camera %d gone from Windows, the others there", k + 1);
-        r = SetupSetCameraEnabled(k, true);
-        Check(r == 0, L"camera %d switched on (%d)", k + 1, r);
-        Check(!DeviceDisabled(k) && SetupCameraEnabled(k), L"camera %d: device enabled, setting on", k + 1);
-        Check(WaitCameraSet(count, off0), L"camera %d back in Windows", k + 1);
-        CheckCameras(count, same, names, cfg, L"off and on");
+        Out(L"    camera %d switched off first", offCam + 1);
+        if (!SwitchChecked(offCam, false, count, 1u << offCam)) offCam = -1;
     }
-    else if (what == 1)
+    DWORD offStart = offCam >= 0 ? 1u << offCam : 0;
+    if (what == 1)
     {
         int from = Rand(0, count - 1), to = Rand(0, count - 2);
         if (to >= from) to++;
         Out(L"[manage] camera %d -> number %d and back", from + 1, to + 1);
-        if (!MoveChecked(from, to, count)) return;
-        if (MoveChecked(to, from, count)) CheckCameras(count, same, names, cfg, L"moved back");
+        if (MoveChecked(from, to, count) && MoveChecked(to, from, count)) CheckCameras(count, same, names, cfg, L"moved back", offStart);
     }
     else if (what == 2)
     {
@@ -1274,25 +1390,27 @@ static void ActionManage()
         bool reboot = false;
         int hidden = 0;
         int r = SetupDeleteCamera(k, &reboot, &hidden);
-        if (!Check(r == 0 || r == 6, L"camera %d deleted (%d)", k + 1, r)) return;
-        CamConfigPermute(src, n, count);
-        Check(CountParam() == count - 1, L"number of cameras %d", CountParam());
-        Check(WaitCameraSet(count - 1, 0), L"cameras 1..%d there", count - 1);
-        CamNamesAfterPermute(src, n, names);
-        CheckCameras(count - 1, src, names, cfg, L"deleted");
-        // back: one more camera (the last, with the defaults) that takes the deleted one's settings and number
-        if (!Check(SetupSetCameraCount(count, true, &reboot, nullptr, nullptr), L"number of cameras back to %d", count)) return;
-        Check(WaitCameraSet(count, 0), L"cameras 1..%d there", count);
-        CamConfig fresh;
-        CamConfigLoad(count - 1, &fresh);
-        CamConfig def;
-        CamConfigDefault(count - 1, &def);
-        Check(SameConfig(fresh, def), L"the new camera %d has the default settings", count);
-        CamConfigSave(count - 1, cfg[k]);
-        CamInfo cam;
-        if (FindCam(count - 1, &cam) && !IsDefaultName(names[k], k) && SetName(cam, names[k])) WaitName(count - 1, names[k], &cam);
-        if (k != count - 1 && !MoveChecked(count - 1, k, count)) return;
-        CheckCameras(count, same, names, cfg, L"put back");
+        if (Check(r == 0 || r == 6, L"camera %d deleted (%d)", k + 1, r))
+        {
+            CamConfigPermute(src, n, count);
+            Check(CountParam() == count - 1, L"number of cameras %d", CountParam());
+            CamNamesAfterPermute(src, n, names);
+            CheckCameras(count - 1, src, names, cfg, L"deleted", offStart);
+            // back: one more camera (the last, with the defaults) takes the deleted one's settings, state and number
+            if (Check(SetupSetCameraCount(count, true, &reboot, nullptr, nullptr), L"number of cameras back to %d", count))
+            {
+                Check(WaitCameraSet(count, OffMask()), L"cameras 1..%d there", count);
+                CamConfig fresh, def;
+                CamConfigLoad(count - 1, &fresh);
+                CamConfigDefault(count - 1, &def);
+                Check(SameConfig(fresh, def) && fresh.enabled, L"the new camera %d is on, with the default settings", count);
+                CamConfigSave(count - 1, cfg[k]);
+                CamInfo cam;
+                if (FindCam(count - 1, &cam) && !IsDefaultName(names[k], k) && SetName(cam, names[k])) WaitName(count - 1, names[k], &cam);
+                if (offCam == k) SwitchChecked(count - 1, false, count, OffMask() | (1u << (count - 1)));
+                if (k == count - 1 || MoveChecked(count - 1, k, count)) CheckCameras(count, same, names, cfg, L"put back", offStart);
+            }
+        }
     }
     else
     {
@@ -1308,9 +1426,11 @@ static void ActionManage()
         Check(hidden || SetupInstalledWithoutCameras(), L"installed without cameras: the driver package is in the store");
         ok = SetupSetCameraCount(count, true, &reboot, [](void*, const wchar_t* line) { AppLog(L"  setup: %ls", line); }, nullptr);
         Check(ok, L"number of cameras back to %d", count);
-        Check(WaitCameraSet(count, 0), L"cameras 1..%d there again", count);
         CheckCameras(count, same, names, cfg, L"from 0 back");
     }
+    // the camera switched off for this action: on again
+    for (int i = 0; i < count; i++)
+        if (!SetupCameraEnabled(i) && !(off0 & (1u << i))) SwitchChecked(i, true, CountParam(), OffMask() & ~(1u << i));
 }
 
 static void ActionSources()

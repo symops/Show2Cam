@@ -17,6 +17,8 @@ static wchar_t g_fakeName[3][S2C_NAME_CHARS];
 static int FakeIndex(HANDLE h) { ULONG_PTR v = (ULONG_PTR)h; return v >= 0x7F000000 && v < 0x7F000003 ? (int)(v - 0x7F000000) : -1; }
 #endif
 
+static int ListCategory(const GUID& category, CamInfo* out, int max);
+
 int CamList(CamInfo* out, int max)
 {
 #ifdef S2C_UI_TEST
@@ -34,11 +36,25 @@ int CamList(CamInfo* out, int max)
     g_fake[1].UserPids[0] = explorer;
     return max < 3 ? max : 3;
 #endif
-    HDEVINFO set = SetupDiGetClassDevsW(&kCategoryVideo, nullptr, nullptr, DIGCF_DEVICEINTERFACE | DIGCF_PRESENT);
+    return ListCategory(kCategoryVideo, out, max);
+}
+
+int CamListControl(CamInfo* out, int max)
+{
+#ifdef S2C_UI_TEST
+    return CamList(out, max);
+#endif
+    static const GUID kControl = S2C_CONTROL_CATEGORY_INIT;
+    return ListCategory(kControl, out, max);
+}
+
+static int ListCategory(const GUID& category, CamInfo* out, int max)
+{
+    HDEVINFO set = SetupDiGetClassDevsW(&category, nullptr, nullptr, DIGCF_DEVICEINTERFACE | DIGCF_PRESENT);
     if (set == INVALID_HANDLE_VALUE) return 0;
     int n = 0;
     SP_DEVICE_INTERFACE_DATA di = { sizeof(di) };
-    for (DWORD i = 0; n < max && SetupDiEnumDeviceInterfaces(set, nullptr, &kCategoryVideo, i, &di); i++)
+    for (DWORD i = 0; n < max && SetupDiEnumDeviceInterfaces(set, nullptr, &category, i, &di); i++)
     {
         BYTE buf[2048];
         auto* d = (SP_DEVICE_INTERFACE_DETAIL_DATA_W*)buf;
@@ -235,3 +251,18 @@ bool CamSendTestPattern(HANDLE cam)
     return CamProperty(cam, S2C_PROPERTY_FRAME, KSPROPERTY_TYPE_SET, &h, sizeof(h), nullptr);
 }
 
+
+bool CamSetEnabled(HANDLE cam, bool on)
+{
+    S2C_SHOW s = { 0, on ? 1u : 0u };
+    return CamProperty(cam, S2C_PROPERTY_ENABLED, KSPROPERTY_TYPE_SET, &s, sizeof(s), nullptr);
+}
+
+bool CamGetEnabled(HANDLE cam, bool* on)
+{
+    S2C_SHOW s = {};
+    DWORD got = 0;
+    if (!CamProperty(cam, S2C_PROPERTY_ENABLED, KSPROPERTY_TYPE_GET, &s, sizeof(s), &got) || got < sizeof(s)) return false;
+    *on = s.Show != 0;
+    return true;
+}

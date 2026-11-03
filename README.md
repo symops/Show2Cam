@@ -14,9 +14,10 @@ sizes (1920×1080 … 320×240) at 1–60 fps; the device is in the Image class,
     between move one place, with their names, sources and on / off state).
   * A right click elsewhere on a camera: **Play / Pause**, **Switch off / Switch on**, **Delete…** (asks first; the
     cameras after it move up and the number of cameras goes down by one). A double click on the status plays / pauses.
-  * A camera switched off is gone for programs (its device is disabled as in Device Manager, also after a restart) and
-    stays in the list greyed, with a grey cross instead of the play / pause symbol. Switching on / off and deleting
-    need administrator rights, as the number of cameras.
+  * A camera switched off is gone for programs at once, also while one has it open (that program gets black frames;
+    the driver keeps the state across restarts and renumbering), and stays in the list greyed, with a grey cross instead
+    of the play / pause symbol. Switching on / off needs no administrator rights; deleting and renumbering do, as the
+    number of cameras.
 * **The selected camera**
   * **Name** — the name programs show; renaming needs no administrator rights (the driver keeps it).
   * **Enabled** (on by default) — off, with **Apply**, switches the camera off as the list's menu does.
@@ -60,8 +61,8 @@ the debug package only (`dist/Show2Cam-Debug-Setup.exe`, for testing and support
 `s2cinstall.exe` (administrator command prompt): `status` (cameras, frames, driver log), `cameras N`,
 `size N WIDTH HEIGHT [FPS]`, `color N RRGGBB`, `bmp N FILE.bmp`, `pattern N`, `install`, `remove`.
 
-`s2cctl.exe` — what the control panel sets, from the command line (no administrator rights except `count`, `enable`,
-`delete`, `move`): `status`, `count N` (0..10), `enable CAM on|off`, `delete CAM`, `move CAM NUMBER`, `name CAM "NAME"`, `source CAM text ["TEXT"] | images [FOLDER] | video [FOLDER] | stream URL |
+`s2cctl.exe` — what the control panel sets, from the command line (no administrator rights except `count`, `delete`,
+`move`): `status`, `count N` (0..10), `enable CAM on|off`, `delete CAM`, `move CAM NUMBER`, `name CAM "NAME"`, `source CAM text ["TEXT"] | images [FOLDER] | video [FOLDER] | stream URL |
 generator`, `audio CAM speak2mic|off|DEVICE`, `format CAM source|WxH [FPS|source]`, `pause CAM on|off`, `reset CAM`,
 `export FILE.ini`, `import FILE.ini`, `picture CAM FILE|pattern` (CAM: 1..10 or `all`). A running panel takes the
 changes at once. Exit codes: 0 ok, 1 failed, 2 bad arguments, 3 administrator rights needed, 4 Show2Cam cannot work

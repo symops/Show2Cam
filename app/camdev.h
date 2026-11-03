@@ -17,6 +17,12 @@ struct CamInfo
 
 // The cameras the driver offers right now, sorted by number. Returns how many (up to max).
 int CamList(CamInfo* out, int max);
+// Every Show2Cam camera, also those switched off: their control interfaces (S2C_CONTROL_CATEGORY, no program lists
+// them), for the Show2Cam programs' own properties.
+int CamListControl(CamInfo* out, int max);
+// Switched on / off (S2C_PROPERTY_ENABLED); CamGetEnabled: false if the driver does not answer.
+bool CamSetEnabled(HANDLE cam, bool on);
+bool CamGetEnabled(HANDLE cam, bool* on);
 
 // Opens a camera for its properties (overlapped handle); INVALID_HANDLE_VALUE on error (GetLastError()).
 HANDLE CamOpen(const wchar_t* path);

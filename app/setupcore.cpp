@@ -414,76 +414,101 @@ static void SetCameraDisabledParam(int cam, bool disabled)
     else RegDeleteKeyValueW(HKEY_LOCAL_MACHINE, S2C_PARAMS_KEY, name);
 }
 
-static bool PropertyChange(HDEVINFO set, SP_DEVINFO_DATA* info, DWORD state, bool* reboot)
+// The interface of camera `cam` (reference string "camera<N>") in a device interface class, opened for its properties;
+// INVALID_HANDLE_VALUE if there is none.
+static HANDLE OpenCameraInterface(const GUID& category, int cam)
 {
-    SP_PROPCHANGE_PARAMS pc = {};
-    pc.ClassInstallHeader.cbSize = sizeof(SP_CLASSINSTALL_HEADER);
-    pc.ClassInstallHeader.InstallFunction = DIF_PROPERTYCHANGE;
-    pc.StateChange = state;
-    pc.Scope = DICS_FLAG_GLOBAL;
-    bool ok = SetupDiSetClassInstallParamsW(set, info, &pc.ClassInstallHeader, sizeof(pc)) &&
-              SetupDiCallClassInstaller(DIF_PROPERTYCHANGE, set, info);
-    DWORD err = ok ? 0 : GetLastError();
-    SP_DEVINSTALL_PARAMS_W dip = { sizeof(dip) };
-    if (SetupDiGetDeviceInstallParamsW(set, info, &dip) && (dip.Flags & (DI_NEEDREBOOT | DI_NEEDRESTART))) *reboot = true;
+    HDEVINFO set = SetupDiGetClassDevsW(&category, nullptr, nullptr, DIGCF_DEVICEINTERFACE | DIGCF_PRESENT);
+    if (set == INVALID_HANDLE_VALUE) return INVALID_HANDLE_VALUE;
+    wchar_t want[16];
+    _snwprintf(want, 16, L"camera%d", cam + 1);
+    HANDLE h = INVALID_HANDLE_VALUE;
+    SP_DEVICE_INTERFACE_DATA di = { sizeof(di) };
+    for (DWORD i = 0; h == INVALID_HANDLE_VALUE && SetupDiEnumDeviceInterfaces(set, nullptr, &category, i, &di); i++)
+    {
+        BYTE buf[2048];
+        auto* d = (SP_DEVICE_INTERFACE_DETAIL_DATA_W*)buf;
+        d->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_W);
+        SP_DEVINFO_DATA info = { sizeof(info) };
+        if (!SetupDiGetDeviceInterfaceDetailW(set, &di, d, sizeof(buf), nullptr, &info)) continue;
+        wchar_t service[64] = L"";
+        if (!SetupDiGetDeviceRegistryPropertyW(set, &info, SPDRP_SERVICE, nullptr, (BYTE*)service, sizeof(service) - 2, nullptr) ||
+            _wcsicmp(service, L"Show2Cam") != 0)
+            continue;
+        const wchar_t* ref = wcsrchr(d->DevicePath, L'\\');
+        if (!ref || _wcsicmp(ref + 1, want) != 0) continue;
+        h = CreateFileW(d->DevicePath, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
+                        FILE_FLAG_OVERLAPPED, nullptr);
+    }
+    SetupDiDestroyDeviceInfoList(set);
+    return h;
+}
+
+static bool CameraProperty(HANDLE h, ULONG id, ULONG flags, void* data, DWORD size)
+{
+    static const GUID kPropSet = { 0x6f1c2a9e, 0x3b57, 0x4e0c, { 0x9d, 0x1a, 0x5c, 0x2e, 0x7b, 0x3f, 0x8a, 0x41 } };
+    KSPROPERTY p = {};
+    p.Set = kPropSet;
+    p.Id = id;
+    p.Flags = flags;
+    OVERLAPPED ov = {};
+    ov.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    DWORD got = 0;
+    BOOL done = ov.hEvent && DeviceIoControl(h, IOCTL_KS_PROPERTY, &p, sizeof(p), data, size, &got, &ov);
+    if (!done && ov.hEvent && GetLastError() == ERROR_IO_PENDING) done = GetOverlappedResult(h, &ov, &got, TRUE);
+    DWORD err = done ? 0 : GetLastError();
+    if (ov.hEvent) CloseHandle(ov.hEvent);
     SetLastError(err);
-    return ok;
+    return done != FALSE;
+}
+
+static const GUID kControlCategory = S2C_CONTROL_CATEGORY_INIT;
+static const GUID kVideoCategory = { 0x6994ad05, 0x93ef, 0x11d0, { 0xa3, 0xcc, 0x00, 0xa0, 0xc9, 0x22, 0x31, 0x96 } };
+
+int SetupCameraSwitchedOff(int cam)
+{
+    HANDLE h = OpenCameraInterface(kControlCategory, cam);
+    if (h == INVALID_HANDLE_VALUE) return -1;
+    S2C_SHOW s = {};
+    bool ok = CameraProperty(h, S2C_PROPERTY_ENABLED, KSPROPERTY_TYPE_GET, &s, sizeof(s));
+    CloseHandle(h);
+    return ok ? (s.Show ? 0 : 1) : -1;
 }
 
 int SetupSetCameraEnabled(int cam, bool enable)
 {
     if (cam < 0 || cam >= 10) return 3;
-    SetCameraDisabledParam(cam, !enable);
-    HDEVINFO set = SetupDiGetClassDevsW(nullptr, L"ROOT", nullptr, DIGCF_ALLCLASSES | DIGCF_PRESENT);
-    if (set == INVALID_HANDLE_VALUE) return 3;
-    int rc = 1;                     // no device for it (yet): the setting is applied when it is created
-    SP_DEVINFO_DATA d = { sizeof(d) };
-    for (DWORD i = 0; rc == 1 && SetupDiEnumDeviceInfo(set, i, &d); i++)
+    HANDLE h = OpenCameraInterface(kControlCategory, cam);
+    if (h == INVALID_HANDLE_VALUE)
     {
-        if (!HasHardwareId(set, &d) || DeviceCameraIndex(set, &d) != cam) continue;
-        ULONG st = 0, pr = 0;
-        CM_Get_DevNode_Status(&st, &pr, d.DevInst, 0);
-        bool off = pr == CM_PROB_DISABLED;
-        bool reboot = false;
-        if (enable == !off) rc = 0;
-        else if (enable)
-            rc = PropertyChange(set, &d, DICS_ENABLE, &reboot) ? (reboot ? 5 : 0) : 3;
-        else
-        {
-            // A program has it open: Windows would switch it off only after a restart, and the program would keep
-            // reading a camera the panel shows as off. It stays on.
-            PNP_VETO_TYPE veto = PNP_VetoTypeUnknown;
-            wchar_t vetoName[MAX_PATH] = L"";
-            CONFIGRET cr = CM_Query_And_Remove_SubTreeW(d.DevInst, &veto, vetoName, MAX_PATH, CM_REMOVE_NO_RESTART | CM_REMOVE_UI_NOT_OK);
-            if (cr != CR_SUCCESS)
-            {
-                AppLog(L"camera devices: camera %d in use (0x%lX, veto %d %ls): not switched off", cam + 1, (unsigned long)cr,
-                       (int)veto, vetoName);
-                SetCameraDisabledParam(cam, false);
-                rc = 2;
-            }
-            else if (PropertyChange(set, &d, DICS_DISABLE, &reboot)) rc = reboot ? 5 : 0;
-            else
-            {
-                AppLog(L"camera devices: camera %d: disabling failed (%lu)", cam + 1, GetLastError());
-                CM_Setup_DevNode(d.DevInst, CM_SETUP_DEVNODE_READY);   // back as it was
-                SetCameraDisabledParam(cam, false);
-                rc = 3;
-            }
-        }
-        if (rc == 3 && enable) SetCameraDisabledParam(cam, true);
+        // no device for it (yet): the setting only (it starts so); administrator rights
+        SetCameraDisabledParam(cam, !enable);
+        AppLog(L"camera devices: camera %d %ls: no device, setting only", cam + 1, enable ? L"on" : L"off");
+        return SetupCameraEnabled(cam) == enable ? 1 : 3;
     }
-    SetupDiDestroyDeviceInfoList(set);
-    AppLog(L"camera devices: camera %d %ls -> %d", cam + 1, enable ? L"on" : L"off", rc);
+    S2C_SHOW s = { (ULONG)cam, enable ? 1u : 0u };
+    bool ok = CameraProperty(h, S2C_PROPERTY_ENABLED, KSPROPERTY_TYPE_SET, &s, sizeof(s));
+    DWORD err = ok ? 0 : GetLastError();
+    CloseHandle(h);
+    // the driver changes its interfaces a moment later (a work item): programs see it / no longer see it
+    bool seen = !enable;
+    for (int t = 0; ok && t < 50; t++)
+    {
+        HANDLE v = OpenCameraInterface(kVideoCategory, cam);
+        seen = v != INVALID_HANDLE_VALUE;
+        if (seen) CloseHandle(v);
+        if (seen == enable) break;
+        Sleep(100);
+    }
+    int rc = !ok ? 3 : (seen == enable ? 0 : 3);
+    AppLog(L"camera devices: camera %d %ls -> %d (%lu)", cam + 1, enable ? L"on" : L"off", rc, err);
     return rc;
 }
 
-// The devices follow Camera<N>Disabled (a device just created starts on); cameras above the count lose the setting.
+// Cameras above the count lose the setting (a camera added later starts on); the others read theirs when they start.
 static void ApplyCameraStates(int count)
 {
-    for (int cam = 0; cam < 10; cam++)
-        if (cam >= count) SetCameraDisabledParam(cam, false);
-        else if (!SetupCameraEnabled(cam)) SetupSetCameraEnabled(cam, false);
+    for (int cam = count; cam < 10; cam++) SetCameraDisabledParam(cam, false);
 }
 
 // New camera i (0..n-1) takes the driver settings and the on / off state of old camera src[i]; the settings of cameras

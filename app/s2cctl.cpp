@@ -2,7 +2,7 @@
 //
 //   s2cctl status                                   cameras, their sources and who uses them
 //   s2cctl count N                                  number of cameras 0..10 (admin: devices added / removed)
-//   s2cctl enable CAM on|off                        camera switched on / off: off = gone from Windows (admin)
+//   s2cctl enable CAM on|off                        camera switched on / off: off = gone for programs at once
 //   s2cctl delete CAM                               deletes the camera, the ones after it move up (admin)
 //   s2cctl move CAM NUMBER                          the camera gets another number, the ones between move (admin)
 //   s2cctl name CAM "NAME"                          the camera's name in Windows ("" or "default" = default name)
@@ -294,7 +294,6 @@ static const wchar_t* EnableResult(int r)
     {
     case 0: return L"done";
     case 1: return L"set (no device for it yet)";
-    case 2: return L"a program has it open: not switched off";
     case 5: return L"done after a restart";
     default: return L"failed";
     }
@@ -309,11 +308,6 @@ static int CmdEnable(int argc, wchar_t** argv)
         Out(L"usage: s2cctl enable CAM on|off");
         return ExitUsage;
     }
-    if (!IsElevated())
-    {
-        Out(L"administrator rights needed (run from an elevated command prompt)");
-        return ExitAdmin;
-    }
     int rc = ExitOk, count = CameraCount();
     for (int i = 0; i < n; i++)
     {
@@ -325,7 +319,7 @@ static int CmdEnable(int argc, wchar_t** argv)
         }
         int r = SetupSetCameraEnabled(list[i], on);
         Out(L"camera %d %ls: %ls", list[i] + 1, on ? L"on" : L"off", EnableResult(r));
-        if (r == 2 || r == 3) rc = ExitFailed;
+        if (r == 3) rc = ExitFailed;
     }
     WaitCameras();
     CamConfigNotifyPanel(-1);
@@ -729,7 +723,7 @@ static int CmdImport(int argc, wchar_t** argv)
     }
     int now = CameraCount();
     int target = count >= 0 ? count : now;
-    // the on / off states in the file (administrator rights when one changes, as for the number of cameras)
+    // the on / off states in the file
     bool wantOn[S2C_MAX_CAMERAS_UI], states = false;
     for (int i = 0; i < S2C_MAX_CAMERAS_UI; i++)
     {
@@ -741,10 +735,10 @@ static int CmdImport(int argc, wchar_t** argv)
         wantOn[i] = c.enabled;
         if (i < target && wantOn[i] != SetupCameraEnabled(i)) states = true;
     }
-    if (((count >= 0 && count != now) || states) && !IsElevated())
+    (void)states;                                   // switched on / off through the driver: no rights needed
+    if (count >= 0 && count != now && !IsElevated())
     {
-        Out(L"the file has %d camera(s) (now %d)%ls: administrator rights needed to change that", target, now,
-            states ? L" and cameras switched on / off" : L"");
+        Out(L"the file has %d camera(s) (now %d): administrator rights needed to change that", target, now);
         return ExitAdmin;
     }
     int rc = ExitOk;
@@ -761,7 +755,7 @@ static int CmdImport(int argc, wchar_t** argv)
         if (wantOn[i] != SetupCameraEnabled(i))
         {
             int r = SetupSetCameraEnabled(i, wantOn[i]);
-            if (r == 2 || r == 3)
+            if (r == 3)
             {
                 Out(L"camera %d %ls: %ls", i + 1, wantOn[i] ? L"on" : L"off", EnableResult(r));
                 rc = ExitFailed;
@@ -849,7 +843,7 @@ static void Usage()
     Out(L"Show2Cam %ls - command line control", L"" S2C_VER_STR);
     Out(L"  s2cctl status");
     Out(L"  s2cctl count N                                 (0..%d; administrator)", S2C_MAX_CAMERAS_UI);
-    Out(L"  s2cctl enable CAM on|off                       (administrator)");
+    Out(L"  s2cctl enable CAM on|off                       (off: gone for programs, black for one that has it open)");
     Out(L"  s2cctl delete CAM                              (the cameras after it move up; administrator)");
     Out(L"  s2cctl move CAM NUMBER                         (another number; the cameras between move; administrator)");
     Out(L"  s2cctl name CAM \"NAME\"                         (\"\" or default = default name)");

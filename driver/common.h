@@ -65,6 +65,8 @@ struct S2C_CAMERA
     PKSPIN                  Pins[S2C_MAX_USERS];       // the open pins (guarded by Lock; the status watchdog)
     WCHAR                   UserNames[S2C_MAX_USERS][32];
     BOOLEAN                 Enabled;                   // its device interfaces are on (programs see it)
+    volatile LONG           Off;                       // switched off (S2C_PROPERTY_ENABLED): black frames
+    UNICODE_STRING          ControlLink;               // its control interface (S2C_CONTROL_CATEGORY), always on
     PDEVICE_OBJECT          Pdo;                       // the device (camera 1 names it, see ApplyName)
     volatile LONGLONG       FramesDelivered, FramesDropped, PicturesReceived;
 };
@@ -79,6 +81,9 @@ struct S2C_DEVICE
 
 // device.cpp: shows / hides camera Index, whichever device it is (S2C_PROPERTY_SHOW)
 NTSTATUS S2cShowCamera(_In_ ULONG Index, _In_ BOOLEAN Show);
+// device.cpp: camera switched on / off (S2C_PROPERTY_ENABLED): kept in Camera<N>Disabled, its interfaces changed by a
+// work item (the filter's control mutex is held where the property arrives)
+NTSTATUS S2cSwitchCamera(_In_ S2C_CAMERA* Camera, _In_ BOOLEAN On);
 
 // camera.cpp
 NTSTATUS S2cCameraCreate(_In_ ULONG Index, _In_ ULONG Width, _In_ ULONG Height, _In_ ULONG Fps, _Out_ S2C_CAMERA** Camera);

@@ -20,8 +20,15 @@
 //                               open keeps it until it closes - a camera removed while in use (its device stays
 //                               until then; removing it would leave a device a program still reads, but no longer
 //                               the camera of that number).
+//   S2C_PROPERTY_ENABLED (GET / SET) S2C_SHOW (Index: this camera's, ignored when set): the camera switched on / off
+//                               on its own filter. Off: its interfaces go at once (programs no longer list it), a
+//                               program that has it open gets black frames, kept across restarts (Camera<N>Disabled);
+//                               the Show2Cam programs reach it through its control interface (S2C_CONTROL_CATEGORY,
+//                               always on, same reference string, no program lists that category).
 enum { S2C_PROPERTY_FRAME = 0, S2C_PROPERTY_STATUS = 1, S2C_PROPERTY_FORMAT = 2, S2C_PROPERTY_NAME = 3, S2C_PROPERTY_LOG = 4,
-       S2C_PROPERTY_SHOW = 5 };
+       S2C_PROPERTY_SHOW = 5, S2C_PROPERTY_ENABLED = 6 };
+// {3C2B8F41-7D06-4E9A-B1C5-2F8E6A04D7B3}: the device interface class of the cameras' control interfaces
+#define S2C_CONTROL_CATEGORY_INIT { 0x3c2b8f41, 0x7d06, 0x4e9a, { 0xb1, 0xc5, 0x2f, 0x8e, 0x6a, 0x04, 0xd7, 0xb3 } }
 #define S2C_NAME_CHARS 64
 #define S2C_MIN_WIDTH  160
 #define S2C_MIN_HEIGHT 120

@@ -6,7 +6,7 @@
 //   Camera<N>Height   even, 120..2160 (default 720)
 //   Camera<N>Fps      1..60 (default 30)
 //   Camera<N>Name     REG_SZ, the camera's name (default "Show2Cam Camera N")
-//   Camera<N>Disabled 1: the camera is switched off (the program disables its device; not read here)
+//   Camera<N>Disabled 1: the camera is switched off (its interfaces off, black frames; S2C_PROPERTY_ENABLED)
 // One device per camera (Device Parameters\CameraIndex); size, rate and name are also changed at run time by the
 // Show2Cam program through the camera's property set (S2C_PROPERTY_FORMAT / S2C_PROPERTY_NAME).
 #include "common.h"
@@ -34,6 +34,11 @@ static void FreeCameras(S2C_DEVICE* d)
 {
     for (ULONG i = 0; i < S2C_MAX_CAMERAS; i++)
     {
+        if (d->Cameras[i] && d->Cameras[i]->ControlLink.Buffer)
+        {
+            IoSetDeviceInterfaceState(&d->Cameras[i]->ControlLink, FALSE);
+            RtlFreeUnicodeString(&d->Cameras[i]->ControlLink);
+        }
         if (d->Cameras[i]) S2cCameraFree(d->Cameras[i]);
         d->Cameras[i] = nullptr;
     }
@@ -52,7 +57,7 @@ static void UnlockCameras() { KeReleaseMutex(&g_camerasLock, FALSE); }
 
 NTSTATUS S2cShowCamera(ULONG Index, BOOLEAN Show)
 {
-    if (Index >= S2C_MAX_CAMERAS || (Index == 0 && !Show)) return STATUS_INVALID_PARAMETER;
+    if (Index >= S2C_MAX_CAMERAS) return STATUS_INVALID_PARAMETER;
     LockCameras();
     PKSDEVICE device = g_cameraDevices[Index];
     S2C_DEVICE* d = device ? (S2C_DEVICE*)device->Context : nullptr;
@@ -67,6 +72,55 @@ NTSTATUS S2cShowCamera(ULONG Index, BOOLEAN Show)
     S2cLog("Camera %lu: %s -> 0x%08lX", Index + 1, Show ? "shown" : "hidden (removed while in use)", (ULONG)status);
     S2cLogFlush();
     return status;
+}
+
+// S2C_PROPERTY_ENABLED: the state now (black frames at once), kept in the settings; the interfaces from a work item.
+struct S2C_SWITCH
+{
+    PIO_WORKITEM Item;
+    ULONG        Index;
+    BOOLEAN      On;
+};
+
+static void S2C_CB SwitchWork(_In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PVOID Context)
+{
+    UNREFERENCED_PARAMETER(DeviceObject);
+    S2C_SWITCH* s = (S2C_SWITCH*)Context;
+    if (!s) return;
+    S2cShowCamera(s->Index, s->On);
+    IoFreeWorkItem(s->Item);
+    ExFreePoolWithTag(s, S2C_POOLTAG);
+}
+
+NTSTATUS S2cSwitchCamera(_In_ S2C_CAMERA* Camera, _In_ BOOLEAN On)
+{
+    ULONG i = Camera->Index;
+    InterlockedExchange(&Camera->Off, On ? 0 : 1);
+    WCHAR value[32];
+    RtlStringCchPrintfW(value, 32, L"Camera%luDisabled", i + 1);
+    if (On) RtlDeleteRegistryValue(RTL_REGISTRY_SERVICES, L"Show2Cam\\Parameters", value);
+    else
+    {
+        ULONG one = 1;
+        RtlWriteRegistryValue(RTL_REGISTRY_SERVICES, L"Show2Cam\\Parameters", value, REG_DWORD, &one, sizeof(one));
+    }
+    LockCameras();
+    PKSDEVICE device = i < S2C_MAX_CAMERAS ? g_cameraDevices[i] : nullptr;
+    UnlockCameras();
+    if (!device) return STATUS_NOT_FOUND;
+    S2C_SWITCH* s = (S2C_SWITCH*)ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(S2C_SWITCH), S2C_POOLTAG);
+    if (!s) return STATUS_INSUFFICIENT_RESOURCES;
+    s->Item = IoAllocateWorkItem(device->FunctionalDeviceObject);
+    if (!s->Item)
+    {
+        ExFreePoolWithTag(s, S2C_POOLTAG);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    s->Index = i;
+    s->On = On;
+    S2cLog("Camera %lu: switched %s", i + 1, On ? "on" : "off");
+    IoQueueWorkItem(s->Item, (PIO_WORKITEM_ROUTINE)SwitchWork, DelayedWorkQueue, s);
+    return STATUS_SUCCESS;
 }
 
 // The camera of this device: Device Parameters\CameraIndex (0-based), 0 when not set.
@@ -119,6 +173,18 @@ static NTSTATUS S2C_CB DeviceStart(_In_ PKSDEVICE Device, _In_ PIRP Irp, _In_opt
         EnableCamera(Device, d, index, FALSE);
         S2cLog("StartDevice: camera %lu is above the number of cameras (%lu): hidden", index + 1, count);
     }
+    else if (NT_SUCCESS(status))
+    {
+        // switched off in the Show2Cam program: its interfaces off, black frames
+        WCHAR name[32];
+        RtlStringCchPrintfW(name, 32, L"Camera%luDisabled", index + 1);
+        if (ReadDword(name, 0))
+        {
+            InterlockedExchange(&d->Cameras[index]->Off, 1);
+            EnableCamera(Device, d, index, FALSE);
+            S2cLog("StartDevice: camera %lu is switched off", index + 1);
+        }
+    }
     KsReleaseDevice(Device);
     if (NT_SUCCESS(status))
     {
@@ -164,6 +230,13 @@ static NTSTATUS EnableCamera(PKSDEVICE Device, S2C_DEVICE* d, ULONG i, BOOLEAN o
             return status;
         }
         d->Cameras[i] = c;
+        // the control interface: the Show2Cam programs reach the camera also while it is off (no program lists it)
+        static const GUID kControl = S2C_CONTROL_CATEGORY_INIT;
+        UNICODE_STRING ref;
+        RtlInitUnicodeString(&ref, c->RefString);
+        NTSTATUS ctl = IoRegisterDeviceInterface(Device->PhysicalDeviceObject, &kControl, &ref, &c->ControlLink);
+        if (NT_SUCCESS(ctl)) ctl = IoSetDeviceInterfaceState(&c->ControlLink, TRUE);
+        if (!NT_SUCCESS(ctl)) S2cLog("Camera %lu: control interface 0x%08lX", i + 1, (ULONG)ctl);
     }
     if (c->Enabled == on) return STATUS_SUCCESS;
     NTSTATUS status = KsFilterFactorySetDeviceClassesState(c->Factory, on);

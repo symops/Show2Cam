@@ -623,6 +623,26 @@ static NTSTATUS S2C_CB SetShow(_In_ PIRP Irp, _In_ PKSIDENTIFIER Request, _Inout
     return S2cShowCamera(s->Index, s->Show != 0);
 }
 
+static NTSTATUS S2C_CB SetEnabled(_In_ PIRP Irp, _In_ PKSIDENTIFIER Request, _Inout_ PVOID Data)
+{
+    UNREFERENCED_PARAMETER(Request);
+    S2C_CAMERA* c = CameraFromIrp(Irp);
+    if (!c || PropertyDataSize(Irp) < sizeof(S2C_SHOW)) return STATUS_INVALID_PARAMETER;
+    return S2cSwitchCamera(c, ((const S2C_SHOW*)Data)->Show != 0);
+}
+
+static NTSTATUS S2C_CB GetEnabled(_In_ PIRP Irp, _In_ PKSIDENTIFIER Request, _Inout_ PVOID Data)
+{
+    UNREFERENCED_PARAMETER(Request);
+    S2C_CAMERA* c = CameraFromIrp(Irp);
+    if (!c || PropertyDataSize(Irp) < sizeof(S2C_SHOW)) return STATUS_INVALID_PARAMETER;
+    S2C_SHOW* s = (S2C_SHOW*)Data;
+    s->Index = c->Index;
+    s->Show = c->Off ? 0 : 1;
+    Irp->IoStatus.Information = sizeof(S2C_SHOW);
+    return STATUS_SUCCESS;
+}
+
 static const KSPROPERTY_ITEM kProperties[] = {
     { S2C_PROPERTY_FRAME, { nullptr }, sizeof(KSPROPERTY), sizeof(S2C_FRAME_HEADER), { (PFNKSHANDLER)SetFrame },
       nullptr, 0, nullptr, nullptr, 0 },
@@ -635,6 +655,8 @@ static const KSPROPERTY_ITEM kProperties[] = {
     { S2C_PROPERTY_LOG, { (PFNKSHANDLER)GetLog }, sizeof(KSPROPERTY), sizeof(S2C_LOG), { nullptr },
       nullptr, 0, nullptr, nullptr, 0 },
     { S2C_PROPERTY_SHOW, { nullptr }, sizeof(KSPROPERTY), sizeof(S2C_SHOW), { (PFNKSHANDLER)SetShow },
+      nullptr, 0, nullptr, nullptr, 0 },
+    { S2C_PROPERTY_ENABLED, { (PFNKSHANDLER)GetEnabled }, sizeof(KSPROPERTY), sizeof(S2C_SHOW), { (PFNKSHANDLER)SetEnabled },
       nullptr, 0, nullptr, nullptr, 0 },
 };
 static const KSPROPERTY_SET kPropertySets[] = {
@@ -923,6 +945,20 @@ void S2cRenderFrame(_In_ S2C_CAMERA* c, _In_ const KS_VIDEOINFOHEADER* Info, _Ou
     ULONG fourcc = Info->bmiHeader.biCompression;
     if (!w || !h) return;
 
+    if (c->Off)
+    {
+        // switched off: black (the program that has it open sees the camera go dark, no picture of the source)
+        if (fourcc == FOURCC('Y', 'U', 'Y', '2') && DstSize >= w * h * 2)
+            for (SIZE_T i = 0; i < (SIZE_T)w * h * 2; i += 2) { Dst[i] = 16; Dst[i + 1] = 128; }
+        else if (fourcc == FOURCC('N', 'V', '1', '2') && DstSize >= w * h * 3 / 2)
+        {
+            RtlFillMemory(Dst, (SIZE_T)w * h, 16);
+            RtlFillMemory(Dst + (SIZE_T)w * h, (SIZE_T)w * h / 2, 128);
+        }
+        else if (fourcc == 0 && DstSize >= w * h * 4)
+            for (SIZE_T i = 0; i < (SIZE_T)w * h; i++) ((ULONG*)Dst)[i] = 0xFF000000;
+        return;
+    }
     ExAcquireFastMutex(&c->Lock);
     const ULONG* pic = c->Picture;
     ULONG pw = c->PictureWidth, ph = c->PictureHeight;

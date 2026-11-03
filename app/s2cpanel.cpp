@@ -556,14 +556,20 @@ static int ScanCameras(bool log)
     for (int j = 0; j < n; j++)
         if (found[j].index < count) found[kept++] = found[j];
     n = kept;
+    static CamInfo ctl[S2C_MAX_CAMERAS_UI];
+    int nCtl = -1;
     for (int idx = 0; idx < count && n < S2C_MAX_CAMERAS_UI; idx++)
     {
         bool present = false;
         for (int j = 0; j < n && !present; j++) present = found[j].index == idx;
         if (present) continue;
+        // switched off (or not offered yet): through its control interface when its device runs (name, status)
+        if (nCtl < 0) nCtl = CamListControl(ctl, S2C_MAX_CAMERAS_UI);
         CamInfo& c = found[n++];
         c.index = idx;
         c.path[0] = 0;
+        for (int k = 0; k < nCtl; k++)
+            if (ctl[k].index == idx && !SetupCameraEnabled(idx)) wcscpy(c.path, ctl[k].path);
         CamSavedName(idx, c.name);
     }
     qsort(found, n, sizeof(CamInfo), [](const void* a, const void* b) {
@@ -793,8 +799,8 @@ static void ShowSelected(bool keepEdits)
     bool ok = g_sel >= 0 && g_sel < g_camCount;
     const int ids[] = { IDC_NAME, IDC_ENABLED, IDC_SOURCE, IDC_PARAM, IDC_BROWSE, IDC_AUDIO, IDC_RES, IDC_FPS };
     for (int id : ids) EnableWindow(Ctl(id), ok);
-    // a camera switched off has no device interface to take a new name (it keeps the one it has)
-    if (ok && !g_cams[g_sel].config.enabled) EnableWindow(Ctl(IDC_NAME), FALSE);
+    // a camera without a running device has nothing to take a new name
+    if (ok && !g_cams[g_sel].info.path[0]) EnableWindow(Ctl(IDC_NAME), FALSE);
     if (!ok) EnableWindow(Ctl(IDC_CAM_APPLY), FALSE);
     wchar_t title[200];
     if (ok) _snwprintf(title, 200, TR(L"Камера %d: %ls"), g_cams[g_sel].info.index + 1, g_cams[g_sel].info.name);
@@ -1398,7 +1404,7 @@ static int ApplyDisabledMask(DWORD disabledMask)
         bool on = !(disabledMask & (1u << cam));
         if (on == SetupCameraEnabled(cam)) continue;
         int r = SetupSetCameraEnabled(cam, on);
-        if (r == 2 || r == 3) worst = worst == 2 || worst == 3 ? worst : r;
+        if (r == 3) worst = 3;
         else if (r == 5 && worst == 0) worst = 5;
     }
     return worst;
@@ -1412,12 +1418,17 @@ static DWORD CurrentDisabledMask()
     return mask;
 }
 
+// Through the driver: no administrator rights (a camera without a running device: its setting, with them).
 static int SetDisabledMask(DWORD mask)
 {
-    if (g_elevated) return ApplyDisabledMask(mask);
-    wchar_t args[64];
-    _snwprintf(args, 64, L"--set-disabled %lu", (unsigned long)mask);
-    return RunElevated(args);
+    int rc = ApplyDisabledMask(mask);
+    if (rc == 3 && !g_elevated)
+    {
+        wchar_t args[64];
+        _snwprintf(args, 64, L"--set-disabled %lu", (unsigned long)mask);
+        rc = RunElevated(args);
+    }
+    return rc;
 }
 
 // "Enabled" applied / "Switch off" / "Switch on": the camera's device is disabled / enabled (programs no longer see it,
@@ -1440,7 +1451,6 @@ static void OnSetEnabled(int i, bool on)
     {
     case 0:
     case 1: AddEventF(on ? TR(L"Камера «%ls» включена.") : TR(L"Камера «%ls» отключена."), name); break;
-    case 2: AddEventF(TR(L"Камера «%ls» не отключена: её использует программа."), name); break;
     case 5: AddEventF(TR(L"Камера «%ls»: изменение вступит в силу после перезагрузки компьютера."), name); break;
     case -1: AddEvent(TR(L"Нужны права администратора: запрос был отклонён.")); break;
     default: AddEventF(TR(L"Не удалось изменить камеру «%ls» (код %d)."), name, rc); break;
@@ -1742,7 +1752,6 @@ static void ImportFrom(const wchar_t* path)
         int rc = SetDisabledMask(want);
         AppLog(L"import: cameras off 0x%lX -> %d", (unsigned long)want, rc);
         if (rc == -1) AddEvent(TR(L"Нужны права администратора: запрос был отклонён."));
-        else if (rc == 2) AddEvent(TR(L"Камера не отключена: её использует программа."));
         else if (rc != 0 && rc != 1 && rc != 5) AddEventF(TR(L"Не удалось включить или отключить камеры (код %d)."), rc);
     }
     AddEventF(TR(L"Настройки загружены из %ls"), path);
