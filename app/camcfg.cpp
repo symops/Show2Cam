@@ -1,5 +1,6 @@
 // Camera settings in the registry and the settings file (see camcfg.h).
 #include "camcfg.h"
+#include "camdev.h"
 #include "../driver/version.h"
 #include <wchar.h>
 
@@ -15,9 +16,21 @@ void CamConfigDefault(int index, CamConfig* c)
     _snwprintf(c->text, 256, L"Camera %d", index + 1);
 }
 
+// Camera<N>Disabled in the driver settings (readable without administrator rights).
+static bool CameraEnabled(int index)
+{
+    wchar_t name[32];
+    _snwprintf(name, 32, L"Camera%dDisabled", index + 1);
+    DWORD v = 0, size = sizeof(v);
+    RegGetValueW(HKEY_LOCAL_MACHINE, L"SYSTEM\\CurrentControlSet\\Services\\Show2Cam\\Parameters", name, RRF_RT_REG_DWORD, nullptr, &v,
+                 &size);
+    return v == 0;
+}
+
 void CamConfigLoad(int index, CamConfig* c)
 {
     CamConfigDefault(index, c);
+    c->enabled = CameraEnabled(index);
     wchar_t key[64];
     ConfigKey(index, key);
     HKEY k;
@@ -76,6 +89,80 @@ void CamConfigSave(int index, const CamConfig& c)
     RegCloseKey(k);
 }
 
+void CamConfigDelete(int index)
+{
+    wchar_t key[64];
+    ConfigKey(index, key);
+    RegDeleteTreeW(HKEY_CURRENT_USER, key);
+    RegDeleteKeyW(HKEY_CURRENT_USER, key);
+}
+
+void CamConfigPermute(const int* src, int n, int count)
+{
+    static CamConfig all[S2C_MAX_CAMERAS_UI];
+    for (int i = 0; i < count && i < S2C_MAX_CAMERAS_UI; i++) CamConfigLoad(i, &all[i]);
+    for (int i = 0; i < n; i++)
+        if (src[i] != i) CamConfigSave(i, all[src[i]]);
+    for (int i = n; i < count; i++) CamConfigDelete(i);
+}
+
+int CamDeletePermutation(int index, int count, int* src)
+{
+    int n = 0;
+    for (int i = 0; i < count; i++)
+        if (i != index) src[n++] = i;
+    return n;
+}
+
+int CamMovePermutation(int from, int to, int count, int* src)
+{
+    int n = CamDeletePermutation(from, count, src);
+    for (int k = n; k > to; k--) src[k] = src[k - 1];
+    src[to] = from;
+    return n + 1;
+}
+
+void CamNamesNow(int count, wchar_t (*names)[S2C_NAME_CHARS])
+{
+    CamInfo cams[S2C_MAX_CAMERAS_UI];
+    int n = CamList(cams, S2C_MAX_CAMERAS_UI);
+    for (int i = 0; i < count && i < S2C_MAX_CAMERAS_UI; i++)
+    {
+        CamSavedName(i, names[i]);
+        for (int k = 0; k < n; k++)
+            if (cams[k].index == i) wcscpy(names[i], cams[k].name);
+    }
+}
+
+void CamNamesAfterPermute(const int* src, int n, wchar_t (*names)[S2C_NAME_CHARS])
+{
+    CamInfo cams[S2C_MAX_CAMERAS_UI];
+    int found = CamList(cams, S2C_MAX_CAMERAS_UI);
+    for (int k = 0; k < found; k++)
+    {
+        int i = cams[k].index;
+        if (i < 0 || i >= n || src[i] == i) continue;
+        // a default name stays the default (of the new number)
+        wchar_t def[S2C_NAME_CHARS];
+        _snwprintf(def, S2C_NAME_CHARS, L"Show2Cam Camera %d", src[i] + 1);
+        HANDLE h = CamOpen(cams[k].path);
+        if (h == INVALID_HANDLE_VALUE) continue;
+        CamSetName(h, wcscmp(names[src[i]], def) ? names[src[i]] : L"");
+        CloseHandle(h);
+    }
+}
+
+void CamSavedName(int index, wchar_t* out)
+{
+    wchar_t value[32];
+    _snwprintf(value, 32, L"Camera%dName", index + 1);
+    DWORD size = S2C_NAME_CHARS * sizeof(wchar_t);
+    if (RegGetValueW(HKEY_LOCAL_MACHINE, L"SYSTEM\\CurrentControlSet\\Services\\Show2Cam\\Parameters", value, RRF_RT_REG_SZ, nullptr, out,
+                     &size) != ERROR_SUCCESS || !out[0])
+        _snwprintf(out, S2C_NAME_CHARS, L"Show2Cam Camera %d", index + 1);
+    out[S2C_NAME_CHARS - 1] = 0;
+}
+
 bool CamPanelRunning()
 {
     return FindWindowW(S2C_PANEL_CLASS, nullptr) != nullptr;
@@ -131,6 +218,7 @@ void CamIniWriteCamera(const wchar_t* path, int index, const wchar_t* name, cons
     IniNum(path, sec, L"Height", c.height);
     IniNum(path, sec, L"Fps", c.fps);
     IniNum(path, sec, L"Paused", c.paused ? 1 : 0);
+    IniNum(path, sec, L"Enabled", c.enabled ? 1 : 0);
 }
 
 bool CamIniFlush(const wchar_t* path)
@@ -158,11 +246,11 @@ static bool IniGetStr(const wchar_t* path, const wchar_t* sec, const wchar_t* ke
 
 bool CamIniCheck(const wchar_t* path, int* count)
 {
-    *count = 0;
+    *count = -1;
     if (GetFileAttributesW(path) == INVALID_FILE_ATTRIBUTES) return false;
     UINT n = IniGetNum(path, L"Show2Cam", L"CameraCount");
     bool any = n != kNone;
-    if (n != kNone && n >= 1 && n <= S2C_MAX_CAMERAS_UI) *count = (int)n;
+    if (n != kNone && n <= S2C_MAX_CAMERAS_UI) *count = (int)n;
     for (int i = 1; i <= S2C_MAX_CAMERAS_UI && !any; i++)
     {
         wchar_t sec[16];
@@ -197,6 +285,8 @@ bool CamIniReadCamera(const wchar_t* path, int index, CamConfig* c, wchar_t* nam
     if (fps != kNone && fps <= S2C_MAX_FPS) c->fps = fps;
     k = IniGetNum(path, sec, L"Paused");
     if (k <= 1) c->paused = k == 1;
+    k = IniGetNum(path, sec, L"Enabled");
+    if (k <= 1) c->enabled = k == 1;
     name[0] = 0;
     *hasName = IniGetStr(path, sec, L"Name", name, S2C_NAME_CHARS);
     return true;

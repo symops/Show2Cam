@@ -196,7 +196,7 @@ static void RefreshState()
     int configured = SetupTestSigningConfigured();
     g_testNext = configured < 0 ? g_testOk : configured != 0;
     g_secureOk = !secure;
-    g_driverOk = SetupDeviceCount() > 0;
+    g_driverOk = SetupDeviceCount() > 0 || SetupInstalledWithoutCameras();
 
     SetWindowTextW(Ctl(IDC_ST_TEST), g_testOk
         ? (g_testNext ? TR(L"✔  Тестовый режим подписи включён")

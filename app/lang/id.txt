@@ -273,3 +273,27 @@ Kamera yang sedang dibuka program dihapus dari daftar kamera; program tetap mema
 Folder instalasi:
 Telusuri…
 Pilih lokasi instalasi (folder %ls dibuat di dalamnya)
+nonaktif
+Aktif
+Nonaktif
+Kamera “%ls” diaktifkan.
+Kamera “%ls” dinonaktifkan.
+Kamera “%ls” tidak dinonaktifkan: sebuah program sedang menggunakannya.
+Kamera “%ls”: perubahan berlaku setelah komputer dimulai ulang.
+Tidak dapat mengubah kamera “%ls” (kode %d).
+Hapus kamera “%ls”?\n\nKamera sesudahnya bergeser ke tempatnya, jumlah kamera berkurang 1.
+Tidak dapat menghapus kamera “%ls”.
+Kamera “%ls” dihapus. Jumlah kamera: %d.
+Kamera yang dipegang program tidak dapat dinonaktifkan di tempat barunya.
+Tidak dapat mengubah nomor kamera “%ls”.
+Kamera “%ls”: nomor %d.
+Perubahan berlaku setelah komputer dimulai ulang.
+Nomor kamera:
+Nonaktifkan
+Aktifkan
+Hapus…
+Sebuah kamera tidak dinonaktifkan: sebuah program sedang menggunakannya.
+Tidak dapat mengaktifkan atau menonaktifkan kamera (kode %d).
+Jumlah kamera: 0 — driver terpasang, Windows tidak memiliki kamera.
+Semua kamera Show2Cam dinonaktifkan di panel kontrol.
+Driver terpasang (kamera: 0).

@@ -19,6 +19,7 @@
 #include "autostart.h"
 #include "../driver/version.h"
 #include <commctrl.h>
+#include <windowsx.h>
 #include <commdlg.h>
 #include <shellapi.h>
 #include <shobjidl.h>
@@ -30,16 +31,18 @@ enum
 {
     IDC_RESET_ALL = 100, IDC_L_LANG, IDC_LANG,
     IDC_GROUP1, IDC_LIST, IDC_L_COUNT, IDC_COUNT, IDC_COUNT_APPLY,
-    IDC_GROUP2, IDC_L_NAME, IDC_NAME, IDC_L_SOURCE, IDC_SOURCE, IDC_L_PARAM, IDC_PARAM, IDC_BROWSE,
+    IDC_GROUP2, IDC_L_NAME, IDC_NAME, IDC_ENABLED, IDC_L_SOURCE, IDC_SOURCE, IDC_L_PARAM, IDC_PARAM, IDC_BROWSE,
     IDC_L_AUDIO, IDC_AUDIO, IDC_L_RES, IDC_RES, IDC_L_FPS, IDC_FPS, IDC_TEST, IDC_PLAY, IDC_CAM_APPLY,
     IDC_EVENTS, IDC_CLEARLOG, IDC_AUTOSTART, IDC_EXPORT, IDC_IMPORT,
 };
 
 enum { TIMER_STATUS = 1, TIMER_RESCAN = 3 };
+// Columns of the camera list.
+enum { COL_NUM = 0, COL_NAME, COL_STATUS, COL_SOURCE, COL_FORMAT, COL_STATE, COL_COUNT };
 #define WM_APP_CAMEVENT (WM_APP + 30)
 #define WM_APP_TRAY     (WM_APP + 31)
 #define WM_APP_SWITCH   (WM_APP + 32)     // wParam: the camera to switch to after asking about unsaved settings
-enum { IDM_TRAY_OPEN = 40001, IDM_TRAY_EXIT };
+enum { IDM_TRAY_OPEN = 40001, IDM_TRAY_EXIT, IDM_CAM_PLAY, IDM_CAM_ENABLE, IDM_CAM_DELETE, IDM_CAM_NUMBER = 40100 };
 
 // ---------------------------------------------------------------------------
 // State
@@ -458,6 +461,7 @@ static void ClosePreview(int i);
 static void ShowSelected(bool keepEdits = false);
 static void FillList();
 static void PreviewTitle(int i);
+static void UpdateListRow(int i);
 
 static void StopRunners()
 {
@@ -472,66 +476,180 @@ static void StopRunners()
 // Names imported for cameras that appear later (the imported number of cameras is reached a moment after).
 static wchar_t g_pendingName[S2C_MAX_CAMERAS_UI][S2C_NAME_CHARS];
 
+static Cam g_scanOld[S2C_MAX_CAMERAS_UI];  // ScanCameras' previous list (file scope: no guarded local static)
+
+// The list position of camera `number` (0-based camera number), -1 if not in the list.
+static int CamPos(int number)
+{
+    for (int i = 0; i < g_camCount; i++)
+        if (g_cams[i].info.index == number) return i;
+    return -1;
+}
+
+// Moves a list entry (its runner, preview window and picture go with it).
+static void MoveCam(Cam& to, Cam& from)
+{
+    to.info = from.info;
+    to.config = from.config;
+    to.runner = from.runner;
+    to.status = from.status;
+    to.audioMissingLogged = from.audioMissingLogged;
+    to.preview = from.preview;
+    to.previewPic.Free();
+    to.previewPic.px = from.previewPic.px;
+    to.previewPic.w = from.previewPic.w;
+    to.previewPic.h = from.previewPic.h;
+    from.previewPic.px = nullptr;
+    from.runner = nullptr;
+    from.preview = nullptr;
+}
+
+// The camera's worker, when it is switched on and Windows offers it (its preview window, if open, gets the frames).
+static void StartRunner(int i)
+{
+    Cam& c = g_cams[i];
+    if (c.runner || !c.info.path[0] || !c.config.enabled) return;
+    c.runner = RunnerStart(c.info.index, c.info.path, c.config, g_wnd, WM_APP_CAMEVENT);
+    if (c.preview) RunnerSetPreview(c.runner, true);
+}
+
+// The camera's worker stopped (its device is let go: switched off, deleted); an open preview window stays.
+static void StopRunner(int i)
+{
+    Cam& c = g_cams[i];
+    if (c.runner) RunnerStop(c.runner);
+    c.runner = nullptr;
+    c.previewPic.Free();
+    ZeroMemory(&c.status, sizeof(c.status));
+    if (c.preview) InvalidateRect(c.preview, nullptr, FALSE);
+}
+
+// A name imported for a camera that was not there (or switched off) then.
+static void ApplyPendingName(CamInfo& cam)
+{
+    int idx = cam.index;
+    if (idx < 0 || idx >= S2C_MAX_CAMERAS_UI || !g_pendingName[idx][0] || !cam.path[0]) return;
+    HANDLE h = CamOpen(cam.path);
+    if (h != INVALID_HANDLE_VALUE)
+    {
+        const wchar_t* want = wcscmp(g_pendingName[idx], L"-") ? g_pendingName[idx] : L"";
+        if (CamSetName(h, want)) wcsncpy(cam.name, want[0] ? want : cam.name, S2C_NAME_CHARS - 1);
+        CloseHandle(h);
+    }
+    g_pendingName[idx][0] = 0;
+}
+
 // Looks for the cameras again; restarts the runners when they changed. Returns the number of cameras.
+// Every camera of the number of cameras is in the list: one switched off (no device interface then) greyed with its
+// saved name, one that Windows does not offer (yet) as "no connection".
 static int ScanCameras(bool log)
 {
     static CamInfo found[S2C_MAX_CAMERAS_UI];
     int n = CamList(found, S2C_MAX_CAMERAS_UI);
+    int count = (int)S2cGetParam(L"CameraCount", 1);
+    if (count < 0 || count > S2C_MAX_CAMERAS_UI) count = 1;
+#ifdef S2C_UI_TEST
+    if (count < n) count = n;                       // Wine: the pretend cameras
+#endif
+    // a device above the number (removed a moment ago, or kept by a program and hidden) is not a camera any more
+    int kept = 0;
+    for (int j = 0; j < n; j++)
+        if (found[j].index < count) found[kept++] = found[j];
+    n = kept;
+    for (int idx = 0; idx < count && n < S2C_MAX_CAMERAS_UI; idx++)
+    {
+        bool present = false;
+        for (int j = 0; j < n && !present; j++) present = found[j].index == idx;
+        if (present) continue;
+        CamInfo& c = found[n++];
+        c.index = idx;
+        c.path[0] = 0;
+        CamSavedName(idx, c.name);
+    }
+    qsort(found, n, sizeof(CamInfo), [](const void* a, const void* b) {
+        return ((const CamInfo*)a)->index - ((const CamInfo*)b)->index;
+    });
     bool same = n == g_camCount;
     for (int i = 0; same && i < n; i++)
         same = found[i].index == g_cams[i].info.index && wcscmp(found[i].path, g_cams[i].info.path) == 0;
     if (same)
     {
-        for (int i = 0; i < n; i++) wcscpy(g_cams[i].info.name, found[i].name);    // names may have changed
+        for (int i = 0; i < n; i++)
+        {
+            Cam& c = g_cams[i];
+            wcscpy(c.info.name, found[i].name);     // names may have changed
+            bool on = SetupCameraEnabled(c.info.index);
+            if (on != c.config.enabled)
+            {
+                // switched on / off elsewhere (s2cctl): the form follows unless it holds an unsaved choice
+                if (g_editCam == c.info.index && g_edit.enabled == c.config.enabled) g_edit.enabled = on;
+                c.config.enabled = on;
+                if (!on) StopRunner(i);
+                if (c.preview) InvalidateRect(c.preview, nullptr, FALSE);
+                UpdateListRow(i);
+                if (i == g_sel) ShowSelected(true);
+            }
+            StartRunner(i);                         // a worker stopped for a change that did not happen
+        }
         return n;
     }
     int keepSel = g_sel >= 0 && g_sel < g_camCount ? g_cams[g_sel].info.index : 0;
-    // The cameras that stay keep running (their source and preview are not interrupted); usually only the
-    // last ones come or go (the number of cameras changed).
-    int keep = 0;
-    while (keep < n && keep < g_camCount && found[keep].index == g_cams[keep].info.index &&
-           wcscmp(found[keep].path, g_cams[keep].info.path) == 0)
-    {
-        wcscpy(g_cams[keep].info.name, found[keep].name);
-        // a camera that stays but lost its worker (its removal was asked for and Windows kept it): a new one
-        if (!g_cams[keep].runner)
-            g_cams[keep].runner = RunnerStart(keep, g_cams[keep].info.path, g_cams[keep].config, g_wnd, WM_APP_CAMEVENT);
-        keep++;
-    }
-    for (int i = keep; i < g_camCount; i++)
-    {
-        ClosePreview(i);
-        RunnerStop(g_cams[i].runner);
-        g_cams[i].runner = nullptr;
-    }
+    // The entries pair by camera number: a camera that stays the same device keeps its worker (its source and preview
+    // are not interrupted); one switched on / off keeps its preview window.
+    Cam* old = g_scanOld;
+    int oldCount = g_camCount;
+    bool usedOld[S2C_MAX_CAMERAS_UI] = {};
+    for (int j = 0; j < oldCount; j++) MoveCam(old[j], g_cams[j]);
     g_camCount = n;
     g_sel = -1;
-    for (int i = 0; i < keep; i++)
-        if (g_cams[i].info.index == keepSel) g_sel = i;
-    for (int i = keep; i < n; i++)
+    for (int i = 0; i < n; i++)
     {
-        int idx = found[i].index;
-        if (idx >= 0 && idx < S2C_MAX_CAMERAS_UI && g_pendingName[idx][0])
-        {
-            // a name imported for a camera that was not there yet
-            HANDLE h = CamOpen(found[i].path);
-            if (h != INVALID_HANDLE_VALUE)
-            {
-                const wchar_t* want = wcscmp(g_pendingName[idx], L"-") ? g_pendingName[idx] : L"";
-                if (CamSetName(h, want)) wcsncpy(found[i].name, want[0] ? want : found[i].name, S2C_NAME_CHARS - 1);
-                CloseHandle(h);
-            }
-            g_pendingName[idx][0] = 0;
-        }
         Cam& c = g_cams[i];
-        c.info = found[i];
-        LoadConfig(c.info.index, &c.config);
-        c.audioMissingLogged = false;
-        ZeroMemory(&c.status, sizeof(c.status));
-        c.runner = RunnerStart(i, c.info.path, c.config, g_wnd, WM_APP_CAMEVENT);
+        int j = 0;
+        while (j < oldCount && (usedOld[j] || old[j].info.index != found[i].index)) j++;
+        if (j < oldCount)
+        {
+            usedOld[j] = true;
+            MoveCam(c, old[j]);
+            if (wcscmp(c.info.path, found[i].path) != 0)
+            {
+                StopRunner(i);                      // another device (or none: switched off)
+                ApplyPendingName(found[i]);
+                c.info = found[i];
+            }
+            wcscpy(c.info.name, found[i].name);
+            c.config.enabled = SetupCameraEnabled(c.info.index);
+        }
+        else
+        {
+            ApplyPendingName(found[i]);
+            c.info = found[i];
+            LoadConfig(c.info.index, &c.config);
+            c.audioMissingLogged = false;
+            ZeroMemory(&c.status, sizeof(c.status));
+            c.runner = nullptr;
+            c.preview = nullptr;
+            c.previewPic.Free();
+        }
+        if (c.preview) SetWindowLongPtrW(c.preview, GWLP_USERDATA, (LONG_PTR)i);
+        StartRunner(i);
         if (c.info.index == keepSel) g_sel = i;
     }
-    if (g_sel < 0 && n > 0) g_sel = 0;
+    // cameras gone (the number of cameras went down)
+    for (int j = 0; j < oldCount; j++)
+    {
+        if (usedOld[j]) continue;
+        if (old[j].runner) RunnerStop(old[j].runner);
+        old[j].runner = nullptr;
+        old[j].previewPic.Free();
+        if (old[j].preview)
+        {
+            HWND w = old[j].preview;
+            old[j].preview = nullptr;
+            DestroyWindow(w);
+        }
+    }
+    if (g_sel < 0 && n > 0) g_sel = n - 1 < keepSel ? n - 1 : 0;
     if (log) AppLog(L"cameras: %d", n);
     FillList();
     ShowSelected();
@@ -552,27 +670,31 @@ static void UpdateListRow(int i)
 {
     Cam& c = g_cams[i];
     wchar_t t[300];
-    ListSetText(i, 0, c.info.name);
+    wchar_t num[8];
+    _snwprintf(num, 8, L"%d", c.info.index + 1);
+    ListSetText(i, COL_NUM, num);
+    ListSetText(i, COL_NAME, c.info.name);
     const wchar_t* what = SourceName(c.config.kind);
     if (c.config.kind == SourceText) _snwprintf(t, 300, L"%ls: %ls", what, c.config.text);
     else if (c.config.kind == SourceStream) _snwprintf(t, 300, L"%ls: %ls", what, c.config.url);
     else if (c.status.current[0]) _snwprintf(t, 300, L"%ls: %ls", what, FileName(c.status.current));
     else _snwprintf(t, 300, L"%ls", what);
     t[299] = 0;
-    ListSetText(i, 2, t);
-    // Status: a symbol (green: plays, grey: paused; see ListCustomDraw)
-    ListSetText(i, 1, c.config.paused ? L"\u25AE\u25AE" : L"\u25B6");
-    if (c.status.deviceOpen) FormatText(t, 300, c.status.driver.Width, c.status.driver.Height, c.status.driver.Fps);
+    ListSetText(i, COL_SOURCE, t);
+    // Status: a symbol (green: plays, grey: paused, grey cross: switched off; see ListCustomDraw)
+    ListSetText(i, COL_STATUS, !c.config.enabled ? L"\u2715" : c.config.paused ? L"\u25AE\u25AE" : L"\u25B6");
+    if (c.status.deviceOpen && c.config.enabled) FormatText(t, 300, c.status.driver.Width, c.status.driver.Height, c.status.driver.Fps);
     else wcscpy(t, L"—");
-    ListSetText(i, 3, t);
+    ListSetText(i, COL_FORMAT, t);
     wchar_t users[300], state[320];
     UsersText(c.status, users, 300);
-    if (!c.status.deviceOpen) wcscpy(state, TR(L"нет связи"));
+    if (!c.config.enabled) wcscpy(state, TR(L"отключена"));
+    else if (!c.status.deviceOpen) wcscpy(state, TR(L"нет связи"));
     else if (users[0] && wcscmp(users, TR(L"не определено")) == 0) wcscpy(state, TR(L"● используется"));
     else if (users[0]) _snwprintf(state, 320, L"● %ls", users);
     else wcscpy(state, TR(L"○ не используется"));
     state[319] = 0;
-    ListSetText(i, 4, state);
+    ListSetText(i, COL_STATE, state);
 }
 
 static void FillList()
@@ -585,7 +707,9 @@ static void FillList()
         LVITEMW it = {};
         it.mask = LVIF_TEXT;
         it.iItem = i;
-        it.pszText = g_cams[i].info.name;
+        wchar_t num[8];
+        _snwprintf(num, 8, L"%d", g_cams[i].info.index + 1);
+        it.pszText = num;
         ListView_InsertItem(list, &it);
         UpdateListRow(i);
     }
@@ -657,9 +781,9 @@ static void LayoutParamRow(int kind)
 
 static void UpdatePlayButton()
 {
-    bool ok = g_sel >= 0;
+    bool ok = g_sel >= 0 && g_sel < g_camCount;
     SetText(IDC_PLAY, ok && g_cams[g_sel].config.paused ? TR(L"Играть") : TR(L"Пауза"));
-    EnableWindow(Ctl(IDC_PLAY), ok);
+    EnableWindow(Ctl(IDC_PLAY), ok && g_cams[g_sel].config.enabled);
     SetText(IDC_TEST, ok && g_cams[g_sel].preview ? TR(L"Закрыть проверку") : TR(L"Проверка"));
     EnableWindow(Ctl(IDC_TEST), ok);
 }
@@ -667,8 +791,10 @@ static void UpdatePlayButton()
 static void ShowSelected(bool keepEdits)
 {
     bool ok = g_sel >= 0 && g_sel < g_camCount;
-    const int ids[] = { IDC_NAME, IDC_SOURCE, IDC_PARAM, IDC_BROWSE, IDC_AUDIO, IDC_RES, IDC_FPS };
+    const int ids[] = { IDC_NAME, IDC_ENABLED, IDC_SOURCE, IDC_PARAM, IDC_BROWSE, IDC_AUDIO, IDC_RES, IDC_FPS };
     for (int id : ids) EnableWindow(Ctl(id), ok);
+    // a camera switched off has no device interface to take a new name (it keeps the one it has)
+    if (ok && !g_cams[g_sel].config.enabled) EnableWindow(Ctl(IDC_NAME), FALSE);
     if (!ok) EnableWindow(Ctl(IDC_CAM_APPLY), FALSE);
     wchar_t title[200];
     if (ok) _snwprintf(title, 200, TR(L"Камера %d: %ls"), g_cams[g_sel].info.index + 1, g_cams[g_sel].info.name);
@@ -685,6 +811,7 @@ static void ShowSelected(bool keepEdits)
     const CamConfig& c = g_edit;
     g_updating = true;
     SetWindowTextW(Ctl(IDC_NAME), g_cams[g_sel].info.name);
+    SendMessageW(Ctl(IDC_ENABLED), BM_SETCHECK, c.enabled ? BST_CHECKED : BST_UNCHECKED, 0);
     ComboSelectData(IDC_SOURCE, c.kind);
     LayoutParamRow(c.kind);
     wchar_t param[MAX_PATH];
@@ -725,7 +852,7 @@ static bool EditDirty()
     const CamConfig& b = g_cams[g_sel].config;
     return a.kind != b.kind || wcscmp(a.text, b.text) || wcscmp(a.imageFolder, b.imageFolder) || wcscmp(a.videoFolder, b.videoFolder) ||
            wcscmp(a.url, b.url) || a.audioMode != b.audioMode || (a.audioMode == AudioDevice && wcscmp(a.audioDevice, b.audioDevice)) ||
-           a.width != b.width || a.height != b.height || a.fps != b.fps;
+           a.width != b.width || a.height != b.height || a.fps != b.fps || a.enabled != b.enabled;
 }
 
 static bool NameDirty();
@@ -806,6 +933,7 @@ static void ShowEditParam()
 }
 
 static void OnRename();
+static void OnSetEnabled(int i, bool on);
 
 static void OnCamApply()
 {
@@ -819,13 +947,19 @@ static void OnCamApply()
     CamConfig old = cam.config;
     CamConfig now = g_edit;
     now.paused = old.paused;                          // Play / Pause works at once, not through the form
+    bool wantOn = now.enabled;
+    now.enabled = old.enabled;                        // switched on / off below (a device change)
     cam.config = now;
     ApplyConfig(g_sel);
     const wchar_t* name = cam.info.name;
     if (now.kind != old.kind) AddEventF(TR(L"Камера «%ls»: источник — %ls."), name, SourceName(now.kind));
     if (now.kind == SourceStream && wcscmp(now.url, old.url)) AddEventF(TR(L"Камера «%ls»: MJPEG-поток %ls."), name, now.url);
-    AddEventF(TR(L"Камера «%ls»: настройки применены."), name);
-    UpdateListRow(g_sel);
+    bool changed = now.kind != old.kind || wcscmp(now.text, old.text) || wcscmp(now.imageFolder, old.imageFolder) ||
+                   wcscmp(now.videoFolder, old.videoFolder) || wcscmp(now.url, old.url) || now.audioMode != old.audioMode ||
+                   wcscmp(now.audioDevice, old.audioDevice) || now.width != old.width || now.height != old.height || now.fps != old.fps;
+    if (changed) AddEventF(TR(L"Камера «%ls»: настройки применены."), name);
+    if (wantOn != old.enabled) OnSetEnabled(g_sel, wantOn);
+    if (g_sel >= 0 && g_sel < g_camCount) UpdateListRow(g_sel);
     UpdateCamApply();
 }
 
@@ -891,10 +1025,11 @@ static void OnFormatChanged()
 // The "Pause / Play" button (the selected camera) or a double click in the Status column (that row's camera).
 static void OnPlay(int i)
 {
-    if (i < 0 || i >= g_camCount) return;
+    if (i < 0 || i >= g_camCount || !g_cams[i].config.enabled) return;     // switched off: nothing plays
     CamConfig& c = g_cams[i].config;
     c.paused = !c.paused;
     ApplyConfig(i);
+    if (g_cams[i].preview) InvalidateRect(g_cams[i].preview, nullptr, FALSE);     // "Paused" on it, or not
     AddEventF(c.paused ? TR(L"Камера «%ls»: пауза.") : TR(L"Камера «%ls»: воспроизведение."), g_cams[i].info.name);
     UpdatePlayButton();
     UpdateListRow(i);
@@ -1022,10 +1157,41 @@ static int OpenPreviews()
     return n;
 }
 
+// A word over the preview ("Off", "Paused"; only here, not in what the camera sends), as "No sound" in Speak2Mic's
+// check window: large, on a dark plate in the middle.
+static void PreviewLabel(HDC dc, const RECT& rc, const wchar_t* text)
+{
+    int H = rc.bottom - rc.top, size = H / 9;
+    if (size < S(18)) size = S(18);
+    if (size > S(40)) size = S(40);
+    HFONT f = CreateFontW(-size, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                          CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
+    HGDIOBJ old = SelectObject(dc, f);
+    RECT t = { 0, 0, 0, 0 };
+    DrawTextW(dc, text, -1, &t, DT_CALCRECT | DT_SINGLELINE);
+    int w = t.right + size * 2, h = t.bottom + size;
+    int x = (rc.left + rc.right - w) / 2, y = (rc.top + rc.bottom - h) / 2;
+    RECT plate = { x, y, x + w, y + h };
+    HBRUSH b = CreateSolidBrush(RGB(40, 40, 40));
+    HPEN pen = CreatePen(PS_SOLID, 1, RGB(110, 110, 110));
+    HGDIOBJ ob = SelectObject(dc, b), op = SelectObject(dc, pen);
+    RoundRect(dc, plate.left, plate.top, plate.right, plate.bottom, size / 2, size / 2);
+    SelectObject(dc, ob);
+    SelectObject(dc, op);
+    DeleteObject(b);
+    DeleteObject(pen);
+    SetBkMode(dc, TRANSPARENT);
+    SetTextColor(dc, RGB(235, 235, 235));
+    DrawTextW(dc, text, -1, &plate, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    SelectObject(dc, old);
+    DeleteObject(f);
+}
+
 static LRESULT CALLBACK PreviewProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
     int i = (int)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
-    Picture* pic = i >= 0 && i < g_camCount && g_cams[i].preview == hwnd ? &g_cams[i].previewPic : nullptr;
+    Cam* cam = i >= 0 && i < g_camCount && g_cams[i].preview == hwnd ? &g_cams[i] : nullptr;
+    Picture* pic = cam ? &cam->previewPic : nullptr;
     switch (msg)
     {
     case WM_ERASEBKGND:
@@ -1033,12 +1199,24 @@ static LRESULT CALLBACK PreviewProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     case WM_PAINT:
     {
         PAINTSTRUCT ps;
-        HDC dc = BeginPaint(hwnd, &ps);
+        HDC screen = BeginPaint(hwnd, &ps);
         RECT rc;
         GetClientRect(hwnd, &rc);
         int W = rc.right, H = rc.bottom;
+        bool off = cam && !cam->config.enabled, paused = cam && !off && cam->config.paused;
+        // drawn off screen when a word goes over the picture (it would flicker with every frame)
+        HDC dc = screen, mem = nullptr;
+        HBITMAP bmp = nullptr;
+        HGDIOBJ oldBmp = nullptr;
+        if ((off || paused) && W > 0 && H > 0 && (mem = CreateCompatibleDC(screen)) &&
+            (bmp = CreateCompatibleBitmap(screen, W, H)))
+        {
+            oldBmp = SelectObject(mem, bmp);
+            dc = mem;
+        }
         HBRUSH black = (HBRUSH)GetStockObject(BLACK_BRUSH);
-        if (pic && pic->px && W > 0 && H > 0)
+        if (off) FillRect(dc, &rc, black);
+        else if (pic && pic->px && W > 0 && H > 0)
         {
             int pw = pic->w, ph = pic->h, w = W, h = H;
             if ((LONGLONG)pw * H > (LONGLONG)ph * W) h = (int)((LONGLONG)ph * W / pw);
@@ -1062,9 +1240,18 @@ static LRESULT CALLBACK PreviewProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             SetBkMode(dc, TRANSPARENT);
             SetTextColor(dc, RGB(200, 200, 200));
             HGDIOBJ old = SelectObject(dc, g_font);
-            DrawTextW(dc, TR(L"Ожидание кадра…"), -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            if (!paused) DrawTextW(dc, TR(L"Ожидание кадра…"), -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
             SelectObject(dc, old);
         }
+        if (off) PreviewLabel(dc, rc, TR(L"Отключено"));
+        else if (paused) PreviewLabel(dc, rc, TR(L"Пауза"));
+        if (dc == mem)
+        {
+            BitBlt(screen, 0, 0, W, H, mem, 0, 0, SRCCOPY);
+            SelectObject(mem, oldBmp);
+        }
+        if (bmp) DeleteObject(bmp);
+        if (mem) DeleteDC(mem);
         EndPaint(hwnd, &ps);
         return 0;
     }
@@ -1099,7 +1286,7 @@ static void OnTest()
     SetWindowLongPtrW(c.preview, GWLP_USERDATA, (LONG_PTR)g_sel);
     PreviewTitle(g_sel);
     ShowWindow(c.preview, SW_SHOWNOACTIVATE);
-    RunnerSetPreview(c.runner, true);
+    if (c.runner) RunnerSetPreview(c.runner, true);     // none while the camera is switched off: "Off" is shown
     AppLog(L"preview of camera %d (%d open)", c.info.index + 1, OpenPreviews());
     UpdatePlayButton();
 }
@@ -1135,11 +1322,11 @@ static int ApplyCount(int count)
     return rc;
 }
 
-static int ApplyCountElevated(int count)
+// This program again with administrator rights (the UAC question) for one change; its exit code, -1 if refused.
+static int RunElevated(const wchar_t* args)
 {
-    wchar_t exe[MAX_PATH], args[64];
+    wchar_t exe[MAX_PATH];
     GetModuleFileNameW(nullptr, exe, MAX_PATH);
-    _snwprintf(args, 64, L"--set-count %d", count);
     SHELLEXECUTEINFOW sei = {};
     sei.cbSize = sizeof(sei);
     sei.fMask = SEE_MASK_NOCLOSEPROCESS;
@@ -1156,16 +1343,23 @@ static int ApplyCountElevated(int count)
     return (int)code;
 }
 
+static int ApplyCountElevated(int count)
+{
+    wchar_t args[64];
+    _snwprintf(args, 64, L"--set-count %d", count);
+    return RunElevated(args);
+}
+
 static void UpdateCountButton()
 {
     int want = (int)ComboData(IDC_COUNT);
-    EnableWindow(Ctl(IDC_COUNT_APPLY), want > 0 && want != (int)S2cGetParam(L"CameraCount", 1));
+    EnableWindow(Ctl(IDC_COUNT_APPLY), want >= 0 && want != (int)S2cGetParam(L"CameraCount", 1));
 }
 
 static void OnCountApply()
 {
     int want = (int)ComboData(IDC_COUNT);
-    if (want < 1) return;
+    if (want < 0) return;
     // Devices are added / removed (administrator rights); the cameras that stay keep running. A camera being removed
     // is released first (the panel's own handles would keep its device).
     for (int i = 0; i < g_camCount; i++)
@@ -1189,6 +1383,243 @@ static void OnCountApply()
     }
     SetTimer(g_wnd, TIMER_RESCAN, 1500, nullptr);
     UpdateCountButton();
+}
+
+// ---------------------------------------------------------------------------
+// Cameras switched on / off and deleted (their devices: administrator rights, as the number of cameras)
+
+// Every camera to the state of `disabledMask` (bit N: camera N+1 off). The worst result of SetupSetCameraEnabled: 2 / 3
+// (a camera could not change) before 5 (restart) before 0.
+static int ApplyDisabledMask(DWORD disabledMask)
+{
+    int worst = 0;
+    for (int cam = 0; cam < S2C_MAX_CAMERAS_UI; cam++)
+    {
+        bool on = !(disabledMask & (1u << cam));
+        if (on == SetupCameraEnabled(cam)) continue;
+        int r = SetupSetCameraEnabled(cam, on);
+        if (r == 2 || r == 3) worst = worst == 2 || worst == 3 ? worst : r;
+        else if (r == 5 && worst == 0) worst = 5;
+    }
+    return worst;
+}
+
+static DWORD CurrentDisabledMask()
+{
+    DWORD mask = 0;
+    for (int cam = 0; cam < S2C_MAX_CAMERAS_UI; cam++)
+        if (!SetupCameraEnabled(cam)) mask |= 1u << cam;
+    return mask;
+}
+
+static int SetDisabledMask(DWORD mask)
+{
+    if (g_elevated) return ApplyDisabledMask(mask);
+    wchar_t args[64];
+    _snwprintf(args, 64, L"--set-disabled %lu", (unsigned long)mask);
+    return RunElevated(args);
+}
+
+// "Enabled" applied / "Switch off" / "Switch on": the camera's device is disabled / enabled (programs no longer see it,
+// also after a restart); it stays in the list, greyed.
+static void OnSetEnabled(int i, bool on)
+{
+    if (i < 0 || i >= g_camCount) return;
+    Cam& c = g_cams[i];
+    int number = c.info.index;
+    wchar_t name[S2C_NAME_CHARS];
+    wcscpy(name, c.info.name);
+    if (on == SetupCameraEnabled(number)) return;
+    if (!on) StopRunner(i);                 // the panel's own handle would keep the device
+    DWORD mask = CurrentDisabledMask();
+    if (on) mask &= ~(1u << number);
+    else mask |= 1u << number;
+    int rc = SetDisabledMask(mask);
+    AppLog(L"camera %d %ls -> %d", number + 1, on ? L"on" : L"off", rc);
+    switch (rc)
+    {
+    case 0:
+    case 1: AddEventF(on ? TR(L"Камера «%ls» включена.") : TR(L"Камера «%ls» отключена."), name); break;
+    case 2: AddEventF(TR(L"Камера «%ls» не отключена: её использует программа."), name); break;
+    case 5: AddEventF(TR(L"Камера «%ls»: изменение вступит в силу после перезагрузки компьютера."), name); break;
+    case -1: AddEvent(TR(L"Нужны права администратора: запрос был отклонён.")); break;
+    default: AddEventF(TR(L"Не удалось изменить камеру «%ls» (код %d)."), name, rc); break;
+    }
+    // the form follows what happened (also when it did not)
+    i = CamPos(number);
+    if (i >= 0)
+    {
+        g_cams[i].config.enabled = SetupCameraEnabled(number);
+        if (g_editCam == number) g_edit.enabled = g_cams[i].config.enabled;
+        if (g_cams[i].preview) InvalidateRect(g_cams[i].preview, nullptr, FALSE);
+    }
+    ScanCameras(true);                      // a worker again for a camera that stays on
+    i = CamPos(number);
+    if (i >= 0) UpdateListRow(i);
+    if (g_sel >= 0) ShowSelected(true);
+    UpdatePlayButton();
+    SetTimer(g_wnd, TIMER_RESCAN, 1500, nullptr);     // a camera switched on comes a moment later
+}
+
+// Cameras reordered with administrator rights (delete, another number): the cameras from `first` on let their devices
+// go before (preview windows closed), the list is built again from there after.
+static void ReorderBegin(int first)
+{
+    for (int k = 0; k < g_camCount; k++)
+        if (g_cams[k].info.index >= first)
+        {
+            ClosePreview(k);
+            StopRunner(k);
+        }
+}
+
+static void ReorderEnd(int first, const int* src, int n, int count, wchar_t (*names)[S2C_NAME_CHARS], int selectNumber)
+{
+    CamConfigPermute(src, n, count);
+    int keep = 0;
+    while (keep < g_camCount && g_cams[keep].info.index < first) keep++;
+    for (int k = keep; k < g_camCount; k++) g_cams[k].previewPic.Free();
+    g_camCount = keep;
+    CamNamesAfterPermute(src, n, names);
+    ScanCameras(true);
+    int sel = CamPos(selectNumber);
+    if (sel < 0 && g_camCount) sel = g_camCount - 1;
+    if (sel >= 0 && sel != g_sel)
+    {
+        g_sel = sel;
+        FillList();
+        ShowSelected();
+    }
+    ComboSelectData(IDC_COUNT, (LPARAM)S2cGetParam(L"CameraCount", 1));
+    UpdateCountButton();
+    SetTimer(g_wnd, TIMER_RESCAN, 1500, nullptr);
+}
+
+// "Delete": the camera goes, the ones after it take its place (settings, names, on / off) and the number of cameras
+// goes down by one.
+static void OnDeleteCamera(int i)
+{
+    if (i < 0 || i >= g_camCount) return;
+    if (!AskSaveEdits()) return;
+    int number = g_cams[i].info.index;
+    wchar_t name[S2C_NAME_CHARS];
+    wcscpy(name, g_cams[i].info.name);
+    wchar_t q[400];
+    _snwprintf(q, 400, TR(L"Удалить камеру «%ls»?\n\nКамеры после неё сдвинутся на её место, количество камер уменьшится на 1."), name);
+    q[399] = 0;
+    if (MessageBoxW(g_wnd, q, L"Show2Cam", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) != IDYES) return;
+    int count = (int)S2cGetParam(L"CameraCount", 1);
+    if (number >= count) return;
+    wchar_t names[S2C_MAX_CAMERAS_UI][S2C_NAME_CHARS];
+    CamNamesNow(count, names);
+    int src[S2C_MAX_CAMERAS_UI];
+    int n = CamDeletePermutation(number, count, src);
+    ReorderBegin(number);
+    int rc;
+    if (g_elevated)
+    {
+        bool reboot = false;
+        rc = SetupDeleteCamera(number, &reboot);
+    }
+    else
+    {
+        wchar_t args[64];
+        _snwprintf(args, 64, L"--delete-camera %d", number);
+        rc = RunElevated(args);
+    }
+    AppLog(L"delete camera %d of %d -> %d", number + 1, count, rc);
+    if (rc == -1 || rc == 4)
+    {
+        if (rc == -1) AddEvent(TR(L"Нужны права администратора: запрос был отклонён."));
+        else AddEventF(TR(L"Не удалось удалить камеру «%ls»."), name);
+        ScanCameras(true);                  // the workers again
+        return;
+    }
+    AddEventF(TR(L"Камера «%ls» удалена. Количество камер: %d."), name, count - 1);
+    if (rc == 5) AddEvent(TR(L"Количество камер сохранено. Windows не смогла перезапустить устройство на ходу (камеру держит программа?) — перезагрузите компьютер."));
+    else if (rc == 6) AddEvent(TR(L"Камера, которую держит программа, убрана из списка камер; программа работает с ней, пока не закроет её."));
+    else if (rc == 7) AddEvent(TR(L"Камеру, которую держит программа, не удалось отключить на новом месте."));
+    ReorderEnd(number, src, n, count, names, number);
+}
+
+// Another number for the camera (the list's number column): the cameras in between move one place.
+static void OnMoveCamera(int i, int to)
+{
+    if (i < 0 || i >= g_camCount) return;
+    int from = g_cams[i].info.index, count = (int)S2cGetParam(L"CameraCount", 1);
+    if (to == from || to < 0 || to >= count || from >= count) return;
+    if (!AskSaveEdits()) return;
+    wchar_t name[S2C_NAME_CHARS];
+    wcscpy(name, g_cams[i].info.name);
+    wchar_t names[S2C_MAX_CAMERAS_UI][S2C_NAME_CHARS];
+    CamNamesNow(count, names);
+    int src[S2C_MAX_CAMERAS_UI];
+    int n = CamMovePermutation(from, to, count, src);
+    int first = from < to ? from : to;
+    ReorderBegin(first);
+    int rc;
+    if (g_elevated) rc = SetupMoveCamera(from, to);
+    else
+    {
+        wchar_t args[64];
+        _snwprintf(args, 64, L"--move-camera %d %d", from, to);
+        rc = RunElevated(args);
+    }
+    AppLog(L"move camera %d to %d -> %d", from + 1, to + 1, rc);
+    if (rc == -1 || rc == 4)
+    {
+        if (rc == -1) AddEvent(TR(L"Нужны права администратора: запрос был отклонён."));
+        else AddEventF(TR(L"Не удалось изменить номер камеры «%ls»."), name);
+        ScanCameras(true);
+        return;
+    }
+    AddEventF(TR(L"Камера «%ls»: номер %d."), name, to + 1);
+    if (rc == 5) AddEvent(TR(L"Изменение вступит в силу после перезагрузки компьютера."));
+    else if (rc == 7) AddEvent(TR(L"Камеру, которую держит программа, не удалось отключить на новом месте."));
+    ReorderEnd(first, src, n, count, names, to);
+}
+
+// The number column's right-click menu: the numbers to give the camera.
+static void NumberMenu(int i, POINT pt)
+{
+    if (i < 0 || i >= g_camCount) return;
+    int count = (int)S2cGetParam(L"CameraCount", 1), number = g_cams[i].info.index;
+    if (count < 2 || number >= count) return;
+    HMENU m = CreatePopupMenu();
+    wchar_t head[80];
+    _snwprintf(head, 80, L"%ls", TR(L"Номер камеры:"));
+    head[79] = 0;
+    AppendMenuW(m, MF_STRING | MF_GRAYED, 0, head);
+    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    for (int k = 0; k < count; k++)
+    {
+        wchar_t t[16];
+        _snwprintf(t, 16, L"%d", k + 1);
+        AppendMenuW(m, MF_STRING | (k == number ? MF_CHECKED | MF_GRAYED : 0), IDM_CAM_NUMBER + k, t);
+    }
+    SetForegroundWindow(g_wnd);
+    int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_NONOTIFY, pt.x, pt.y, 0, g_wnd, nullptr);
+    DestroyMenu(m);
+    if (cmd >= IDM_CAM_NUMBER && cmd < IDM_CAM_NUMBER + count) OnMoveCamera(CamPos(number), cmd - IDM_CAM_NUMBER);
+}
+
+// The list's right-click menu on a camera.
+static void CameraMenu(int i, POINT pt)
+{
+    if (i < 0 || i >= g_camCount) return;
+    const Cam& c = g_cams[i];
+    HMENU m = CreatePopupMenu();
+    AppendMenuW(m, MF_STRING | (c.config.enabled ? 0 : MF_GRAYED), IDM_CAM_PLAY, c.config.paused ? TR(L"Играть") : TR(L"Пауза"));
+    AppendMenuW(m, MF_STRING, IDM_CAM_ENABLE, c.config.enabled ? TR(L"Отключить") : TR(L"Включить"));
+    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(m, MF_STRING, IDM_CAM_DELETE, TR(L"Удалить…"));
+    SetForegroundWindow(g_wnd);
+    int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_NONOTIFY, pt.x, pt.y, 0, g_wnd, nullptr);
+    DestroyMenu(m);
+    if (i >= g_camCount) return;
+    if (cmd == IDM_CAM_PLAY) OnPlay(i);
+    else if (cmd == IDM_CAM_ENABLE) OnSetEnabled(i, !g_cams[i].config.enabled);
+    else if (cmd == IDM_CAM_DELETE) OnDeleteCamera(i);
 }
 
 // ---------------------------------------------------------------------------
@@ -1238,7 +1669,7 @@ static void ExportTo(const wchar_t* path)
         AddEventF(TR(L"Не удалось сохранить настройки (код %lu)."), GetLastError());
         return;
     }
-    CamIniWriteHeader(path, g_camCount ? g_camCount : (int)S2cGetParam(L"CameraCount", 1));
+    CamIniWriteHeader(path, (int)S2cGetParam(L"CameraCount", 1));
     for (int i = 0; i < g_camCount; i++) CamIniWriteCamera(path, g_cams[i].info.index, g_cams[i].info.name, g_cams[i].config);
     bool ok = CamIniFlush(path);
     AppLog(L"settings exported to %ls", path);
@@ -1257,6 +1688,7 @@ static void ImportFrom(const wchar_t* path)
     AppLog(L"settings import from %ls", path);
 
     // Every camera in the file: its settings (kept for a camera that is not there yet) and its name.
+    DWORD wantOff = CurrentDisabledMask();
     for (int n = 1; n <= S2C_MAX_CAMERAS_UI; n++)
     {
         CamConfig c;
@@ -1264,11 +1696,18 @@ static void ImportFrom(const wchar_t* path)
         wchar_t name[S2C_NAME_CHARS] = L"";
         bool hasName = false;
         if (!CamIniReadCamera(path, n - 1, &c, name, &hasName)) continue;
+        if (c.enabled) wantOff &= ~(1u << (n - 1));
+        else wantOff |= 1u << (n - 1);
+        c.enabled = SetupCameraEnabled(n - 1);          // switched on / off below
         SaveConfig(n - 1, c);
         int i = -1;
         for (int j = 0; j < g_camCount; j++)
             if (g_cams[j].info.index == n - 1) i = j;
-        if (i >= 0)
+        if (i >= 0 && !g_cams[i].info.path[0] && hasName)
+        {
+            wcsncpy(g_pendingName[n - 1], name[0] ? name : L"-", S2C_NAME_CHARS - 1);    // switched off: when it is on
+        }
+        else if (i >= 0)
         {
             g_cams[i].config = c;
             ApplyConfig(i);
@@ -1287,11 +1726,24 @@ static void ImportFrom(const wchar_t* path)
             wcsncpy(g_pendingName[n - 1], name[0] ? name : L"-", S2C_NAME_CHARS - 1);    // when the camera appears
         }
     }
-    // The number of cameras (the driver changes it at once).
-    if (count >= 1 && count != g_camCount && g_camCount)
+    // The number of cameras (the driver changes it at once), then the cameras switched on / off.
+    if (count >= 0 && count != (int)S2cGetParam(L"CameraCount", 1))
     {
         ComboSelectData(IDC_COUNT, (LPARAM)count);
         OnCountApply();
+    }
+    int target = (int)S2cGetParam(L"CameraCount", 1);
+    DWORD now = CurrentDisabledMask(), within = target >= 32 ? 0xFFFFFFFFu : (1u << target) - 1;
+    DWORD want = (wantOff & within) | (now & ~within);
+    if (want != now)
+    {
+        for (int i = 0; i < g_camCount; i++)
+            if (want & (1u << g_cams[i].info.index)) StopRunner(i);
+        int rc = SetDisabledMask(want);
+        AppLog(L"import: cameras off 0x%lX -> %d", (unsigned long)want, rc);
+        if (rc == -1) AddEvent(TR(L"Нужны права администратора: запрос был отклонён."));
+        else if (rc == 2) AddEvent(TR(L"Камера не отключена: её использует программа."));
+        else if (rc != 0 && rc != 1 && rc != 5) AddEventF(TR(L"Не удалось включить или отключить камеры (код %d)."), rc);
     }
     AddEventF(TR(L"Настройки загружены из %ls"), path);
     ScanCameras(false);
@@ -1362,9 +1814,11 @@ static void OnResetAll()
 // ---------------------------------------------------------------------------
 // Camera events
 
-static void OnCamEvent(int i, int ev)
+// wParam of the event: the camera number (RunnerStart) - its list position may differ.
+static void OnCamEvent(int number, int ev)
 {
-    if (i < 0 || i >= g_camCount) return;
+    int i = CamPos(number);
+    if (i < 0 || !g_cams[i].runner) return;
     Cam& c = g_cams[i];
     if (ev == EvPreviewFrame)
     {
@@ -1454,9 +1908,9 @@ static void ListColumns()
 {
     // The last column takes the rest, leaving room for the vertical scroll bar: no horizontal one.
     HWND list = Ctl(IDC_LIST);
-    const int widths[4] = { 150, 56, 170, 110 };
+    const int widths[COL_STATE] = { 34, 130, 52, 160, 104 };
     int used = 0;
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i < COL_STATE; i++)
     {
         ListView_SetColumnWidth(list, i, S(widths[i]));
         used += S(widths[i]);
@@ -1465,7 +1919,7 @@ static void ListColumns()
     GetClientRect(list, &rc);
     int inner = rc.right;
     if (!(GetWindowLongW(list, GWL_STYLE) & WS_VSCROLL)) inner -= GetSystemMetricsForDpi(SM_CXVSCROLL, g_dpi);
-    ListView_SetColumnWidth(list, 4, inner - used > S(80) ? inner - used : S(80));
+    ListView_SetColumnWidth(list, COL_STATE, inner - used > S(80) ? inner - used : S(80));
 }
 
 static void Layout()
@@ -1484,6 +1938,7 @@ static void Layout()
 
     Place(IDC_GROUP2, 12, 272, 656, 228);
     Place(IDC_L_NAME, L1, 296, 100, 20);   Place(IDC_NAME, C1, 292, 300, 23);
+    Place(IDC_ENABLED, C1 + 316, 293, R - C1 - 316, 22);
     Place(IDC_L_RES, L1, 330, 100, 20);    Place(IDC_RES, C1, 326, W1, 300);
     Place(IDC_L_FPS, 290, 330, C2 - 6 - 290, 20);  Place(IDC_FPS, C2, 326, W2, 300);
     Place(IDC_L_SOURCE, L1, 364, 100, 20); Place(IDC_SOURCE, C1, 360, 220, 300);
@@ -1551,12 +2006,12 @@ static void CreateControls()
         SetWindowSubclass(list, ListTipProc, 0, 0);
         SetWindowSubclass(g_listTip, ListTipHitProc, 0, 0);
     }
-    const wchar_t* cols[5] = { TR(L"Камера"), TR(L"Статус"), TR(L"Источник"), TR(L"Формат"), TR(L"Состояние") };
-    for (int i = 0; i < 5; i++)
+    const wchar_t* cols[COL_COUNT] = { L"\u2116", TR(L"Камера"), TR(L"Статус"), TR(L"Источник"), TR(L"Формат"), TR(L"Состояние") };
+    for (int i = 0; i < COL_COUNT; i++)
     {
         LVCOLUMNW col = {};
-        col.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_SUBITEM | (i == 1 ? LVCF_FMT : 0);
-        col.fmt = i == 1 ? LVCFMT_CENTER : 0;
+        col.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_SUBITEM | (i == COL_STATUS ? LVCF_FMT : 0);
+        col.fmt = i == COL_STATUS ? LVCFMT_CENTER : 0;
         col.pszText = (LPWSTR)cols[i];
         col.cx = 100;
         col.iSubItem = i;
@@ -1564,7 +2019,7 @@ static void CreateControls()
     }
     Create(L"STATIC", TR(L"Количество камер:"), 0, IDC_L_COUNT);
     Create(WC_COMBOBOXW, L"", CBS_DROPDOWNLIST | WS_TABSTOP | WS_VSCROLL, IDC_COUNT);
-    for (int n = 1; n <= S2C_MAX_CAMERAS_UI; n++)
+    for (int n = 0; n <= S2C_MAX_CAMERAS_UI; n++)
     {
         wchar_t t[8];
         _snwprintf(t, 8, L"%d", n);
@@ -1577,6 +2032,7 @@ static void CreateControls()
     Create(L"STATIC", TR(L"Имя:"), 0, IDC_L_NAME);
     Create(L"EDIT", L"", ES_AUTOHSCROLL | WS_TABSTOP, IDC_NAME, WS_EX_CLIENTEDGE);
     SendMessageW(Ctl(IDC_NAME), EM_LIMITTEXT, S2C_NAME_CHARS - 1, 0);
+    Create(L"BUTTON", TR(L"Включено"), BS_AUTOCHECKBOX | WS_TABSTOP, IDC_ENABLED);
     Create(L"STATIC", TR(L"Разрешение:"), 0, IDC_L_RES);
     Create(WC_COMBOBOXW, L"", CBS_DROPDOWNLIST | WS_TABSTOP | WS_VSCROLL, IDC_RES);
     ComboAdd(IDC_RES, TR(L"Как у источника"), 0);
@@ -1739,7 +2195,7 @@ static void ListTipText(int cell, wchar_t* t)      // t: 1100 characters
     int row = cell / 8, col = cell % 8;
     wchar_t problem[400];
     if (!SourceProblem(row, problem, 400)) return;
-    if (col == 2)
+    if (col == COL_SOURCE)
     {
         // the source itself (as the cell shows it, without its kind: "Video: "), the error below
         const Cam& c = g_cams[row];
@@ -1780,7 +2236,7 @@ static void ListTipShow(HWND list)
     SendMessageW(g_listTip, TTM_UPDATETIPTEXTW, 0, (LPARAM)&ti);
     POINT at;
     RECT rc;
-    if (g_listTipCell % 8 == 2 && ListView_GetSubItemRect(list, g_listTipCell / 8, 2, LVIR_LABEL, &rc))
+    if (g_listTipCell % 8 == COL_SOURCE && ListView_GetSubItemRect(list, g_listTipCell / 8, COL_SOURCE, LVIR_LABEL, &rc))
     {
         MapWindowPoints(list, nullptr, (POINT*)&rc, 2);
         SendMessageW(g_listTip, TTM_ADJUSTRECT, TRUE, (LPARAM)&rc);
@@ -1871,23 +2327,43 @@ static LRESULT ListCustomDraw(NMLVCUSTOMDRAW* cd)
         cd->nmcd.uItemState &= ~(CDIS_SELECTED | CDIS_FOCUS);
         cd->clrTextBk = selected ? RGB(204, 228, 247) : GetSysColor(COLOR_WINDOW);
         cd->clrText = GetSysColor(COLOR_WINDOWTEXT);
-        if (cd->iSubItem == 2 && row < g_camCount)
+        bool off = row < g_camCount && !g_cams[row].config.enabled;
+        if (off && cd->iSubItem != COL_STATUS)
+        {
+            cd->clrText = RGB(150, 150, 150);       // a camera switched off: the whole row grey
+            return CDRF_NEWFONT;
+        }
+        if (cd->iSubItem == COL_SOURCE && row < g_camCount)
         {
             wchar_t t[400];
             if (SourceProblem(row, t, 400)) cd->clrText = RGB(190, 60, 50);    // details in the row's tooltip
             return CDRF_NEWFONT;
         }
-        if (cd->iSubItem == 1 && row < g_camCount)
+        if (cd->iSubItem == COL_STATUS && row < g_camCount)
         {
             // Status: drawn, not a font glyph (fonts without the symbols showed boxes): a green triangle while the
             // camera plays, two grey bars while it is paused.
             RECT rc;
-            ListView_GetSubItemRect(cd->nmcd.hdr.hwndFrom, row, 1, LVIR_BOUNDS, &rc);
+            ListView_GetSubItemRect(cd->nmcd.hdr.hwndFrom, row, COL_STATUS, LVIR_BOUNDS, &rc);
             HDC dc = cd->nmcd.hdc;
             HBRUSH bg = CreateSolidBrush(cd->clrTextBk);
             FillRect(dc, &rc, bg);
             DeleteObject(bg);
             int h = S(10), cx = (rc.left + rc.right) / 2, cy = (rc.top + rc.bottom) / 2;
+            if (off)
+            {
+                // switched off: a grey cross (Play / Pause does nothing then)
+                HPEN pen = CreatePen(PS_SOLID, S(2), RGB(150, 150, 150));
+                HGDIOBJ oldPen = SelectObject(dc, pen);
+                int r = h / 2 - S(1);
+                MoveToEx(dc, cx - r, cy - r, nullptr);
+                LineTo(dc, cx + r + 1, cy + r + 1);
+                MoveToEx(dc, cx + r, cy - r, nullptr);
+                LineTo(dc, cx - r - 1, cy + r + 1);
+                SelectObject(dc, oldPen);
+                DeleteObject(pen);
+                return CDRF_SKIPDEFAULT;
+            }
             bool paused = g_cams[row].config.paused;
             HBRUSH br = CreateSolidBrush(paused ? RGB(150, 150, 150) : RGB(16, 150, 60));
             HGDIOBJ oldBrush = SelectObject(dc, br);
@@ -1908,7 +2384,7 @@ static LRESULT ListCustomDraw(NMLVCUSTOMDRAW* cd)
             DeleteObject(br);
             return CDRF_SKIPDEFAULT;
         }
-        if (cd->iSubItem == 4 && row < g_camCount)
+        if (cd->iSubItem == COL_STATE && row < g_camCount)
         {
             const CamRunStatus& s = g_cams[row].status;
             cd->clrText = !s.deviceOpen ? RGB(190, 60, 50) : (InUse(s) ? RGB(16, 140, 56) : RGB(120, 120, 120));
@@ -1960,6 +2436,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             FillList();
             ShowSelected();
         }
+        wchar_t menu[8] = L"";
+        if (GetEnvironmentVariableW(L"S2C_TEST_MENU", menu, 8)) SetTimer(hwnd, !wcscmp(menu, L"num") ? 98 : 97, 3000, nullptr);
         wchar_t edit[8] = L"";
         if (GetEnvironmentVariableW(L"S2C_TEST_EDIT", edit, 8))
         {
@@ -2017,6 +2495,17 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             if (++tick % 6 == 0) ScanCameras(true);
         }
 #ifdef S2C_UI_TEST
+        else if (wp == 97 || wp == 98)
+        {
+            // the list's right-click menus (camera / number column) on the selected row, for a screenshot
+            KillTimer(hwnd, wp);
+            RECT rc;
+            ListView_GetSubItemRect(Ctl(IDC_LIST), g_sel, wp == 98 ? COL_NUM : COL_SOURCE, LVIR_BOUNDS, &rc);
+            POINT pt = { rc.left + S(10), rc.bottom };
+            ClientToScreen(Ctl(IDC_LIST), &pt);
+            if (wp == 98) NumberMenu(g_sel, pt);
+            else CameraMenu(g_sel, pt);
+        }
         else if (wp == 99)
         {
             // a real mouse click on another camera's row (as the user does); a "save changes?" box gets Cancel
@@ -2093,6 +2582,19 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         }
         return 0;
     }
+    case WM_CONTEXTMENU:
+        // the menu key / Shift+F10 in the list: the selected camera's menu under its row
+        if ((HWND)wp == Ctl(IDC_LIST) && GET_X_LPARAM(lp) == -1 && GET_Y_LPARAM(lp) == -1 && g_sel >= 0 && g_sel < g_camCount)
+        {
+            RECT rc;
+            ListView_GetItemRect(Ctl(IDC_LIST), g_sel, &rc, LVIR_LABEL);
+            POINT pt = { rc.left + S(8), rc.bottom };
+            ClientToScreen(Ctl(IDC_LIST), &pt);
+            CameraMenu(g_sel, pt);
+            return 0;
+        }
+        break;
+
     case WM_APP_TRAY:
         if (lp == WM_LBUTTONUP || lp == WM_LBUTTONDBLCLK) FromTray();
         else if (lp == WM_RBUTTONUP || lp == WM_CONTEXTMENU) TrayMenu();
@@ -2124,11 +2626,25 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
                 return TRUE;
             }
         }
+        if (h->idFrom == IDC_LIST && h->code == NM_RCLICK && !g_updating)
+        {
+            // the number column: another number; elsewhere: Play / Pause, Switch off / on, Delete
+            LVHITTESTINFO hit = {};
+            hit.pt = ((NMITEMACTIVATE*)lp)->ptAction;
+            if (ListView_SubItemHitTest(h->hwndFrom, &hit) >= 0 && hit.iItem >= 0)
+            {
+                POINT pt;
+                GetCursorPos(&pt);
+                if (hit.iSubItem == COL_NUM) NumberMenu(hit.iItem, pt);
+                else CameraMenu(hit.iItem, pt);
+            }
+            return 0;
+        }
         if (h->idFrom == IDC_LIST && h->code == NM_DBLCLK && !g_updating)
         {
             LVHITTESTINFO hit = {};
             hit.pt = ((NMITEMACTIVATE*)lp)->ptAction;
-            if (ListView_SubItemHitTest(h->hwndFrom, &hit) >= 0 && hit.iItem >= 0 && hit.iSubItem == 1) OnPlay(hit.iItem);
+            if (ListView_SubItemHitTest(h->hwndFrom, &hit) >= 0 && hit.iItem >= 0 && hit.iSubItem == COL_STATUS) OnPlay(hit.iItem);
             return 0;
         }
         if (h->idFrom == IDC_LIST && h->code == LVN_ITEMCHANGED && !g_updating)
@@ -2173,6 +2689,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             if (id == IDC_BROWSE) OnBrowse();
             else if (id == IDC_TEST) OnTest();
             else if (id == IDC_PLAY) OnPlay(g_sel);
+            else if (id == IDC_ENABLED && g_sel >= 0)
+            {
+                g_edit.enabled = SendMessageW(Ctl(IDC_ENABLED), BM_GETCHECK, 0, 0) == BST_CHECKED;
+                UpdateCamApply();
+            }
             else if (id == IDC_CAM_APPLY) OnCamApply();
             else if (id == IDC_COUNT_APPLY) OnCountApply();
             else if (id == IDC_RESET_ALL) OnResetAll();
@@ -2262,8 +2783,28 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show)
     {
         int n = _wtoi(argv[2]);
         LocalFree(argv);
-        if (n < 1 || n > S2C_MAX_CAMERAS_UI) return 4;
+        if (n < 0 || n > S2C_MAX_CAMERAS_UI) return 4;
         return ApplyCount(n);
+    }
+    // ... --set-disabled <mask>, --delete-camera <0-based>, --move-camera <from> <to> (see OnSetEnabled / OnDeleteCamera)
+    if (argv && argc == 3 && _wcsicmp(argv[1], L"--set-disabled") == 0)
+    {
+        DWORD mask = wcstoul(argv[2], nullptr, 10);
+        LocalFree(argv);
+        return ApplyDisabledMask(mask & 0x3FF);
+    }
+    if (argv && argc == 3 && _wcsicmp(argv[1], L"--delete-camera") == 0)
+    {
+        int cam = _wtoi(argv[2]);
+        LocalFree(argv);
+        bool reboot = false;
+        return SetupDeleteCamera(cam, &reboot);
+    }
+    if (argv && argc == 4 && _wcsicmp(argv[1], L"--move-camera") == 0)
+    {
+        int from = _wtoi(argv[2]), to = _wtoi(argv[3]);
+        LocalFree(argv);
+        return SetupMoveCamera(from, to);
     }
     bool restarted = false, tray = false;
     for (int i = 1; argv && i < argc; i++)

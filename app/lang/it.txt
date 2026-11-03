@@ -273,3 +273,27 @@ Una telecamera aperta da un programma è stata tolta dall’elenco; il programma
 Cartella di installazione:
 Sfoglia…
 Scegliere il percorso di installazione (vi viene creata la cartella %ls)
+disattivata
+Attivata
+Disattivata
+Telecamera «%ls» attivata.
+Telecamera «%ls» disattivata.
+La telecamera «%ls» non è stata disattivata: un programma la sta usando.
+Telecamera «%ls»: la modifica avrà effetto dopo il riavvio del computer.
+Impossibile modificare la telecamera «%ls» (codice %d).
+Eliminare la telecamera «%ls»?\n\nLe telecamere successive prendono il suo posto, il numero di telecamere scende di 1.
+Impossibile eliminare la telecamera «%ls».
+Telecamera «%ls» eliminata. Numero di telecamere: %d.
+Una telecamera usata da un programma non è stata disattivata nella nuova posizione.
+Impossibile cambiare il numero della telecamera «%ls».
+Telecamera «%ls»: numero %d.
+La modifica avrà effetto dopo il riavvio del computer.
+Numero della telecamera:
+Disattiva
+Attiva
+Elimina…
+Una telecamera non è stata disattivata: un programma la sta usando.
+Impossibile attivare o disattivare le telecamere (codice %d).
+Numero di telecamere: 0 — il driver è installato, Windows non ha telecamere.
+Tutte le telecamere Show2Cam sono disattivate nel pannello di controllo.
+Driver installato (telecamere: 0).

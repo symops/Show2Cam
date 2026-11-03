@@ -6,6 +6,6 @@ cd /d "%~dp0"
 rem The installer removes without a window ("/remove"): the package root has the launcher, x64\ / x86\ and an
 rem installed copy have the installer itself. ("start /wait": cmd does not wait for a program with a window.)
 start "" /wait "Show2Cam-Setup.exe" /remove
-if errorlevel 2 (echo Перезагрузите компьютер, чтобы закончить удаление.) else if errorlevel 1 (echo Удаление не удалось — см. %ProgramData%\Show2Cam\logs\setup.log)
+if errorlevel 2 (echo Перезагрузите компьютер, чтобы закончить удаление.) else if errorlevel 1 (echo Удаление не удалось - см. %ProgramData%\Show2Cam\logs\setup.log)
 echo Готово.
 pause

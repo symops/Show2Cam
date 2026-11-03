@@ -273,3 +273,27 @@ Camera đang được một chương trình mở đã bị bỏ khỏi danh sác
 Thư mục cài đặt:
 Duyệt…
 Chọn vị trí cài đặt (thư mục %ls sẽ được tạo trong đó)
+đã tắt
+Bật
+Đã tắt
+Đã bật camera “%ls”.
+Đã tắt camera “%ls”.
+Không tắt camera “%ls”: một chương trình đang dùng nó.
+Camera “%ls”: thay đổi có hiệu lực sau khi khởi động lại máy tính.
+Không thể thay đổi camera “%ls” (mã %d).
+Xóa camera “%ls”?\n\nCác camera sau nó sẽ dời lên chỗ của nó, số camera giảm 1.
+Không thể xóa camera “%ls”.
+Đã xóa camera “%ls”. Số camera: %d.
+Không thể tắt camera mà một chương trình đang giữ ở vị trí mới của nó.
+Không thể đổi số của camera “%ls”.
+Camera “%ls”: số %d.
+Thay đổi có hiệu lực sau khi khởi động lại máy tính.
+Số camera:
+Tắt
+Bật
+Xóa…
+Một camera không được tắt: một chương trình đang dùng nó.
+Không thể bật hoặc tắt các camera (mã %d).
+Số camera: 0 — trình điều khiển đã cài, Windows không có camera.
+Tất cả camera Show2Cam đã bị tắt trong bảng điều khiển.
+Đã cài trình điều khiển (camera: 0).

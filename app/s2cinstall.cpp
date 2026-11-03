@@ -3,7 +3,7 @@
 //   s2cinstall install                 trust the test certificates, create ROOT\Show2Cam, install Show2Cam.inf
 //   s2cinstall remove                  remove the device and the driver packages
 //   s2cinstall status                  device state, cameras (name, size, streaming, frames), driver log
-//   s2cinstall cameras N               number of cameras (1..10) + device restart
+//   s2cinstall cameras N               number of cameras (0..10) + device restart
 //   s2cinstall size N WIDTH HEIGHT [FPS]   resolution of camera N + device restart
 //   s2cinstall color N RRGGBB          show a solid colour on camera N (tests the picture path)
 //   s2cinstall bmp N FILE.bmp          show a 24/32-bit BMP on camera N
@@ -148,7 +148,7 @@ static int CmdInstall()
         DWORD count = 1, size = sizeof(count);
         RegGetValueW(HKEY_LOCAL_MACHINE, kParams, L"CameraCount", RRF_RT_REG_DWORD, nullptr, &count, &size);
         bool unused = false;
-        if (count < 1 || count > 10) count = 1;
+        if (count < 1 || count > 10) count = 1;     // this console install needs a device: at least one camera
         if (!SetupSetCameraCount((int)count, false, &unused, nullptr, nullptr)) Out(L"warning: not every camera device was created");
     }
     if (false)
@@ -491,7 +491,7 @@ static void Usage()
 {
     Out(L"Show2Cam %ls - driver installer and test tool (run as administrator)", L"" S2C_VER_STR);
     Out(L"  s2cinstall install | remove | status");
-    Out(L"  s2cinstall cameras N                      (1..10, restarts the device)");
+    Out(L"  s2cinstall cameras N                      (0..10, restarts the device)");
     Out(L"  s2cinstall size N WIDTH HEIGHT [FPS]      (camera N, restarts the device)");
     Out(L"  s2cinstall color N RRGGBB | bmp N FILE.bmp | pattern N");
     Out(L"  s2cinstall testsign on|off");
@@ -515,7 +515,7 @@ int wmain(int argc, wchar_t** argv)
     else if (!_wcsicmp(cmd, L"cameras") && argc == 3)
     {
         int n = _wtoi(argv[2]);
-        if (n < 1 || n > 10) Out(L"error: 1..10");
+        if (n < 0 || n > 10) Out(L"error: 0..10");
         else
         {
             // One device per camera: the missing ones are created (with the driver), those above removed.

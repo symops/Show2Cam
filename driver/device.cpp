@@ -1,11 +1,12 @@
 // Driver entry and the AVStream device: reads the settings and creates one filter factory per camera.
 //
 // Settings (HKLM\SYSTEM\CurrentControlSet\Services\Show2Cam\Parameters, read when the device starts):
-//   CameraCount       1..10 (default 1)
+//   CameraCount       0..10 (default 1)
 //   Camera<N>Width    even, 160..3840 (default 1280)
 //   Camera<N>Height   even, 120..2160 (default 720)
 //   Camera<N>Fps      1..60 (default 30)
 //   Camera<N>Name     REG_SZ, the camera's name (default "Show2Cam Camera N")
+//   Camera<N>Disabled 1: the camera is switched off (the program disables its device; not read here)
 // One device per camera (Device Parameters\CameraIndex); size, rate and name are also changed at run time by the
 // Show2Cam program through the camera's property set (S2C_PROPERTY_FORMAT / S2C_PROPERTY_NAME).
 #include "common.h"
@@ -110,7 +111,7 @@ static NTSTATUS S2C_CB DeviceStart(_In_ PKSDEVICE Device, _In_ PIRP Irp, _In_opt
     S2cLog("StartDevice: Show2Cam %s, camera %lu", S2C_VER_STR, index + 1);
     // A camera above the number of cameras is one removed while a program had it open: it stays hidden (its device
     // goes with the next change of the number of cameras).
-    ULONG count = Clamp(ReadDword(L"CameraCount", 1), 1, S2C_MAX_CAMERAS);
+    ULONG count = Clamp(ReadDword(L"CameraCount", 1), 0, S2C_MAX_CAMERAS);
     KsAcquireDevice(Device);
     NTSTATUS status = EnableCamera(Device, d, index, TRUE);
     if (NT_SUCCESS(status) && index >= count)

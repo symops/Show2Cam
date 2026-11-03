@@ -1,7 +1,10 @@
 // s2cctl - Show2Cam settings from the command line (what the control panel sets).
 //
 //   s2cctl status                                   cameras, their sources and who uses them
-//   s2cctl count N                                  number of cameras 1..10 (admin: devices added / removed)
+//   s2cctl count N                                  number of cameras 0..10 (admin: devices added / removed)
+//   s2cctl enable CAM on|off                        camera switched on / off: off = gone from Windows (admin)
+//   s2cctl delete CAM                               deletes the camera, the ones after it move up (admin)
+//   s2cctl move CAM NUMBER                          the camera gets another number, the ones between move (admin)
 //   s2cctl name CAM "NAME"                          the camera's name in Windows ("" or "default" = default name)
 //   s2cctl source CAM text ["TEXT"]                 what the camera shows (CAM: 1..10 or "all")
 //   s2cctl source CAM images|video [FOLDER]         ("default" = the folder next to the panel)
@@ -75,7 +78,7 @@ static bool ParseUlong(const wchar_t* s, ULONG* v)
 static int CameraCount()
 {
     int count = (int)S2cGetParam(L"CameraCount", 1);
-    if (count < 1 || count > S2C_MAX_CAMERAS_UI) count = 1;
+    if (count < 0 || count > S2C_MAX_CAMERAS_UI) count = 1;
     CamInfo cams[S2C_MAX_CAMERAS_UI];
     int n = CamList(cams, S2C_MAX_CAMERAS_UI);
     for (int i = 0; i < n; i++)
@@ -195,7 +198,14 @@ static int CmdStatus()
         CamPanelRunning() ? L"running" : L"not running");
     CamInfo cams[S2C_MAX_CAMERAS_UI];
     int n = CamList(cams, S2C_MAX_CAMERAS_UI);
-    if (!n) Out(L"no Show2Cam cameras");
+    if (!count) Out(L"no Show2Cam cameras");
+    for (int i = 0; i < count; i++)
+        if (!SetupCameraEnabled(i))
+        {
+            wchar_t name[S2C_NAME_CHARS];
+            CamSavedName(i, name);
+            Out(L"camera %d: \"%ls\" - switched off", i + 1, name);
+        }
     for (int i = 0; i < n; i++)
     {
         CamConfig c;
@@ -236,12 +246,26 @@ static int CmdStatus()
     return ExitOk;
 }
 
+// The cameras switched on show up in Windows a moment after a change (up to 10 s).
+static void WaitCameras()
+{
+    int count = CameraCount(), want = 0;
+    for (int i = 0; i < count; i++)
+        if (SetupCameraEnabled(i)) want++;
+    for (int t = 0; t < 50; t++)
+    {
+        CamInfo cams[S2C_MAX_CAMERAS_UI];
+        if (CamList(cams, S2C_MAX_CAMERAS_UI) == want) break;
+        Sleep(200);
+    }
+}
+
 static int CmdCount(int argc, wchar_t** argv)
 {
     ULONG n;
-    if (argc < 1 || !ParseUlong(argv[0], &n) || n < 1 || n > S2C_MAX_CAMERAS_UI)
+    if (argc < 1 || !ParseUlong(argv[0], &n) || n > S2C_MAX_CAMERAS_UI)
     {
-        Out(L"usage: s2cctl count N   (1..%d)", S2C_MAX_CAMERAS_UI);
+        Out(L"usage: s2cctl count N   (0..%d)", S2C_MAX_CAMERAS_UI);
         return ExitUsage;
     }
     if (!IsElevated())
@@ -258,16 +282,134 @@ static int CmdCount(int argc, wchar_t** argv)
         Out(L"could not set the number of cameras to %lu", n);
         return ExitFailed;
     }
-    // the cameras' device interfaces appear a moment later
-    for (int t = 0; t < 50; t++)
-    {
-        CamInfo cams[S2C_MAX_CAMERAS_UI];
-        if (CamList(cams, S2C_MAX_CAMERAS_UI) == (int)n) break;
-        Sleep(200);
-    }
+    WaitCameras();
     CamConfigNotifyPanel(-1);
     Out(L"cameras: %lu%ls", n, reboot ? L" (Windows asks for a restart)" : L"");
     return ExitOk;
+}
+
+static const wchar_t* EnableResult(int r)
+{
+    switch (r)
+    {
+    case 0: return L"done";
+    case 1: return L"set (no device for it yet)";
+    case 2: return L"a program has it open: not switched off";
+    case 5: return L"done after a restart";
+    default: return L"failed";
+    }
+}
+
+static int CmdEnable(int argc, wchar_t** argv)
+{
+    int list[S2C_MAX_CAMERAS_UI], n;
+    bool on = argc >= 2 && !_wcsicmp(argv[1], L"on"), off = argc >= 2 && !_wcsicmp(argv[1], L"off");
+    if (argc < 2 || !ParseCameras(argv[0], list, &n, true) || (!on && !off))
+    {
+        Out(L"usage: s2cctl enable CAM on|off");
+        return ExitUsage;
+    }
+    if (!IsElevated())
+    {
+        Out(L"administrator rights needed (run from an elevated command prompt)");
+        return ExitAdmin;
+    }
+    int rc = ExitOk, count = CameraCount();
+    for (int i = 0; i < n; i++)
+    {
+        if (list[i] >= count)
+        {
+            Out(L"camera %d: there is no such camera (cameras: %d)", list[i] + 1, count);
+            rc = ExitFailed;
+            continue;
+        }
+        int r = SetupSetCameraEnabled(list[i], on);
+        Out(L"camera %d %ls: %ls", list[i] + 1, on ? L"on" : L"off", EnableResult(r));
+        if (r == 2 || r == 3) rc = ExitFailed;
+    }
+    WaitCameras();
+    CamConfigNotifyPanel(-1);
+    return rc;
+}
+
+static int CmdDelete(int argc, wchar_t** argv)
+{
+    ULONG cam;
+    int count = CameraCount();
+    if (argc < 1 || !ParseUlong(argv[0], &cam) || cam < 1 || cam > S2C_MAX_CAMERAS_UI)
+    {
+        Out(L"usage: s2cctl delete CAM");
+        return ExitUsage;
+    }
+    if ((int)cam > count)
+    {
+        Out(L"camera %lu: there is no such camera (cameras: %d)", cam, count);
+        return ExitFailed;
+    }
+    if (!IsElevated())
+    {
+        Out(L"administrator rights needed (run from an elevated command prompt)");
+        return ExitAdmin;
+    }
+    // names of the cameras that move: their device interfaces take them at once (the driver settings move anyway)
+    wchar_t names[S2C_MAX_CAMERAS_UI][S2C_NAME_CHARS];
+    CamNamesNow(count, names);
+    int src[S2C_MAX_CAMERAS_UI];
+    int n = CamDeletePermutation((int)cam - 1, count, src);
+    bool reboot = false;
+    int hidden = 0;
+    int r = SetupDeleteCamera((int)cam - 1, &reboot, &hidden);
+    if (r == 4)
+    {
+        Out(L"could not delete camera %lu", cam);
+        return ExitFailed;
+    }
+    CamConfigPermute(src, n, count);
+    WaitCameras();
+    CamNamesAfterPermute(src, n, names);
+    CamConfigNotifyPanel(-1);
+    Out(L"camera %lu deleted; cameras: %d%ls%ls%ls", cam, count - 1, reboot ? L" (Windows asks for a restart)" : L"",
+        r == 6 ? L"; the last device is in use: hidden until the program closes it" : L"",
+        r == 7 ? L"; a camera that moved could not be switched off (a program has it open)" : L"");
+    return r == 7 ? ExitFailed : ExitOk;
+}
+
+static int CmdMove(int argc, wchar_t** argv)
+{
+    ULONG from, to;
+    int count = CameraCount();
+    if (argc < 2 || !ParseUlong(argv[0], &from) || !ParseUlong(argv[1], &to) || from < 1 || to < 1)
+    {
+        Out(L"usage: s2cctl move CAM NUMBER");
+        return ExitUsage;
+    }
+    if ((int)from > count || (int)to > count)
+    {
+        Out(L"there are %d camera(s)", count);
+        return ExitFailed;
+    }
+    if (!IsElevated())
+    {
+        Out(L"administrator rights needed (run from an elevated command prompt)");
+        return ExitAdmin;
+    }
+    wchar_t names[S2C_MAX_CAMERAS_UI][S2C_NAME_CHARS];
+    CamNamesNow(count, names);
+    int src[S2C_MAX_CAMERAS_UI];
+    int n = CamMovePermutation((int)from - 1, (int)to - 1, count, src);
+    int r = SetupMoveCamera((int)from - 1, (int)to - 1);
+    if (r == 4)
+    {
+        Out(L"could not move camera %lu", from);
+        return ExitFailed;
+    }
+    CamConfigPermute(src, n, count);
+    WaitCameras();
+    CamNamesAfterPermute(src, n, names);
+    CamConfigNotifyPanel(-1);
+    Out(L"camera %lu is now camera %lu%ls%ls", from, to, r == 5 ? L" (Windows asks for a restart)" : L"",
+        r == 7 ? L"; a camera that moved could not be switched off (a program has it open)" : L"");
+    return r == 7 ? ExitFailed : ExitOk;
 }
 
 static int CmdName(int argc, wchar_t** argv)
@@ -554,7 +696,9 @@ static int CmdExport(int argc, wchar_t** argv)
     {
         CamConfig c;
         CamConfigLoad(i, &c);
-        const wchar_t* name = L"";
+        wchar_t saved[S2C_NAME_CHARS];
+        CamSavedName(i, saved);                     // a camera switched off is not in the list
+        const wchar_t* name = saved;
         for (int j = 0; j < present; j++)
             if (cams[j].index == i) name = cams[j].name;
         CamIniWriteCamera(path, i, name, c);
@@ -584,13 +728,27 @@ static int CmdImport(int argc, wchar_t** argv)
         return ExitFailed;
     }
     int now = CameraCount();
-    if (count && count != now && !IsElevated())
+    int target = count >= 0 ? count : now;
+    // the on / off states in the file (administrator rights when one changes, as for the number of cameras)
+    bool wantOn[S2C_MAX_CAMERAS_UI], states = false;
+    for (int i = 0; i < S2C_MAX_CAMERAS_UI; i++)
     {
-        Out(L"the file has %d camera(s), now there are %d: administrator rights needed to change that", count, now);
+        CamConfig c;
+        c.enabled = SetupCameraEnabled(i);
+        wchar_t name[S2C_NAME_CHARS];
+        bool hasName = false;
+        CamIniReadCamera(path, i, &c, name, &hasName);
+        wantOn[i] = c.enabled;
+        if (i < target && wantOn[i] != SetupCameraEnabled(i)) states = true;
+    }
+    if (((count >= 0 && count != now) || states) && !IsElevated())
+    {
+        Out(L"the file has %d camera(s) (now %d)%ls: administrator rights needed to change that", target, now,
+            states ? L" and cameras switched on / off" : L"");
         return ExitAdmin;
     }
     int rc = ExitOk;
-    if (count && count != now)
+    if (count >= 0 && count != now)
     {
         bool reboot = false;
         if (!SetupSetCameraCount(count, true, &reboot, [](void*, const wchar_t* line) { Out(L"  %ls", line); }, nullptr))
@@ -598,13 +756,18 @@ static int CmdImport(int argc, wchar_t** argv)
             Out(L"could not set the number of cameras to %d", count);
             rc = ExitFailed;
         }
-        for (int t = 0; t < 50; t++)
-        {
-            CamInfo cams[S2C_MAX_CAMERAS_UI];
-            if (CamList(cams, S2C_MAX_CAMERAS_UI) == count) break;
-            Sleep(200);
-        }
     }
+    for (int i = 0; i < target; i++)
+        if (wantOn[i] != SetupCameraEnabled(i))
+        {
+            int r = SetupSetCameraEnabled(i, wantOn[i]);
+            if (r == 2 || r == 3)
+            {
+                Out(L"camera %d %ls: %ls", i + 1, wantOn[i] ? L"on" : L"off", EnableResult(r));
+                rc = ExitFailed;
+            }
+        }
+    WaitCameras();
     int done = 0;
     for (int i = 0; i < S2C_MAX_CAMERAS_UI; i++)
     {
@@ -685,7 +848,10 @@ static void Usage()
 {
     Out(L"Show2Cam %ls - command line control", L"" S2C_VER_STR);
     Out(L"  s2cctl status");
-    Out(L"  s2cctl count N                                 (1..%d; administrator)", S2C_MAX_CAMERAS_UI);
+    Out(L"  s2cctl count N                                 (0..%d; administrator)", S2C_MAX_CAMERAS_UI);
+    Out(L"  s2cctl enable CAM on|off                       (administrator)");
+    Out(L"  s2cctl delete CAM                              (the cameras after it move up; administrator)");
+    Out(L"  s2cctl move CAM NUMBER                         (another number; the cameras between move; administrator)");
     Out(L"  s2cctl name CAM \"NAME\"                         (\"\" or default = default name)");
     Out(L"  s2cctl source CAM text [\"TEXT\"] | images [FOLDER] | video [FOLDER] | stream URL | generator");
     Out(L"  s2cctl audio CAM speak2mic|off|DEVICE");
@@ -733,6 +899,9 @@ int wmain(int argc, wchar_t** argv)
     int rc;
     if (!_wcsicmp(c, L"status")) rc = CmdStatus();
     else if (!_wcsicmp(c, L"count")) rc = CmdCount(rest, args);
+    else if (!_wcsicmp(c, L"enable")) rc = CmdEnable(rest, args);
+    else if (!_wcsicmp(c, L"delete")) rc = CmdDelete(rest, args);
+    else if (!_wcsicmp(c, L"move")) rc = CmdMove(rest, args);
     else if (!_wcsicmp(c, L"name")) rc = CmdName(rest, args);
     else if (!_wcsicmp(c, L"source")) rc = CmdSource(rest, args);
     else if (!_wcsicmp(c, L"audio")) rc = CmdAudio(rest, args);

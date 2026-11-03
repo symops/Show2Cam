@@ -273,3 +273,27 @@ Bir programın açık tuttuğu kamera listeden kaldırıldı; program kamerayı 
 Kurulum klasörü:
 Gözat…
 Kurulum konumunu seçin (içinde %ls klasörü oluşturulur)
+kapalı
+Etkin
+Kapalı
+“%ls” kamerası açıldı.
+“%ls” kamerası kapatıldı.
+“%ls” kamerası kapatılmadı: bir program onu kullanıyor.
+“%ls” kamerası: değişiklik bilgisayar yeniden başlatıldıktan sonra geçerli olur.
+“%ls” kamerası değiştirilemedi (kod %d).
+“%ls” kamerası silinsin mi?\n\nSonraki kameralar onun yerine kayar, kamera sayısı 1 azalır.
+“%ls” kamerası silinemedi.
+“%ls” kamerası silindi. Kamera sayısı: %d.
+Bir programın tuttuğu kamera yeni yerinde kapatılamadı.
+“%ls” kamerasının numarası değiştirilemedi.
+“%ls” kamerası: numara %d.
+Değişiklik bilgisayar yeniden başlatıldıktan sonra geçerli olur.
+Kamera numarası:
+Kapat
+Aç
+Sil…
+Bir kamera kapatılmadı: bir program onu kullanıyor.
+Kameralar açılamadı veya kapatılamadı (kod %d).
+Kamera sayısı: 0 — sürücü yüklü, Windows'ta kamera yok.
+Tüm Show2Cam kameraları kontrol panelinde kapalı.
+Sürücü yüklendi (kamera: 0).

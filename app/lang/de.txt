@@ -273,3 +273,27 @@ Eine Kamera, die ein Programm geöffnet hat, wurde aus der Kameraliste entfernt;
 Installationsordner:
 Durchsuchen…
 Installationsort wählen (darin wird der Ordner %ls angelegt)
+aus
+Aktiviert
+Deaktiviert
+Kamera „%ls“ aktiviert.
+Kamera „%ls“ deaktiviert.
+Kamera „%ls“ wurde nicht deaktiviert: ein Programm verwendet sie.
+Kamera „%ls“: die Änderung wird nach einem Neustart des Computers wirksam.
+Kamera „%ls“ konnte nicht geändert werden (Code %d).
+Kamera „%ls“ löschen?\n\nDie Kameras danach rücken an ihre Stelle, die Anzahl der Kameras sinkt um 1.
+Kamera „%ls“ konnte nicht gelöscht werden.
+Kamera „%ls“ gelöscht. Anzahl der Kameras: %d.
+Eine Kamera, die ein Programm verwendet, konnte an ihrer neuen Stelle nicht deaktiviert werden.
+Die Nummer der Kamera „%ls“ konnte nicht geändert werden.
+Kamera „%ls“: Nummer %d.
+Die Änderung wird nach einem Neustart des Computers wirksam.
+Kameranummer:
+Deaktivieren
+Aktivieren
+Löschen…
+Eine Kamera wurde nicht deaktiviert: ein Programm verwendet sie.
+Die Kameras konnten nicht aktiviert oder deaktiviert werden (Code %d).
+Anzahl der Kameras: 0 — der Treiber ist installiert, Windows hat keine Kameras.
+Alle Show2Cam-Kameras sind in der Systemsteuerung deaktiviert.
+Treiber installiert (Kameras: 0).

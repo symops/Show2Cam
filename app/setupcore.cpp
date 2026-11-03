@@ -191,21 +191,27 @@ int SetupDeviceCount()
 
 bool SetupGetDeviceState(ULONG* status, ULONG* problem, wchar_t* instanceId, size_t idLen)
 {
-    bool found = false;
+    // The device that tells most: a working one before one with a problem, before a camera switched off, before a
+    // leftover registration.
+    int best = 99;
     *status = 0;
     *problem = 0;
     if (idLen) instanceId[0] = 0;
     ForEachDevice([&](HDEVINFO set, SP_DEVINFO_DATA* info) {
-        if (found) return;
-        found = true;
-        SetupDiGetDeviceInstanceIdW(set, info, instanceId, (DWORD)idLen, nullptr);
-        if (CM_Get_DevNode_Status(status, problem, info->DevInst, 0) != CR_SUCCESS)
+        ULONG st = 0, pr = 0;
+        if (CM_Get_DevNode_Status(&st, &pr, info->DevInst, 0) != CR_SUCCESS)
         {
-            *status = 0;
-            *problem = CM_PROB_PHANTOM;     // registered but not present
+            st = 0;
+            pr = CM_PROB_PHANTOM;           // registered but not present
         }
+        int rank = pr == CM_PROB_PHANTOM ? 3 : pr == CM_PROB_DISABLED ? 2 : (pr || !(st & DN_STARTED)) ? 1 : 0;
+        if (rank >= best) return;
+        best = rank;
+        *status = st;
+        *problem = pr;
+        SetupDiGetDeviceInstanceIdW(set, info, instanceId, (DWORD)idLen, nullptr);
     });
-    return found;
+    return best < 99;
 }
 
 // Tells the driver where to write its log file (Parameters\LogFile, an NT path): driver.log next to ours.
@@ -243,11 +249,13 @@ static bool SetDeviceCameraIndex(HDEVINFO set, SP_DEVINFO_DATA* info, int index)
     return ok;
 }
 
+static void ApplyCameraStates(int count);
+
 bool SetupSetCameraCount(int count, bool installDriver, bool* rebootNeeded, SetupLog log, void* ctx, int* hidden)
 {
     *rebootNeeded = false;
     if (hidden) *hidden = 0;
-    if (count < 1 || count > 10) return false;
+    if (count < 0 || count > 10) return false;
     // First: a device that starts below (created, or restarted) tells from it whether its camera is shown.
     S2cSetParam(L"CameraCount", (DWORD)count);
     // Present devices only: leftovers of earlier installations (not present) do not hold a camera number.
@@ -377,8 +385,186 @@ bool SetupSetCameraCount(int count, bool installDriver, bool* rebootNeeded, Setu
         }
         SetupDiDestroyDeviceInfoList(nset);
     }
+    ApplyCameraStates(count);
     return ok;
 }
+
+// ---------------------------------------------------------------------------
+// A camera switched off / on: Camera<N>Disabled in the driver settings (the panel reads it without administrator
+// rights) and its device disabled / enabled as in Device Manager (kept across a restart; programs no longer see it).
+
+static void CameraParamName(int cam, const wchar_t* what, wchar_t* out)
+{
+    _snwprintf(out, 32, L"Camera%d%ls", cam + 1, what);
+    out[31] = 0;
+}
+
+bool SetupCameraEnabled(int cam)
+{
+    wchar_t name[32];
+    CameraParamName(cam, L"Disabled", name);
+    return S2cGetParam(name, 0) == 0;
+}
+
+static void SetCameraDisabledParam(int cam, bool disabled)
+{
+    wchar_t name[32];
+    CameraParamName(cam, L"Disabled", name);
+    if (disabled) S2cSetParam(name, 1);
+    else RegDeleteKeyValueW(HKEY_LOCAL_MACHINE, S2C_PARAMS_KEY, name);
+}
+
+static bool PropertyChange(HDEVINFO set, SP_DEVINFO_DATA* info, DWORD state, bool* reboot)
+{
+    SP_PROPCHANGE_PARAMS pc = {};
+    pc.ClassInstallHeader.cbSize = sizeof(SP_CLASSINSTALL_HEADER);
+    pc.ClassInstallHeader.InstallFunction = DIF_PROPERTYCHANGE;
+    pc.StateChange = state;
+    pc.Scope = DICS_FLAG_GLOBAL;
+    bool ok = SetupDiSetClassInstallParamsW(set, info, &pc.ClassInstallHeader, sizeof(pc)) &&
+              SetupDiCallClassInstaller(DIF_PROPERTYCHANGE, set, info);
+    DWORD err = ok ? 0 : GetLastError();
+    SP_DEVINSTALL_PARAMS_W dip = { sizeof(dip) };
+    if (SetupDiGetDeviceInstallParamsW(set, info, &dip) && (dip.Flags & (DI_NEEDREBOOT | DI_NEEDRESTART))) *reboot = true;
+    SetLastError(err);
+    return ok;
+}
+
+int SetupSetCameraEnabled(int cam, bool enable)
+{
+    if (cam < 0 || cam >= 10) return 3;
+    SetCameraDisabledParam(cam, !enable);
+    HDEVINFO set = SetupDiGetClassDevsW(nullptr, L"ROOT", nullptr, DIGCF_ALLCLASSES | DIGCF_PRESENT);
+    if (set == INVALID_HANDLE_VALUE) return 3;
+    int rc = 1;                     // no device for it (yet): the setting is applied when it is created
+    SP_DEVINFO_DATA d = { sizeof(d) };
+    for (DWORD i = 0; rc == 1 && SetupDiEnumDeviceInfo(set, i, &d); i++)
+    {
+        if (!HasHardwareId(set, &d) || DeviceCameraIndex(set, &d) != cam) continue;
+        ULONG st = 0, pr = 0;
+        CM_Get_DevNode_Status(&st, &pr, d.DevInst, 0);
+        bool off = pr == CM_PROB_DISABLED;
+        bool reboot = false;
+        if (enable == !off) rc = 0;
+        else if (enable)
+            rc = PropertyChange(set, &d, DICS_ENABLE, &reboot) ? (reboot ? 5 : 0) : 3;
+        else
+        {
+            // A program has it open: Windows would switch it off only after a restart, and the program would keep
+            // reading a camera the panel shows as off. It stays on.
+            PNP_VETO_TYPE veto = PNP_VetoTypeUnknown;
+            wchar_t vetoName[MAX_PATH] = L"";
+            CONFIGRET cr = CM_Query_And_Remove_SubTreeW(d.DevInst, &veto, vetoName, MAX_PATH, CM_REMOVE_NO_RESTART | CM_REMOVE_UI_NOT_OK);
+            if (cr != CR_SUCCESS)
+            {
+                AppLog(L"camera devices: camera %d in use (0x%lX, veto %d %ls): not switched off", cam + 1, (unsigned long)cr,
+                       (int)veto, vetoName);
+                SetCameraDisabledParam(cam, false);
+                rc = 2;
+            }
+            else if (PropertyChange(set, &d, DICS_DISABLE, &reboot)) rc = reboot ? 5 : 0;
+            else
+            {
+                AppLog(L"camera devices: camera %d: disabling failed (%lu)", cam + 1, GetLastError());
+                CM_Setup_DevNode(d.DevInst, CM_SETUP_DEVNODE_READY);   // back as it was
+                SetCameraDisabledParam(cam, false);
+                rc = 3;
+            }
+        }
+        if (rc == 3 && enable) SetCameraDisabledParam(cam, true);
+    }
+    SetupDiDestroyDeviceInfoList(set);
+    AppLog(L"camera devices: camera %d %ls -> %d", cam + 1, enable ? L"on" : L"off", rc);
+    return rc;
+}
+
+// The devices follow Camera<N>Disabled (a device just created starts on); cameras above the count lose the setting.
+static void ApplyCameraStates(int count)
+{
+    for (int cam = 0; cam < 10; cam++)
+        if (cam >= count) SetCameraDisabledParam(cam, false);
+        else if (!SetupCameraEnabled(cam)) SetupSetCameraEnabled(cam, false);
+}
+
+// New camera i (0..n-1) takes the driver settings and the on / off state of old camera src[i]; the settings of cameras
+// n.. are deleted (up to `count`). 0 done, 5 restart needed, 7 a camera could not take its new on / off state.
+static int PermuteCameras(const int* src, int n, int count)
+{
+    static const wchar_t* kWhat[] = { L"Name", L"Width", L"Height", L"Fps", L"Disabled" };
+    const int kinds = (int)(sizeof(kWhat) / sizeof(kWhat[0]));
+    struct Value { bool has; DWORD type, size; BYTE data[160]; };
+    static Value v[10][5];
+    bool was[10];
+    for (int cam = 0; cam < 10; cam++)
+    {
+        was[cam] = SetupCameraEnabled(cam);
+        for (int k = 0; k < kinds; k++)
+        {
+            wchar_t name[32];
+            CameraParamName(cam, kWhat[k], name);
+            v[cam][k].size = sizeof(v[cam][k].data);
+            v[cam][k].has = RegGetValueW(HKEY_LOCAL_MACHINE, S2C_PARAMS_KEY, name, RRF_RT_REG_DWORD | RRF_RT_REG_SZ, &v[cam][k].type,
+                                         v[cam][k].data, &v[cam][k].size) == ERROR_SUCCESS;
+        }
+    }
+    for (int cam = 0; cam < count && cam < 10; cam++)
+        for (int k = 0; k < kinds; k++)
+        {
+            wchar_t name[32];
+            CameraParamName(cam, kWhat[k], name);
+            const Value* from = cam < n ? &v[src[cam]][k] : nullptr;
+            if (from && from->has) RegSetKeyValueW(HKEY_LOCAL_MACHINE, S2C_PARAMS_KEY, name, from->type, from->data, from->size);
+            else RegDeleteKeyValueW(HKEY_LOCAL_MACHINE, S2C_PARAMS_KEY, name);
+        }
+    int rc = 0;
+    for (int cam = 0; cam < n; cam++)
+    {
+        bool want = was[src[cam]];
+        if (want == was[cam]) continue;     // the device already is in that state
+        int r = SetupSetCameraEnabled(cam, want);
+        if (r == 5 && rc == 0) rc = 5;
+        else if (r == 2 || r == 3) rc = 7;
+    }
+    return rc;
+}
+
+int SetupMoveCamera(int from, int to)
+{
+    int count = (int)S2cGetParam(L"CameraCount", 1);
+    if (count < 1 || count > 10 || from < 0 || from >= count || to < 0 || to >= count) return 4;
+    if (from == to) return 0;
+    int src[10], n = 0;
+    for (int cam = 0; cam < count; cam++)
+        if (cam != from) src[n++] = cam;
+    for (int k = n; k > to; k--) src[k] = src[k - 1];
+    src[to] = from;
+    int rc = PermuteCameras(src, count, count);
+    AppLog(L"camera devices: camera %d moved to %d -> %d", from + 1, to + 1, rc);
+    return rc;
+}
+
+int SetupDeleteCamera(int cam, bool* rebootNeeded, int* hidden)
+{
+    *rebootNeeded = false;
+    if (hidden) *hidden = 0;
+    int count = (int)S2cGetParam(L"CameraCount", 1);
+    if (count < 1 || count > 10 || cam < 0 || cam >= count) return 4;
+    // The cameras after it take its place: their settings move down one number; the last device goes.
+    int src[10], n = 0;
+    for (int i = 0; i < count; i++)
+        if (i != cam) src[n++] = i;
+    int rc = PermuteCameras(src, n, count);
+    if (rc == 5) *rebootNeeded = true;
+    AppLog(L"camera devices: camera %d deleted (of %d)", cam + 1, count);
+    bool reboot = false;
+    int hid = 0;
+    bool ok = SetupSetCameraCount(count - 1, true, &reboot, nullptr, nullptr, &hid);
+    if (reboot) *rebootNeeded = true;
+    if (hidden) *hidden = hid;
+    return !ok ? 4 : (*rebootNeeded ? 5 : (rc == 7 ? 7 : (hid ? 6 : 0)));
+}
+
+static wchar_t g_stagedInf[64];      // the package put into the store without a device (no cameras)
 
 bool SetupInstallDriver(const wchar_t* infArg, bool* rebootNeeded, SetupLog log, void* ctx)
 {
@@ -392,11 +578,27 @@ bool SetupInstallDriver(const wchar_t* infArg, bool* rebootNeeded, SetupLog log,
 
     // One root-enumerated device per camera (the number of cameras in the driver settings, 1 by default).
     int count = (int)S2cGetParam(L"CameraCount", 1);
-    if (count < 1 || count > 10) count = 1;
+    if (count < 0 || count > 10) count = 1;
     bool unused = false;
     if (!SetupSetCameraCount(count, false, &unused, log, ctx)) return false;
 
     SetDriverLogFile();
+    if (SetupDeviceCount() == 0)
+    {
+        // No cameras (the number of cameras is 0): the driver package goes into the driver store only; a camera added
+        // later gets its driver from there.
+        wchar_t staged[MAX_PATH] = L"";
+        if (!SetupCopyOEMInfW(inf, nullptr, SPOST_PATH, 0, staged, MAX_PATH, nullptr, nullptr))
+        {
+            LogError(log, ctx, TR(L"не удалось установить драйвер"), GetLastError());
+            return false;
+        }
+        const wchar_t* name = wcsrchr(staged, L'\\');
+        wcsncpy(g_stagedInf, name ? name + 1 : staged, 63);
+        AppLog(L"no cameras: driver package %ls staged", g_stagedInf);
+        Log(log, ctx, TR(L"Драйвер установлен (камер: 0)."));
+        return true;
+    }
     Log(log, ctx, TR(L"Установка драйвера… Если Windows спросит про издателя, выберите «Все равно установить»."));
     BOOL reboot = FALSE;
     if (!UpdateDriverForPlugAndPlayDevicesW(nullptr, kHardwareId, inf, INSTALLFLAG_FORCE, &reboot))
@@ -449,6 +651,33 @@ static int RemoveDriverPackages(SetupLog log, void* ctx, const wchar_t* keepInf 
     } while (FindNextFileW(h, &fd));
     FindClose(h);
     return removed;
+}
+
+bool SetupInstalledWithoutCameras()
+{
+    DWORD count = 1, size = sizeof(count);
+    if (RegGetValueW(HKEY_LOCAL_MACHINE, S2C_PARAMS_KEY, L"CameraCount", RRF_RT_REG_DWORD, nullptr, &count, &size) != ERROR_SUCCESS ||
+        count != 0)
+        return false;
+    wchar_t dir[MAX_PATH], pattern[MAX_PATH];
+    GetWindowsDirectoryW(dir, MAX_PATH);
+    _snwprintf(pattern, MAX_PATH, L"%ls\\INF\\oem*.inf", dir);
+    pattern[MAX_PATH - 1] = 0;
+    bool found = false;
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileW(pattern, &fd);
+    if (h == INVALID_HANDLE_VALUE) return false;
+    do
+    {
+        wchar_t path[MAX_PATH], provider[64] = {}, service[64] = {};
+        _snwprintf(path, MAX_PATH, L"%ls\\INF\\%ls", dir, fd.cFileName);
+        path[MAX_PATH - 1] = 0;
+        GetPrivateProfileStringW(L"Strings", L"ProviderName", L"", provider, 64, path);
+        GetPrivateProfileStringW(L"Show2Cam_Device.NT.Services", L"AddService", L"", service, 64, path);
+        found = !_wcsicmp(provider, L"" S2C_AUTHOR) && !_wcsnicmp(service, L"Show2Cam", 8);
+    } while (!found && FindNextFileW(h, &fd));
+    FindClose(h);
+    return found;
 }
 
 #define S2C_PARAMS_PATH L"SYSTEM\\CurrentControlSet\\Services\\Show2Cam\\Parameters"
@@ -646,6 +875,7 @@ int SetupRemoveOldDriverPackages(SetupLog log, void* ctx)
             type == DEVPROP_TYPE_STRING)
             wcscpy(current, inf);
     });
+    if (!current[0]) wcscpy(current, g_stagedInf);  // no cameras: the package just put into the store
     if (!current[0]) return 0;      // unknown: keep everything
     AppLog(L"driver package in use: %ls", current);
     return RemoveDriverPackages(log, ctx, current);

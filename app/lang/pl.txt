@@ -273,3 +273,27 @@ Kamera otwarta przez program została usunięta z listy kamer; program korzysta 
 Folder instalacji:
 Przeglądaj…
 Wybierz miejsce instalacji (zostanie w nim utworzony folder %ls)
+wyłączona
+Włączona
+Wyłączona
+Kamera „%ls” włączona.
+Kamera „%ls” wyłączona.
+Kamera „%ls” nie została wyłączona: używa jej program.
+Kamera „%ls”: zmiana zacznie obowiązywać po ponownym uruchomieniu komputera.
+Nie udało się zmienić kamery „%ls” (kod %d).
+Usunąć kamerę „%ls”?\n\nKamery po niej przesuną się na jej miejsce, liczba kamer zmniejszy się o 1.
+Nie udało się usunąć kamery „%ls”.
+Kamera „%ls” usunięta. Liczba kamer: %d.
+Kamery używanej przez program nie udało się wyłączyć na nowym miejscu.
+Nie udało się zmienić numeru kamery „%ls”.
+Kamera „%ls”: numer %d.
+Zmiana zacznie obowiązywać po ponownym uruchomieniu komputera.
+Numer kamery:
+Wyłącz
+Włącz
+Usuń…
+Kamera nie została wyłączona: używa jej program.
+Nie udało się włączyć ani wyłączyć kamer (kod %d).
+Liczba kamer: 0 — sterownik jest zainstalowany, Windows nie ma kamer.
+Wszystkie kamery Show2Cam są wyłączone w panelu sterowania.
+Sterownik zainstalowany (kamer: 0).

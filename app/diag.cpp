@@ -308,6 +308,18 @@ static void LogServiceState(SetupLog log, void* ctx)
     if (scm) CloseServiceHandle(scm);
 }
 
+// Cameras that should be in Windows: the number of cameras minus those switched off.
+static int CamerasOn(int* count)
+{
+    int n = (int)ReadDword(L"CameraCount", 1);
+    if (n < 0 || n > 10) n = 1;
+    *count = n;
+    int on = 0;
+    for (int i = 0; i < n; i++)
+        if (SetupCameraEnabled(i)) on++;
+    return on;
+}
+
 DiagResult RunDiagnostics(SetupLog log, void* ctx)
 {
     AppLog(TR(L"---- диагностика ----"));
@@ -317,7 +329,16 @@ DiagResult RunDiagnostics(SetupLog log, void* ctx)
     ULONG status = 0, problem = 0;
     wchar_t id[256];
     DiagResult result;
-    if (!SetupGetDeviceState(&status, &problem, id, 256))
+    int count = 0;
+    if (CamerasOn(&count) == 0)
+    {
+        // nothing to start: no camera, or every camera switched off in the panel
+        Say(log, ctx, count == 0 ? TR(L"Количество камер: 0 — драйвер установлен, камер в Windows нет.")
+                                 : TR(L"Все камеры Show2Cam отключены в панели управления."));
+        LogServiceState(log, ctx);
+        result = DiagOk;
+    }
+    else if (!SetupGetDeviceState(&status, &problem, id, 256))
     {
         Say(log, ctx, TR(L"Устройство ROOT\\Show2Cam не найдено: драйвер не установлен."));
         result = DiagNotInstalled;
@@ -362,6 +383,8 @@ DiagResult WaitForCameras(DWORD timeoutMs)
         ULONG status = 0, problem = 0;
         wchar_t id[256];
         DiagResult r;
+        int count = 0;
+        if (CamerasOn(&count) == 0) return DiagOk;          // nothing to wait for
         if (!SetupGetDeviceState(&status, &problem, id, 256)) r = DiagNotInstalled;
         else if (problem != 0 || !(status & DN_STARTED)) r = DiagDeviceProblem;
         else r = ScanCameras(nullptr, nullptr, false) > 0 ? DiagOk : DiagNoCameras;

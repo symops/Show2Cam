@@ -273,3 +273,27 @@ Una cámara que un programa tiene abierta se quitó de la lista de cámaras; el 
 Carpeta de instalación:
 Examinar…
 Elija la ubicación de instalación (se crea en ella la carpeta %ls)
+desactivada
+Activada
+Desactivada
+Cámara «%ls» activada.
+Cámara «%ls» desactivada.
+La cámara «%ls» no se desactivó: un programa la está usando.
+Cámara «%ls»: el cambio surtirá efecto tras reiniciar el equipo.
+No se pudo cambiar la cámara «%ls» (código %d).
+¿Eliminar la cámara «%ls»?\n\nLas cámaras siguientes ocuparán su lugar y el número de cámaras bajará en 1.
+No se pudo eliminar la cámara «%ls».
+Cámara «%ls» eliminada. Número de cámaras: %d.
+Una cámara que usa un programa no se pudo desactivar en su nuevo lugar.
+No se pudo cambiar el número de la cámara «%ls».
+Cámara «%ls»: número %d.
+El cambio surtirá efecto tras reiniciar el equipo.
+Número de cámara:
+Desactivar
+Activar
+Eliminar…
+Una cámara no se desactivó: un programa la está usando.
+No se pudieron activar o desactivar las cámaras (código %d).
+Número de cámaras: 0 — el controlador está instalado, Windows no tiene cámaras.
+Todas las cámaras de Show2Cam están desactivadas en el panel de control.
+Controlador instalado (cámaras: 0).

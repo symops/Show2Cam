@@ -19,7 +19,22 @@ bool SetupInstallDriver(const wchar_t* infPath, bool* rebootNeeded, SetupLog log
 // when installDriver), those above removed; existing devices without a camera number get one. Administrator rights.
 // A camera above the count that a program has open is not removed but hidden (*hidden counts them): the program keeps
 // it until it closes it, its device goes with a later call.
+// count 0..10 (0: no camera, the driver stays in the driver store). The devices then follow SetupCameraEnabled.
 bool SetupSetCameraCount(int count, bool installDriver, bool* rebootNeeded, SetupLog log, void* ctx, int* hidden = nullptr);
+// Camera `cam` (0-based) switched on (the default) or off: driver setting Camera<N>Disabled; no rights needed to read.
+bool SetupCameraEnabled(int cam);
+// Switches camera `cam` on / off: the setting and its device (disabled as in Device Manager: programs no longer see the
+// camera, also after a restart). 0 done, 1 no device for it (the setting applies when it is created), 2 a program has
+// it open (not switched off), 3 failed, 5 done after a restart. Administrator rights.
+int SetupSetCameraEnabled(int cam, bool enable);
+// Deletes camera `cam`: the cameras after it take its place (their driver settings and on / off state move down one
+// number) and the number of cameras goes down by one. 0 done, 4 failed, 5 reboot needed, 6 the last device is in use
+// (hidden), 7 a camera could not take the on / off state of the one it replaces. The per-user source settings
+// (camcfg) are the caller's. Administrator rights.
+int SetupDeleteCamera(int cam, bool* rebootNeeded, int* hidden = nullptr);
+// Camera `from` gets the number `to` (0-based); the cameras in between move one number towards `from` (their driver
+// settings and on / off states). 0 done, 4 failed, 5 reboot needed, 7 as for SetupDeleteCamera. Administrator rights.
+int SetupMoveCamera(int from, int to);
 
 // Removes every ROOT\Show2Cam device and deletes the Show2Cam driver package(s) from the driver store.
 // keepSettings (update / reinstall): the camera settings survive for the new version; otherwise (uninstall) all
@@ -33,6 +48,8 @@ void SetupResetDriverStatus();
 // A ROOT\Show2Cam device is present (not only a leftover registration).
 bool SetupDevicePresent();
 
+// Installed with the number of cameras set to 0: no device, the driver package is in the driver store.
+bool SetupInstalledWithoutCameras();
 // Number of ROOT\Show2Cam devices currently registered (present or not).
 int SetupDeviceCount();
 

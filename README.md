@@ -9,9 +9,17 @@ sizes (1920×1080 … 320×240) at 1–60 fps; the device is in the Image class,
 ## Control panel (Show2Cam.exe)
 
 * **Cameras** — the list of the cameras with their source, format and who uses each one right now (the
-  program's name, or "in use" when Windows does not tell); the number of cameras (1–10; one Windows device per camera, as one-camera drivers: devices are added / removed with administrator rights, the other cameras keep running).
+  program's name, or "in use" when Windows does not tell); the number of cameras (0–10; one Windows device per camera, as one-camera drivers: devices are added / removed with administrator rights, the other cameras keep running).
+  * The first column is the camera's number; a right click on it gives the camera another number (the cameras in
+    between move one place, with their names, sources and on / off state).
+  * A right click elsewhere on a camera: **Play / Pause**, **Switch off / Switch on**, **Delete…** (asks first; the
+    cameras after it move up and the number of cameras goes down by one). A double click on the status plays / pauses.
+  * A camera switched off is gone for programs (its device is disabled as in Device Manager, also after a restart) and
+    stays in the list greyed, with a grey cross instead of the play / pause symbol. Switching on / off and deleting
+    need administrator rights, as the number of cameras.
 * **The selected camera**
   * **Name** — the name programs show; renaming needs no administrator rights (the driver keeps it).
+  * **Enabled** (on by default) — off, with **Apply**, switches the camera off as the list's menu does.
   * **Source**
     * *Text* (default "Camera 1", "Camera 2", …), drawn as large as fits;
     * *Images from a folder* — PNG, JPEG, BMP, GIF, TIFF, ICO, JPEG XR, and WebP / HEIF / AVIF when Windows has
@@ -28,9 +36,11 @@ sizes (1920×1080 … 320×240) at 1–60 fps; the device is in the Image class,
     camera open; otherwise as soon as it is closed.
   * **Apply** puts the camera's settings (source, text / folder / address, sound, size, frame rate) into
     effect; switching to another camera or closing the panel with unsaved changes asks whether to keep them.
-  * **Check** — a live preview window of that camera (several cameras' windows may be open at once); **Play / Pause**.
+  * **Check** — a live preview window of that camera (several cameras' windows may be open at once; "Off" or
+    "Paused" is written over it for a camera switched off or paused, only there, not in what programs get);
+    **Play / Pause**.
 * Settings export / import (an .ini file, as Speak2Mic): the number of cameras and every camera's name, source,
-  folders, address, sound, size, frame rate and pause.
+  folders, address, sound, size, frame rate, pause and on / off state.
 * Event list, start with Windows in the tray (on by default: the cameras show their sources while the panel runs;
   without it they show the driver's test pattern), 17 languages.
 
@@ -50,8 +60,8 @@ the debug package only (`dist/Show2Cam-Debug-Setup.exe`, for testing and support
 `s2cinstall.exe` (administrator command prompt): `status` (cameras, frames, driver log), `cameras N`,
 `size N WIDTH HEIGHT [FPS]`, `color N RRGGBB`, `bmp N FILE.bmp`, `pattern N`, `install`, `remove`.
 
-`s2cctl.exe` — what the control panel sets, from the command line (no administrator rights except `count`):
-`status`, `count N`, `name CAM "NAME"`, `source CAM text ["TEXT"] | images [FOLDER] | video [FOLDER] | stream URL |
+`s2cctl.exe` — what the control panel sets, from the command line (no administrator rights except `count`, `enable`,
+`delete`, `move`): `status`, `count N` (0..10), `enable CAM on|off`, `delete CAM`, `move CAM NUMBER`, `name CAM "NAME"`, `source CAM text ["TEXT"] | images [FOLDER] | video [FOLDER] | stream URL |
 generator`, `audio CAM speak2mic|off|DEVICE`, `format CAM source|WxH [FPS|source]`, `pause CAM on|off`, `reset CAM`,
 `export FILE.ini`, `import FILE.ini`, `picture CAM FILE|pattern` (CAM: 1..10 or `all`). A running panel takes the
 changes at once. Exit codes: 0 ok, 1 failed, 2 bad arguments, 3 administrator rights needed, 4 Show2Cam cannot work

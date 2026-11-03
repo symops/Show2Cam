@@ -273,3 +273,27 @@ Uma câmera aberta por um programa foi retirada da lista de câmeras; o programa
 Pasta de instalação:
 Procurar…
 Escolha o local de instalação (nele é criada a pasta %ls)
+desativada
+Ativada
+Desativada
+Câmera “%ls” ativada.
+Câmera “%ls” desativada.
+A câmera “%ls” não foi desativada: um programa a está usando.
+Câmera “%ls”: a alteração terá efeito após reiniciar o computador.
+Não foi possível alterar a câmera “%ls” (código %d).
+Excluir a câmera “%ls”?\n\nAs câmeras seguintes ocupam o seu lugar, o número de câmeras diminui em 1.
+Não foi possível excluir a câmera “%ls”.
+Câmera “%ls” excluída. Número de câmeras: %d.
+Uma câmera em uso por um programa não pôde ser desativada no novo lugar.
+Não foi possível alterar o número da câmera “%ls”.
+Câmera “%ls”: número %d.
+A alteração terá efeito após reiniciar o computador.
+Número da câmera:
+Desativar
+Ativar
+Excluir…
+Uma câmera não foi desativada: um programa a está usando.
+Não foi possível ativar ou desativar as câmeras (código %d).
+Número de câmeras: 0 — o driver está instalado, o Windows não tem câmeras.
+Todas as câmeras do Show2Cam estão desativadas no painel de controle.
+Driver instalado (câmeras: 0).

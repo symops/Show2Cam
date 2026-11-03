@@ -273,3 +273,27 @@ Une caméra ouverte par un programme a été retirée de la liste des caméras ;
 Dossier d’installation :
 Parcourir…
 Choisissez l’emplacement d’installation (un dossier %ls y est créé)
+désactivée
+Activée
+Désactivée
+Caméra « %ls » activée.
+Caméra « %ls » désactivée.
+La caméra « %ls » n’a pas été désactivée : un programme l’utilise.
+Caméra « %ls » : la modification prendra effet après le redémarrage de l’ordinateur.
+Impossible de modifier la caméra « %ls » (code %d).
+Supprimer la caméra « %ls » ?\n\nLes caméras suivantes prennent sa place, le nombre de caméras diminue de 1.
+Impossible de supprimer la caméra « %ls ».
+Caméra « %ls » supprimée. Nombre de caméras : %d.
+Une caméra tenue par un programme n’a pas pu être désactivée à sa nouvelle place.
+Impossible de changer le numéro de la caméra « %ls ».
+Caméra « %ls » : numéro %d.
+La modification prendra effet après le redémarrage de l’ordinateur.
+Numéro de la caméra :
+Désactiver
+Activer
+Supprimer…
+Une caméra n’a pas été désactivée : un programme l’utilise.
+Impossible d’activer ou de désactiver les caméras (code %d).
+Nombre de caméras : 0 — le pilote est installé, Windows n’a aucune caméra.
+Toutes les caméras Show2Cam sont désactivées dans le panneau de configuration.
+Pilote installé (caméras : 0).

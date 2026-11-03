@@ -273,6 +273,30 @@ A camera that a program has open was taken off the list of cameras; the program 
 Install folder:
 Browse…
 Choose the install location (a %ls folder is created in it)
+off
+Enabled
+Off
+Camera “%ls” switched on.
+Camera “%ls” switched off.
+Camera “%ls” was not switched off: a program is using it.
+Camera “%ls”: the change takes effect after the computer restarts.
+Could not change camera “%ls” (code %d).
+Delete camera “%ls”?\n\nThe cameras after it move up into its place, the number of cameras goes down by 1.
+Could not delete camera “%ls”.
+Camera “%ls” deleted. Number of cameras: %d.
+A camera a program is holding could not be switched off in its new place.
+Could not change the number of camera “%ls”.
+Camera “%ls”: number %d.
+The change takes effect after the computer restarts.
+Camera number:
+Switch off
+Switch on
+Delete…
+A camera was not switched off: a program is using it.
+Could not switch the cameras on or off (code %d).
+Number of cameras: 0 — the driver is installed, Windows has no cameras.
+All Show2Cam cameras are switched off in the control panel.
+Driver installed (cameras: 0).
 [driver] the driver log is empty: the driver has never started
 [driver] ---- driver log (DriverLog) ----
 [setupapi] cannot open %ls (%lu)

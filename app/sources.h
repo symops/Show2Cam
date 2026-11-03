@@ -23,6 +23,9 @@ struct CamConfig
     ULONG   width = 0, height = 0;           // 0: as the source
     ULONG   fps = 0;                         // 0: as the source
     bool    paused = false;
+    // Switched on (the default) / off: not a per-user setting but the driver's (Camera<N>Disabled, see setupcore.h);
+    // CamConfigLoad reads it, CamConfigSave leaves it, the settings file carries it.
+    bool    enabled = true;
 };
 
 enum SourceState { StateStarting = 0, StateOk, StateNoSignal, StateNoFiles, StateError };

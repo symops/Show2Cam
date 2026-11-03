@@ -273,3 +273,27 @@ Een camera die een programma open heeft, is uit de cameralijst gehaald; het prog
 Installatiemap:
 Bladeren…
 Kies de installatielocatie (daarin wordt de map %ls gemaakt)
+uit
+Ingeschakeld
+Uitgeschakeld
+Camera ‘%ls’ ingeschakeld.
+Camera ‘%ls’ uitgeschakeld.
+Camera ‘%ls’ is niet uitgeschakeld: een programma gebruikt hem.
+Camera ‘%ls’: de wijziging werkt na het opnieuw opstarten van de computer.
+Kan camera ‘%ls’ niet wijzigen (code %d).
+Camera ‘%ls’ verwijderen?\n\nDe camera’s erna schuiven op naar zijn plaats, het aantal camera’s daalt met 1.
+Kan camera ‘%ls’ niet verwijderen.
+Camera ‘%ls’ verwijderd. Aantal camera’s: %d.
+Een camera die een programma vasthoudt, kon op zijn nieuwe plaats niet worden uitgeschakeld.
+Kan het nummer van camera ‘%ls’ niet wijzigen.
+Camera ‘%ls’: nummer %d.
+De wijziging werkt na het opnieuw opstarten van de computer.
+Cameranummer:
+Uitschakelen
+Inschakelen
+Verwijderen…
+Een camera is niet uitgeschakeld: een programma gebruikt hem.
+Kan de camera’s niet in- of uitschakelen (code %d).
+Aantal camera’s: 0 — het stuurprogramma is geïnstalleerd, Windows heeft geen camera’s.
+Alle Show2Cam-camera’s zijn uitgeschakeld in het configuratiescherm.
+Stuurprogramma geïnstalleerd (camera’s: 0).

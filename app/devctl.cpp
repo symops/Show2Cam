@@ -127,6 +127,11 @@ bool S2cDriverInstalled()
             if (_wcsicmp(p, S2C_HARDWARE_ID) == 0) found = true;
     }
     SetupDiDestroyDeviceInfoList(set);
+    // the number of cameras set to 0: installed, without a device
+    DWORD count = 1, size = sizeof(count);
+    if (!found && RegGetValueW(HKEY_LOCAL_MACHINE, S2C_PARAMS_KEY, L"CameraCount", RRF_RT_REG_DWORD, nullptr, &count, &size) == ERROR_SUCCESS &&
+        count == 0)
+        found = true;
     return found;
 }
 
