@@ -438,7 +438,7 @@ static void TexturedBackground(ULONG* bits, int w, int h, int r0, int g0, int b0
             for (auto& sp : spots)
             {
                 LONGLONG dx = x - sp.x, dy = y - sp.y, d2 = dx * dx + dy * dy, r2 = (LONGLONG)sp.r * sp.r;
-                if (d2 < r2) k += (int)(350 * (r2 - d2) / r2);
+                if (r2 > 0 && d2 < r2) k += (int)(350 * (r2 - d2) / r2);
             }
             // fine noise (+-12)
             seed = seed * 1664525u + 1013904223u;
@@ -593,7 +593,7 @@ static int RandomIndex(int n)
 int PickRandomFile(const wchar_t* folder, MediaKind kind, const wchar_t* last, const wchar_t (*bad)[MAX_PATH], int badCount,
                    wchar_t* out)
 {
-    if (!fileNames) fileNames = (wchar_t (*)[MAX_PATH])malloc(sizeof(wchar_t) * MAX_PATH * 1024);
+    if (!fileNames) fileNames = (wchar_t (*)[MAX_PATH])malloc(sizeof(*fileNames) * 1024);
     if (!fileNames) return 0;
     int n = ListMediaFiles(folder, kind, fileNames, 1024);
     if (n == 0) return 0;

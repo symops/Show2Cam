@@ -157,7 +157,7 @@ static bool Status(const CamInfo& cam, S2C_STATUS* st)
 static ULONG CameraUsers(const CamInfo& cam, wchar_t* who, size_t len)
 {
     who[0] = 0;
-    S2C_STATUS st;
+    S2C_STATUS st = {};
     if (!Status(cam, &st)) return 0;
     for (int u = 0; u < S2C_MAX_USERS; u++)
     {
@@ -205,7 +205,7 @@ static bool SendPattern(const CamInfo& cam)
 static bool WaitClosed(const CamInfo& cam, DWORD ms, ULONG others = 0)
 {
     DWORD start = GetTickCount();
-    S2C_STATUS st;
+    S2C_STATUS st = {};
     do
     {
         if (Status(cam, &st) && st.PinsOpen <= others) return true;
@@ -224,7 +224,7 @@ static void CheckClosed(const CamInfo& cam, DWORD ms, ULONG others, const wchar_
         else Check(true, L"%ls", what);
         return;
     }
-    S2C_STATUS st;
+    S2C_STATUS st = {};
     bool foreign = false, ours = false;
     if (Status(cam, &st))
         for (int u = 0; u < S2C_MAX_USERS; u++)
@@ -821,7 +821,7 @@ static void ActionPicture()
 {
     CamInfo cam;
     if (!PickCam(&cam)) return;
-    S2C_STATUS st;
+    S2C_STATUS st = {};
     if (!Check(Status(cam, &st), L"camera %d: status", cam.index + 1)) return;
     Out(L"[picture] camera %d \"%ls\", %lux%lu %lu fps", cam.index + 1, cam.name, st.Width, st.Height, st.Fps);
     {
@@ -858,7 +858,7 @@ static void ActionPicture()
             Check(Near(got, kQuarters[q], 48), L"%ls: %06lX (sent %06lX)", names[q], got, kQuarters[q]);
         }
     }
-    S2C_STATUS open;
+    S2C_STATUS open = {};
     if (Check(Status(cam, &open), L"status while open"))
     {
         Check(open.PinsOpen >= 1 && open.Streaming >= 1, L"in use while open (programs %lu, streaming %lu)", open.PinsOpen, open.Streaming);
@@ -920,7 +920,7 @@ static void ActionFormat()
     }
     DWORD err = SetFormat(cam, w, h, fps);
     if (!Check(err == ERROR_SUCCESS, L"format set (%lu)", err)) return;
-    S2C_STATUS st;
+    S2C_STATUS st = {};
     Check(Status(cam, &st) && st.Width == w && st.Height == h && st.Fps == fps, L"status %lux%lu %lu fps", st.Width, st.Height, st.Fps);
     Capture c;
     HRESULT hr = CaptureOpen(cam, &c);
@@ -2302,7 +2302,7 @@ static void TakeSnapshot(Snapshot* s)
     for (int i = 0; i < s->count; i++)
     {
         int k = cams[i].index;
-        S2C_STATUS st;
+        S2C_STATUS st = {};
         wcscpy(s->names[k], cams[i].name);
         if (Status(cams[i], &st))
         {
