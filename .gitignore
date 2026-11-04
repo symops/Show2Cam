@@ -23,3 +23,6 @@ app/autotest_media.rc
 # link maps (crash offsets -> functions)
 *.map
 maps/
+
+# Microsoft WDK InfVerif (not redistributable): put infverif.exe here yourself, see check_inf.sh
+tools/infverif/*.exe

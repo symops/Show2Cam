@@ -29,6 +29,8 @@ What each part is for:
 | `python3`, `python3-pil` | `gen.py` (version, INF), the language tables, the INF variants and the autotest's samples |
 | `ffmpeg`, `libheif-examples`, `libheif-plugin-aomenc` | the autotest's sample clips and pictures in the formats Windows cannot write itself (H.264/HEVC/VP8/VP9/AV1, MP3/Vorbis/Opus/AC-3, WMV, AVIF) — made anew on every build, see step 6 |
 
+Optional, only for `./check_inf.sh` (Microsoft's INF checker, step 7): `sudo apt install -y wine`.
+
 Debian's `ffmpeg` already has every encoder the samples need (libx264, libx265, libvpx, libaom, libmp3lame,
 libvorbis, libopus). HEIC is written by the sample script itself (one HEVC frame from ffmpeg put into an HEIF
 container), because `heif-enc` has no HEVC encoder on Debian.
@@ -79,7 +81,7 @@ One command builds and packages everything; it takes a few minutes. In order:
 5. `tools/generate-cat-file` — the catalog of `Show2Cam.inf` + `Show2Cam.sys` for each architecture, test-signed and
    checked (`osslsigncode verify`); Windows refuses a driver package without a catalog (`0xE000022F`), also in test
    signing mode.
-6. The two packages and their one-file installers (step 5 below), and the link maps (step 7).
+6. The two packages and their one-file installers (step 5 below), and the link maps (step 8).
 
 `set -e` stops at the first error. Warnings are not expected: a build is clean when
 `grep -iE "error|warning:"` finds nothing in its output.
@@ -109,14 +111,24 @@ those itself when it starts.
 If a sample tool is missing, install it (step 1) rather than skip the samples: the autotest would then not test
 those formats.
 
-## 7. Link maps
+## 7. Check the INF (optional)
+
+```sh
+./check_inf.sh
+```
+
+runs Microsoft's **InfVerif** under Wine on the packaged INF (basic, `/h` and `/w` by default; `sudo apt install -y
+wine`). InfVerif is not redistributable: take `infverif.exe` from the WDK NuGet package `microsoft.windows.wdk.x64`
+(`c/tools/<version>/x64/infverif.exe`) and put it into `tools/infverif/`. Expected: all three pass.
+
+## 8. Link maps
 
 `app/*.map` (x64) and `app/x86/*.map` are copied to `maps/<version>/` (ignored by git). A crash report names a module
 and an offset (`CRASH: exception 0xC0000005 at ntdll.dll+0xFA7D ...`, plus a minidump in
 `C:\ProgramData\Show2Cam\logs\`); the map of that version tells which function it was in. Keep the maps of every
 version you hand out.
 
-## 8. Install for testing
+## 9. Install for testing
 
 On the test machine (a VM is best):
 
@@ -131,13 +143,14 @@ Without a window, for scripts (administrator):
 Show2Cam-Setup.exe /install      & rem exit code: 0 works, 1 failed, 2 restart needed,
                                  & rem 3 cannot install here (test signing off / Secure Boot on), 4 installed but not working
 Show2Cam-Setup.exe /remove       & rem exit code: 0 removed, 1 failed, 2 restart needed
+Show2Cam-Setup.exe /install /dir "D:\Tools"   & rem into D:\Tools\Show2Cam (as "Browse..."; an installation stays where it is)
 ```
 
 The installed product appears in Windows' **Apps / Programs and Features**; its Uninstall opens the installer.
 Logs: `C:\ProgramData\Show2Cam\logs\` (`setup.log`, `panel.log`, `driver.log`, `events.log`, and in the debug
 package `install.log`, `ctl.log`, `autotest.log`, `camdiag-*.log`).
 
-## 9. Run the autotest
+## 10. Run the autotest
 
 From the **debug** package, in an administrator command prompt on the test machine:
 
@@ -149,6 +162,40 @@ It closes the control panel, remembers the cameras, their names, formats and set
 given time and restores everything at the end (also after Ctrl+C). Every check is logged as PASS / FAIL / WARN to
 `autotest.log`; the exit code is 1 if anything failed. It can run at the same time as Speak2Mic's autotest; it then
 plays clips without sound and tells camera interruptions caused by Speak2Mic's device restarts from its own.
+
+## 11. Code checks
+
+What the code is checked with besides the build, and how to repeat it (all on Linux; the results of the last run: no
+compiler warning, CodeQL must-fix clean).
+
+1. **Compiler warnings.** `./package.sh` builds everything with `-Wall -Wextra`, x64 and x86; a clean build prints no
+   `warning:` (see step 4).
+2. **Clang Static Analyzer** (the programs): for every `app/*.cpp`, with the build's flags,
+   ```sh
+   cd app
+   for f in *.cpp; do
+     clang++ --target=x86_64-w64-windows-gnu -std=c++17 -fno-exceptions -fno-rtti -municode -D_WIN32_WINNT=0x0A00 \
+       -DWINVER=0x0A00 -DUNICODE -D_UNICODE -isystem /usr/x86_64-w64-mingw32/include -I../third_party/libyuv/include \
+       --analyze -Xclang -analyzer-output=text -o /dev/null "$f"
+   done
+   ```
+   The findings left are false positives (memory freed by the window a message is posted to, a window's state freed in
+   `WM_NCDESTROY`).
+3. **CodeQL with Microsoft's driver rules** - the static analysis of the Windows Hardware Compatibility Program
+   ("Static Tools Logo"): CodeQL CLI 2.25.5 (github.com/github/codeql-cli-binaries) and the query packs
+   `microsoft/windows-drivers@1.10.0` + `microsoft/cpp-queries@0.0.5` (`codeql pack download ...`). The build command goes
+   in a script (CodeQL splits `--command` on spaces):
+   ```sh
+   printf '#!/bin/sh\nARCH=x64 exec sh driver/mingw/build.sh\n' > /tmp/drv.sh && chmod +x /tmp/drv.sh
+   codeql database create /tmp/db --overwrite --language=cpp --source-root=. --command=/tmp/drv.sh
+   codeql database analyze /tmp/db microsoft/windows-drivers:windows-driver-suites/mustfix.qls \
+     --format=sarifv2.1.0 --output=show2cam-mustfix.sarif
+   ```
+   Expected: no result for `mustfix.qls`; `recommended.qls` reports only false positives ("uninitialized padding" after `ExAllocatePool2`, which zeroes the memory).
+4. **InfVerif**: `./check_inf.sh` (step 7).
+
+Not run here: Static Driver Verifier and Code Analysis (`/analyze`) need Windows with the WDK and Visual Studio; the
+HLK tests need a physical test computer.
 
 ## Author
 

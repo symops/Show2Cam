@@ -52,7 +52,7 @@ The default folders are `images` and `mp4` next to the program (`C:\Program File
 Windows must run in test signing mode with Secure Boot off (VMware: VM → Settings → Options → Advanced → clear
 "Enable UEFI Secure Boot"). Run `Show2Cam-Setup.exe`; if test signing is off, click "Enable test mode", restart and
 run it again, then "Install". The cameras appear as "Show2Cam Camera 1" … in every program that uses a webcam.
-`Show2Cam-Setup.exe /install` installs and `/remove` removes without a window (the debug package's `uninstall.cmd` does the latter); the
+`Show2Cam-Setup.exe /install [/dir "FOLDER"]` installs and `/remove` removes without a window (the debug package's `uninstall.cmd` does the latter); the
 exit code tells the result.
 
 The tools below - `s2cinstall.exe`, `s2cctl.exe`, `s2cautotest.exe`, `s2ccamdiag.exe` / `s2ccamdiag32.exe` - are in
