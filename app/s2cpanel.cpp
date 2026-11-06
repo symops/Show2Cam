@@ -2361,16 +2361,22 @@ static LRESULT ListCustomDraw(NMLVCUSTOMDRAW* cd)
             int h = S(10), cx = (rc.left + rc.right) / 2, cy = (rc.top + rc.bottom) / 2;
             if (off)
             {
-                // switched off: a grey cross (Play / Pause does nothing then)
-                HPEN pen = CreatePen(PS_SOLID, S(2), RGB(150, 150, 150));
-                HGDIOBJ oldPen = SelectObject(dc, pen);
-                int r = h / 2 - S(1);
-                MoveToEx(dc, cx - r, cy - r, nullptr);
-                LineTo(dc, cx + r + 1, cy + r + 1);
-                MoveToEx(dc, cx + r, cy - r, nullptr);
-                LineTo(dc, cx - r - 1, cy + r + 1);
-                SelectObject(dc, oldPen);
-                DeleteObject(pen);
+                // switched off: a grey cross (Play / Pause does nothing then). Drawn row by row in a square of odd
+                // side around the cell's centre pixel, both diagonals with the same width: symmetric left / right and
+                // top / bottom (two pen lines were not: a wide pen is offset and LineTo leaves out the last point).
+                HBRUSH grey = CreateSolidBrush(RGB(150, 150, 150));
+                int n = (h - S(1)) | 1, w = S(1);                       // side (odd), half the stroke width
+                int x0 = cx - n / 2, y0 = cy - n / 2;
+                for (int i = 0; i < n; i++)
+                {
+                    int a = x0 + i, b = x0 + n - 1 - i;                 // the two diagonals in row i
+                    int l1 = a - w < x0 ? x0 : a - w, r1 = a + w > x0 + n - 1 ? x0 + n - 1 : a + w;
+                    int l2 = b - w < x0 ? x0 : b - w, r2 = b + w > x0 + n - 1 ? x0 + n - 1 : b + w;
+                    RECT s1 = { l1, y0 + i, r1 + 1, y0 + i + 1 }, s2 = { l2, y0 + i, r2 + 1, y0 + i + 1 };
+                    FillRect(dc, &s1, grey);
+                    FillRect(dc, &s2, grey);
+                }
+                DeleteObject(grey);
                 return CDRF_SKIPDEFAULT;
             }
             bool paused = g_cams[row].config.paused;
