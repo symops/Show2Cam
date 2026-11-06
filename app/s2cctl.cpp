@@ -506,7 +506,11 @@ static int CmdSource(int argc, wchar_t** argv)
         CamConfig& c = configs[i];
         CamConfigLoad(list[i], &c);
         c.kind = kind;
-        if (kind == SourceText && value) wcscpy(c.text, value);
+        if (kind == SourceText && value)
+        {
+            wcsncpy(c.text, value, 255);                // a longer text is cut (c.text: 256)
+            c.text[255] = 0;
+        }
         if (kind == SourceImages && value)
         {
             if (!_wcsicmp(value, L"default")) c.imageFolder[0] = 0;
@@ -517,7 +521,11 @@ static int CmdSource(int argc, wchar_t** argv)
             if (!_wcsicmp(value, L"default")) c.videoFolder[0] = 0;
             else GetFullPathNameW(value, MAX_PATH, c.videoFolder, nullptr);
         }
-        if (kind == SourceStream) wcscpy(c.url, value);
+        if (kind == SourceStream)
+        {
+            wcsncpy(c.url, value, 511);                 // c.url: 512
+            c.url[511] = 0;
+        }
     }
     return SaveAll(list, n, configs);
 }

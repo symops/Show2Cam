@@ -1257,12 +1257,12 @@ void MicMeasure(DWORD ms, MicResult* out)
         client->Stop();
         // the strongest frequency 100..4000 Hz over the first 0.5 s (what is playing, when the tone is not)
         {
-            UINT32 n = count < mix->nSamplesPerSec / 2 ? count : mix->nSamplesPerSec / 2;
+            UINT32 head = count < mix->nSamplesPerSec / 2 ? count : mix->nSamplesPerSec / 2;
             double best = 0;
-            for (int f = 100; f <= 4000 && n; f += 20)
+            for (int f = 100; f <= 4000 && head; f += 20)
             {
                 double c = 2.0 * cos(2.0 * 3.14159265358979 * f / mix->nSamplesPerSec), q1 = 0, q2 = 0;
-                for (UINT32 i = 0; i < n; i++)
+                for (UINT32 i = 0; i < head; i++)
                 {
                     double q0 = samples[i] + c * q1 - q2;
                     q2 = q1;

@@ -360,8 +360,8 @@ DiagResult RunDiagnostics(SetupLog log, void* ctx)
         else
         {
             Say(log, ctx, TR(L"Устройство Show2Cam запущено."));
-            int cameras = ScanCameras(log, ctx, true);
-            if (cameras > 0) result = DiagOk;
+            int listed = ScanCameras(log, ctx, true);
+            if (listed > 0) result = DiagOk;
             else
             {
                 Say(log, ctx, TR(L"Драйвер работает, но Windows не показывает камеры Show2Cam."));

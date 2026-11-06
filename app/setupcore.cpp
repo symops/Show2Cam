@@ -331,7 +331,7 @@ bool SetupSetCameraCount(int count, bool installDriver, bool* rebootNeeded, Setu
             SP_DEVINSTALL_PARAMS_W dip = { sizeof(dip) };
             if (SetupDiGetDeviceInstallParamsW(rs, &d, &dip) && (dip.Flags & (DI_NEEDREBOOT | DI_NEEDRESTART))) *rebootNeeded = true;
             AppLog(L"camera devices: camera %d removed", cam + 1);
-            if (cam >= 0 && cam < 10) used[cam] = false;
+            if (cam < 10) used[cam] = false;            // cam >= count >= 0 here
         }
         SetupDiDestroyDeviceInfoList(rs);
         if (!removed || !ok) break;

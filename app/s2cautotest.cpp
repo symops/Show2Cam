@@ -867,11 +867,11 @@ static void ActionPicture()
         Check(user, L"the driver knows who uses it");
         Check(open.FramesDelivered > st.FramesDelivered, L"frames delivered %llu -> %llu", st.FramesDelivered, open.FramesDelivered);
         // taken while open: this program keeps its format (frames go on), the next opening gets the new one
-        ULONG w = open.Width == 800 ? 640 : 800, h = w == 800 ? 600 : 480;
-        DWORD err = SetFormat(cam, w, h, open.Fps);
+        ULONG nw = open.Width == 800 ? 640 : 800, nh = nw == 800 ? 600 : 480;
+        DWORD err = SetFormat(cam, nw, nh, open.Fps);
         S2C_STATUS after = {};
         Status(cam, &after);
-        Check(err == ERROR_SUCCESS && after.Width == w && after.Height == h, L"format change taken while open: %lux%lu (%lu)",
+        Check(err == ERROR_SUCCESS && after.Width == nw && after.Height == nh, L"format change taken while open: %lux%lu (%lu)",
               after.Width, after.Height, err);
         Check(SUCCEEDED(CaptureRead(&c)) && SUCCEEDED(CaptureRead(&c)), L"frames go on in the format it opened");
         c.Close();

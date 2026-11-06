@@ -719,7 +719,7 @@ private:
         if (m_nextVideo) m_nextVideo->Release();
         if (m_shown) m_shown->Release();
         m_nextVideo = m_shown = nullptr;
-        if (m_pending) free(m_pending);
+        free(m_pending);
         m_pending = nullptr;
         m_pendingCap = 0;           // (kept before: the next file then had no buffer and dropped all its sound)
         m_pendingFrames = m_pendingPos = 0;
@@ -1333,7 +1333,7 @@ private:
             b += 9;
             if (*b == L'"') b++;
             int i = 0;
-            while (b[i] && b[i] != L'"' && b[i] != L';' && i < 120) { boundary[i] = (char)b[i]; i++; }
+            while (i < 120 && b[i] && b[i] != L'"' && b[i] != L';') { boundary[i] = (char)b[i]; i++; }
             boundary[i] = 0;
         }
         if (!m_logged)
